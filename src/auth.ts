@@ -44,6 +44,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = agent.id;
         session.user.role = agent.role;
         session.user.name = agent.name;
+        session.user.canRespond = agent.canRespond;
+        session.user.requiresApproval = agent.requiresApproval;
+        session.user.canApprove = agent.canApprove;
       }
 
       return session;

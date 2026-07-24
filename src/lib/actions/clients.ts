@@ -33,3 +33,13 @@ export async function createClient(input: z.infer<typeof clientSchema>) {
   revalidatePath("/clients");
   return client;
 }
+
+export async function deleteClient(id: string) {
+  const ticketCount = await prisma.ticket.count({ where: { clientId: id } });
+  if (ticketCount > 0) {
+    throw new Error("Ce client a des tickets associés et ne peut pas être supprimé.");
+  }
+
+  await prisma.client.delete({ where: { id } });
+  revalidatePath("/clients");
+}

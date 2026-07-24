@@ -37,6 +37,44 @@ function stripHtml(html: string) {
     .trim();
 }
 
+// Repère où commence le message précédent que le client répond, cité
+// automatiquement par son client mail (Gmail, Outlook, Apple Mail…) — sans
+// ça, chaque réponse traînerait tout l'historique déjà visible dans le fil
+// du ticket, en double, à chaque tour.
+// `[\s\S]` (pas `.`) et pas d'ancre `$` de fin : les clients mail en texte
+// brut wrappent les longues lignes d'en-tête ("...a" / "écrit :" finissent
+// sur deux lignes séparées) — un `.{0,120}` qui ne traverse pas les sauts de
+// ligne raterait exactement ce cas, pourtant le plus courant.
+const QUOTE_HEADER_PATTERNS = [
+  /^Le\s[\s\S]{0,150}?a\s+écrit\s?:/im, // Gmail/Apple Mail FR : "Le ven. 24 juil. 2026 à 15:36, X <y> a écrit :"
+  /^On\s[\s\S]{0,150}?wrote\s?:/im, // Gmail/Apple Mail EN : "On Fri, Jul 24, 2026 at 3:36 PM X <y> wrote:"
+  /^-{2,}\s?(Original Message|Message d'origine)\s?-{2,}/im, // Outlook
+];
+
+function stripQuotedReply(text: string): string {
+  let cutIndex = text.length;
+
+  for (const pattern of QUOTE_HEADER_PATTERNS) {
+    const match = pattern.exec(text);
+    if (match && match.index < cutIndex) {
+      cutIndex = match.index;
+    }
+  }
+
+  // Coupe aussi à la première ligne citée en "> " (convention texte brut
+  // universelle, indépendante de la langue du client mail).
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    if (/^\s*>/.test(line) && offset < cutIndex) {
+      cutIndex = offset;
+      break;
+    }
+    offset += line.length + 1;
+  }
+
+  return text.slice(0, cutIndex).trim();
+}
+
 type BodyParts = { text: string | null; html: string | null };
 
 function extractBody(part: gmail_v1.Schema$MessagePart | undefined): BodyParts {
@@ -163,7 +201,8 @@ async function processInboundMessage(gmail: gmail_v1.Gmail, gmailMessageId: stri
   }
 
   const body = extractBody(message.payload);
-  const content = body.text?.trim() || (body.html ? stripHtml(body.html) : "") || "(message vide)";
+  const rawContent = body.text?.trim() || (body.html ? stripHtml(body.html) : "") || "";
+  const content = stripQuotedReply(rawContent) || "(message vide)";
   const attachmentParts = extractAttachmentParts(message.payload);
 
   const created = await prisma.message.create({

@@ -7,6 +7,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import { sendTicketReplyEmail } from "@/lib/gmail-send";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
 import { auth } from "@/auth";
+import { requireCanApprove } from "@/lib/require-permission";
+import type { EmailHistoryEntry } from "@/lib/email-template";
 
 const ticketInclude = {
   status: true,
@@ -175,6 +177,58 @@ const addMessageSchema = z.object({
   isPrivate: z.boolean().default(false),
 });
 
+const EMAIL_HISTORY_LIMIT = 10;
+
+/**
+ * Builds and actually sends the client-facing email for a public reply, then
+ * marks the message as sent. Shared by the direct-send path (no approval
+ * required) and `approveMessage` (an approver releasing a held reply) so the
+ * send logic — including the conversation history — lives in one place.
+ */
+async function sendApprovedTicketReply(ticketId: string, messageId: string, content: string) {
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
+  if (!ticket?.client?.email) {
+    return { emailSent: false as const, emailSkippedReason: "Aucun client associé à ce ticket." };
+  }
+
+  const { senderName } = await getEmailAccountStatus();
+
+  const previousMessages = await prisma.message.findMany({
+    where: { ticketId, isPrivate: false, id: { not: messageId } },
+    orderBy: { createdAt: "desc" },
+    take: EMAIL_HISTORY_LIMIT,
+  });
+
+  // Toutes les réponses agent partent au nom façade unique "Ideeri Support"
+  // (une seule boîte partagée pour toute l'équipe) — l'historique reprend
+  // cette même convention plutôt que de révéler quel agent a écrit quoi.
+  const history: EmailHistoryEntry[] = previousMessages
+    .map((m) => ({
+      authorLabel: m.authorType === "AGENT" ? senderName : ticket.client?.name ?? "Client",
+      content: m.content,
+      createdAt: m.createdAt,
+    }))
+    .reverse();
+
+  const result = await sendTicketReplyEmail({
+    ticket,
+    clientEmail: ticket.client.email,
+    senderName,
+    bodyText: content,
+    history,
+  });
+
+  if (result.sent) {
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { emailSent: true, gmailMessageId: result.gmailMessageId },
+    });
+    revalidatePath(`/tickets/${ticketId}`);
+  }
+
+  return { emailSent: result.sent, emailSkippedReason: result.sent ? null : result.error ?? null };
+}
+
 export async function addTicketMessage(
   ticketId: string,
   input: z.infer<typeof addMessageSchema>
@@ -188,6 +242,12 @@ export async function addTicketMessage(
   if (!agentId) {
     throw new Error("Vous devez être connecté pour répondre à un ticket.");
   }
+  if (!session.user.canRespond) {
+    throw new Error("Vous n'avez pas la permission de répondre aux tickets (lecture seule).");
+  }
+
+  const isPublicAgentReply = !data.isPrivate;
+  const needsApproval = isPublicAgentReply && session.user.requiresApproval;
 
   const message = await prisma.message.create({
     data: {
@@ -196,37 +256,58 @@ export async function addTicketMessage(
       authorType: "AGENT",
       agentId,
       isPrivate: data.isPrivate,
+      approvalStatus: needsApproval ? "PENDING" : null,
     },
   });
   await prisma.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
 
-  const isPublicAgentReply = !data.isPrivate;
   if (!isPublicAgentReply) {
-    return { emailSent: false as const, emailSkippedReason: null };
+    return { emailSent: false as const, emailSkippedReason: null, pendingApproval: false };
   }
 
-  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
-  if (!ticket?.client?.email) {
-    return { emailSent: false as const, emailSkippedReason: "Aucun client associé à ce ticket." };
+  if (needsApproval) {
+    return { emailSent: false as const, emailSkippedReason: null, pendingApproval: true };
   }
 
-  const { senderName } = await getEmailAccountStatus();
-  const result = await sendTicketReplyEmail({
-    ticket,
-    clientEmail: ticket.client.email,
-    senderName,
-    bodyText: data.content,
+  const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content);
+  return { ...sendResult, pendingApproval: false };
+}
+
+export async function approveMessage(messageId: string) {
+  const session = await requireCanApprove();
+
+  const message = await prisma.message.findUnique({ where: { id: messageId } });
+  if (!message || message.approvalStatus !== "PENDING") {
+    throw new Error("Ce message n'est plus en attente de validation.");
+  }
+
+  await prisma.message.update({
+    where: { id: messageId },
+    data: {
+      approvalStatus: "APPROVED",
+      approvedById: session.user.id,
+      approvedAt: new Date(),
+    },
   });
 
-  if (result.sent) {
-    await prisma.message.update({
-      where: { id: message.id },
-      data: { emailSent: true, gmailMessageId: result.gmailMessageId },
-    });
-    revalidatePath(`/tickets/${ticketId}`);
+  const result = await sendApprovedTicketReply(message.ticketId, message.id, message.content);
+  revalidatePath(`/tickets/${message.ticketId}`);
+  return result;
+}
+
+export async function rejectMessage(messageId: string) {
+  await requireCanApprove();
+
+  const message = await prisma.message.findUnique({ where: { id: messageId } });
+  if (!message || message.approvalStatus !== "PENDING") {
+    throw new Error("Ce message n'est plus en attente de validation.");
   }
 
-  return { emailSent: result.sent, emailSkippedReason: result.sent ? null : result.error ?? null };
+  await prisma.message.update({
+    where: { id: messageId },
+    data: { approvalStatus: "REJECTED" },
+  });
+  revalidatePath(`/tickets/${message.ticketId}`);
 }

@@ -6,6 +6,9 @@ declare module "next-auth" {
     user: {
       id: string;
       role: AgentRole;
+      canRespond: boolean;
+      requiresApproval: boolean;
+      canApprove: boolean;
     } & DefaultSession["user"];
   }
 }

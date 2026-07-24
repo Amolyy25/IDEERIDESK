@@ -11,6 +11,7 @@ const tabs = [
   { label: "Produits concernés", href: "/settings/categories" },
   { label: "Champs personnalisés", href: "/settings/custom-fields" },
   { label: "E-mail", href: "/settings/email" },
+  { label: "Agents", href: "/settings/agents" },
 ];
 
 export function SettingsTabs() {

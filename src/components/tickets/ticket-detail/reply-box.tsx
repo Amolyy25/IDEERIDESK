@@ -8,7 +8,17 @@ import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn } from "@/lib/utils";
 
-export function ReplyBox({ ticketId, currentAgentName }: { ticketId: string; currentAgentName: string }) {
+export function ReplyBox({
+  ticketId,
+  currentAgentName,
+  canRespond,
+  requiresApproval,
+}: {
+  ticketId: string;
+  currentAgentName: string;
+  canRespond: boolean;
+  requiresApproval: boolean;
+}) {
   const router = useRouter();
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
@@ -22,7 +32,9 @@ export function ReplyBox({ ticketId, currentAgentName }: { ticketId: string; cur
       setContent("");
 
       if (!isPrivate) {
-        if (result.emailSent) {
+        if (result.pendingApproval) {
+          toast.info("Réponse envoyée pour validation, en attente d'un agent habilité.");
+        } else if (result.emailSent) {
           toast.success("Réponse envoyée par email");
         } else {
           toast.warning(
@@ -39,6 +51,14 @@ export function ReplyBox({ ticketId, currentAgentName }: { ticketId: string; cur
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (!canRespond) {
+    return (
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Accès en lecture seule — vous ne pouvez pas répondre à ce ticket.
+      </div>
+    );
   }
 
   return (
@@ -81,10 +101,17 @@ export function ReplyBox({ ticketId, currentAgentName }: { ticketId: string; cur
         <p className="text-xs text-muted-foreground">
           {isPrivate ? "Note visible par l'équipe" : "Répond en tant que"}{" "}
           <span className="font-medium text-foreground">{currentAgentName}</span>
+          {!isPrivate && requiresApproval && " · nécessite une validation"}
         </p>
 
         <Button onClick={handleSubmit} disabled={isSubmitting || !content.trim()} size="sm">
-          {isSubmitting ? "Envoi…" : isPrivate ? "Ajouter la note" : "Envoyer"}
+          {isSubmitting
+            ? "Envoi…"
+            : isPrivate
+              ? "Ajouter la note"
+              : requiresApproval
+                ? "Envoyer pour validation"
+                : "Envoyer"}
         </Button>
       </div>
     </div>

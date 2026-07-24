@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createOAuthClient } from "@/lib/google-oauth";
-import { requireAdmin } from "@/lib/require-admin";
+import { requireAdmin } from "@/lib/require-permission";
 
 const SENDER_NAME_KEY = "email_sender_name";
 const DEFAULT_SENDER_NAME = "Ideeri Support";

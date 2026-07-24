@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGoogleAuthUrl } from "@/lib/google-oauth";
-import { requireAdmin } from "@/lib/require-admin";
+import { requireAdmin } from "@/lib/require-permission";
 
 export async function GET() {
   try {

@@ -23,11 +23,21 @@ model Agent {
   role      AgentRole @default(AGENT)
   avatarUrl String?
   isActive  Boolean   @default(true)
+
+  // Permissions fines, indépendantes du rôle ADMIN/AGENT (qui régit l'accès
+  // aux paramètres) : un agent "lecture seule" ne peut ni répondre ni modifier
+  // un ticket ; un agent dont les réponses nécessitent validation voit ses
+  // emails sortants bloqués en attente d'un agent habilité à les approuver.
+  canRespond       Boolean @default(true)
+  requiresApproval Boolean @default(false)
+  canApprove       Boolean @default(false)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  assignedTickets Ticket[]  @relation("TicketAssignee")
-  messages        Message[]
+  assignedTickets  Ticket[]  @relation("TicketAssignee")
+  messages         Message[]
+  approvedMessages Message[] @relation("MessageApprovedBy")
 
   @@map("agents")
 }
@@ -205,6 +215,15 @@ enum MessageAuthorType {
   SYSTEM
 }
 
+// Absent (null) = pas de workflow de validation requis, comportement direct
+// habituel. Ne s'applique qu'aux réponses publiques d'un agent dont
+// `requiresApproval` est activé.
+enum MessageApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Message {
   id         String            @id @default(cuid())
   content    String
@@ -214,6 +233,10 @@ model Message {
   isPrivate  Boolean           @default(false)
   emailSent  Boolean           @default(false) // réponse publique effectivement envoyée par email
   gmailMessageId String?       @unique // id Gmail du message entrant/sortant correspondant (dédoublonnage sync)
+
+  approvalStatus MessageApprovalStatus?
+  approvedAt     DateTime?
+
   createdAt  DateTime          @default(now())
 
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -222,7 +245,11 @@ model Message {
   agent   Agent?  @relation(fields: [agentId], references: [id])
   agentId String?
 
+  approvedBy   Agent?  @relation("MessageApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+
   @@index([ticketId])
+  @@index([approvalStatus])
   @@map("messages")
 }
 

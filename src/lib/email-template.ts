@@ -17,14 +17,69 @@ function textToHtmlParagraphs(text: string) {
 const FONT_STACK =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
+export type EmailHistoryEntry = {
+  authorLabel: string;
+  content: string;
+  createdAt: Date;
+};
+
+function formatHistoryDate(date: Date) {
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function renderHistoryHtml(history: EmailHistoryEntry[]) {
+  if (history.length === 0) return "";
+
+  const rows = history
+    .map(
+      (entry) => `
+              <tr>
+                <td style="padding:14px 0;border-top:1px solid #e4e4e7;">
+                  <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#52525b;">
+                    ${escapeHtml(entry.authorLabel)}
+                    <span style="font-weight:400;color:#a1a1aa;"> · ${formatHistoryDate(entry.createdAt)}</span>
+                  </p>
+                  <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${escapeHtml(entry.content)}</p>
+                </td>
+              </tr>`
+    )
+    .join("");
+
+  return `
+            <tr>
+              <td style="padding:4px 32px 24px;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
+                  Historique de la conversation
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  ${rows}
+                </table>
+              </td>
+            </tr>`;
+}
+
+function renderHistoryText(history: EmailHistoryEntry[]) {
+  if (history.length === 0) return "";
+
+  const entries = history
+    .map((entry) => `${entry.authorLabel} · ${formatHistoryDate(entry.createdAt)}\n${entry.content}`)
+    .join("\n\n");
+
+  return `\n\n---\nHistorique de la conversation\n\n${entries}`;
+}
+
 export function renderTicketReplyEmailHtml({
   ticketNumber,
   senderName,
   bodyText,
+  history = [],
+  logoUrl,
 }: {
   ticketNumber: number;
   senderName: string;
   bodyText: string;
+  history?: EmailHistoryEntry[];
+  logoUrl?: string | null;
 }) {
   return `<!doctype html>
 <html>
@@ -35,6 +90,7 @@ export function renderTicketReplyEmailHtml({
           <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
             <tr>
               <td style="padding:28px 32px 4px;">
+                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
                 <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
                 <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber}</p>
               </td>
@@ -44,6 +100,7 @@ export function renderTicketReplyEmailHtml({
                 ${textToHtmlParagraphs(bodyText)}
               </td>
             </tr>
+            ${renderHistoryHtml(history)}
             <tr>
               <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
                 <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
@@ -63,10 +120,12 @@ export function renderTicketReplyEmailText({
   ticketNumber,
   senderName,
   bodyText,
+  history = [],
 }: {
   ticketNumber: number;
   senderName: string;
   bodyText: string;
+  history?: EmailHistoryEntry[];
 }) {
-  return `${bodyText}\n\n—\n${senderName} · Ticket #${ticketNumber}\nVous pouvez répondre directement à cet email pour continuer la conversation.`;
+  return `${bodyText}${renderHistoryText(history)}\n\n—\n${senderName} · Ticket #${ticketNumber}\nVous pouvez répondre directement à cet email pour continuer la conversation.`;
 }

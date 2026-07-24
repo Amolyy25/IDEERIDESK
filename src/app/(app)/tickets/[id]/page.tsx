@@ -71,12 +71,14 @@ export default async function TicketDetailPage({
         <AttachmentsList attachments={ticket.attachments} />
 
         <h2 className="mb-3 text-sm font-medium">Conversation</h2>
-        <MessageThread messages={ticket.messages} />
+        <MessageThread messages={ticket.messages} canApprove={session?.user?.canApprove ?? false} />
 
         <div className="mt-4">
           <ReplyBox
             ticketId={ticket.id}
             currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
+            canRespond={session?.user?.canRespond ?? false}
+            requiresApproval={session?.user?.requiresApproval ?? false}
           />
         </div>
       </div>
