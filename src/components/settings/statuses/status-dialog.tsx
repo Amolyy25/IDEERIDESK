@@ -38,6 +38,7 @@ export function StatusDialog({
         color: formData.get("color") as string,
         isClosed: formData.get("isClosed") === "on",
         isDefault: formData.get("isDefault") === "on",
+        isInProgressDefault: formData.get("isInProgressDefault") === "on",
       };
       if (status) {
         await updateTicketStatus(status.id, input);
@@ -90,6 +91,20 @@ export function StatusDialog({
             <Checkbox id="isDefault" name="isDefault" defaultChecked={status?.isDefault} />
             <Label htmlFor="isDefault" className="text-sm font-normal text-muted-foreground">
               Statut par défaut des nouveaux tickets
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="isInProgressDefault"
+              name="isInProgressDefault"
+              defaultChecked={status?.isInProgressDefault}
+            />
+            <Label
+              htmlFor="isInProgressDefault"
+              className="text-sm font-normal text-muted-foreground"
+            >
+              Statut appliqué par le bouton « Prendre en charge »
             </Label>
           </div>
 

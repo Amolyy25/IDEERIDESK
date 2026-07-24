@@ -38,8 +38,25 @@ model Agent {
   assignedTickets  Ticket[]  @relation("TicketAssignee")
   messages         Message[]
   approvedMessages Message[] @relation("MessageApprovedBy")
+  groups           Group[]
 
   @@map("agents")
+}
+
+// Équipe d'agents (ex: "Support Papairis") rattachée à un ou plusieurs
+// produits concernés — sert à pré-filtrer la liste des tickets pour ses
+// membres. Un agent peut appartenir à plusieurs groupes.
+model Group {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#71717a")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  Agent[]
+  products TicketCategory[]
+
+  @@map("groups")
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +88,9 @@ model TicketStatus {
   order     Int      @default(0)
   isDefault Boolean  @default(false)
   isClosed  Boolean  @default(false)
+  // Un seul statut peut porter ce flag — cible automatique du bouton
+  // "Prendre en charge" sur un ticket (comme isDefault, géré en singleton).
+  isInProgressDefault Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -107,6 +127,7 @@ model TicketCategory {
   updatedAt   DateTime @updatedAt
 
   tickets Ticket[]
+  groups  Group[]
 
   @@map("ticket_categories")
 }

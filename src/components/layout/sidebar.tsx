@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn, initials } from "@/lib/utils";
-import { BookOpen, Settings, Ticket, Users } from "lucide-react";
+import { BookOpen, Settings, Ticket, Users, UsersRound } from "lucide-react";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 
 const navItems = [
   { label: "Tickets", href: "/tickets", icon: Ticket },
   { label: "Clients", href: "/clients", icon: Users },
+  { label: "Équipe", href: "/agents", icon: UsersRound },
   { label: "Base de connaissances", href: "/knowledge-base", icon: BookOpen },
   { label: "Paramètres", href: "/settings", icon: Settings },
 ];

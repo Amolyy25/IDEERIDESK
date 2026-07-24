@@ -30,7 +30,15 @@ type AgentPermissions = {
   canApprove: boolean;
 };
 
-export function AgentsTable({ agents, currentAgentId }: { agents: Agent[]; currentAgentId: string }) {
+export function AgentsTable({
+  agents,
+  currentAgentId,
+  isAdmin,
+}: {
+  agents: Agent[];
+  currentAgentId: string;
+  isAdmin: boolean;
+}) {
   const [isPending, startTransition] = useTransition();
   const [rows, setRows] = useState(agents);
 
@@ -92,7 +100,7 @@ export function AgentsTable({ agents, currentAgentId }: { agents: Agent[]; curre
                   <Select
                     value={agent.role}
                     onValueChange={(v) => applyChange(agent.id, { role: v as AgentRole })}
-                    disabled={isPending}
+                    disabled={isPending || !isAdmin}
                   >
                     <SelectTrigger className="h-8 w-28">
                       <SelectValue />
@@ -107,14 +115,14 @@ export function AgentsTable({ agents, currentAgentId }: { agents: Agent[]; curre
                   <Switch
                     checked={agent.isActive}
                     onCheckedChange={(checked) => applyChange(agent.id, { isActive: checked })}
-                    disabled={isPending || isSelf}
+                    disabled={isPending || !isAdmin || isSelf}
                   />
                 </TableCell>
                 <TableCell>
                   <Switch
                     checked={agent.canRespond}
                     onCheckedChange={(checked) => applyChange(agent.id, { canRespond: checked })}
-                    disabled={isPending}
+                    disabled={isPending || !isAdmin}
                   />
                 </TableCell>
                 <TableCell>
@@ -123,14 +131,14 @@ export function AgentsTable({ agents, currentAgentId }: { agents: Agent[]; curre
                     onCheckedChange={(checked) =>
                       applyChange(agent.id, { requiresApproval: checked })
                     }
-                    disabled={isPending}
+                    disabled={isPending || !isAdmin}
                   />
                 </TableCell>
                 <TableCell>
                   <Switch
                     checked={agent.canApprove}
                     onCheckedChange={(checked) => applyChange(agent.id, { canApprove: checked })}
-                    disabled={isPending}
+                    disabled={isPending || !isAdmin}
                   />
                 </TableCell>
               </TableRow>

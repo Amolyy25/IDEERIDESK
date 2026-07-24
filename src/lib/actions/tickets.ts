@@ -37,6 +37,8 @@ export type TicketListFilters = {
   assigneeId?: string;
   sortBy?: "number" | "subject" | "createdAt" | "updatedAt";
   sortDir?: "asc" | "desc";
+  /** Filtre auto (produits couverts par les groupes de l'agent) — ignoré si `categoryId` est aussi fourni (un filtre manuel prime toujours). */
+  categoryIds?: string[];
 };
 
 export async function getUnreadTicketCount() {
@@ -54,6 +56,9 @@ export async function getTickets(filters: TicketListFilters = {}) {
     priorityId: filters.priorityId || undefined,
     categoryId: filters.categoryId || undefined,
     assigneeId: filters.assigneeId || undefined,
+    ...(!filters.categoryId && filters.categoryIds?.length
+      ? { categoryId: { in: filters.categoryIds } }
+      : {}),
     ...(filters.search
       ? {
           OR: [
@@ -159,6 +164,33 @@ export async function updateTicketAttributes(
       assigneeId: data.assigneeId === undefined ? undefined : data.assigneeId || null,
       metadata: data.metadata as Prisma.InputJsonValue | undefined,
       closedAt,
+    },
+  });
+  revalidatePath(`/tickets/${id}`);
+  revalidatePath("/tickets");
+}
+
+export async function claimTicket(id: string) {
+  const session = await auth();
+  const agentId = session?.user?.id;
+  if (!agentId) {
+    throw new Error("Vous devez être connecté pour prendre en charge un ticket.");
+  }
+  if (!session.user.canRespond) {
+    throw new Error("Vous n'avez pas la permission de prendre en charge un ticket (lecture seule).");
+  }
+
+  // Statut cible optionnel (configuré depuis /settings/statuses) — si aucun
+  // n'est marqué, seule l'assignation change, sans erreur.
+  const inProgressStatus = await prisma.ticketStatus.findFirst({
+    where: { isInProgressDefault: true },
+  });
+
+  await prisma.ticket.update({
+    where: { id },
+    data: {
+      assigneeId: agentId,
+      ...(inProgressStatus ? { statusId: inProgressStatus.id } : {}),
     },
   });
   revalidatePath(`/tickets/${id}`);

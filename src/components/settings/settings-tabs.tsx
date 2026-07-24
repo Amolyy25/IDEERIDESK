@@ -13,7 +13,6 @@ const tabs = [
   { label: "E-mail", href: "/settings/email" },
   { label: "IA", href: "/settings/ai" },
   { label: "Automatisations", href: "/settings/automations" },
-  { label: "Agents", href: "/settings/agents" },
 ];
 
 export function SettingsTabs() {

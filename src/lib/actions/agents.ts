@@ -12,8 +12,9 @@ export async function getAgents() {
   });
 }
 
+// Lecture ouverte à tout agent connecté (la page /agents est consultable par
+// tous) — seules les mutations (`updateAgentPermissions`) sont admin-only.
 export async function getAllAgents() {
-  await requireAdmin();
   return prisma.agent.findMany({ orderBy: { createdAt: "asc" } });
 }
 

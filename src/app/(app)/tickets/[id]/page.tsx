@@ -90,6 +90,7 @@ export default async function TicketDetailPage({
         categories={categories}
         agents={agents}
         customFields={activeCustomFields}
+        currentAgentId={session?.user?.id ?? null}
       />
     </div>
   );

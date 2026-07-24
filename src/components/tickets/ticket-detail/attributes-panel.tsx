@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { updateTicketAttributes, deleteTicket } from "@/lib/actions/tickets";
+import { updateTicketAttributes, deleteTicket, claimTicket } from "@/lib/actions/tickets";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import type {
   Agent,
@@ -45,6 +45,7 @@ export function AttributesPanel({
   categories,
   agents,
   customFields,
+  currentAgentId,
 }: {
   ticket: TicketWithMessages;
   statuses: TicketStatus[];
@@ -52,10 +53,12 @@ export function AttributesPanel({
   categories: TicketCategory[];
   agents: Agent[];
   customFields: CustomField[];
+  currentAgentId: string | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
     (ticket.metadata as Record<string, unknown>) ?? {}
   );
@@ -75,6 +78,19 @@ export function AttributesPanel({
     const next = { ...metadata, [key]: value };
     setMetadata(next);
     apply({ metadata: next });
+  }
+
+  async function handleClaim() {
+    setIsClaiming(true);
+    try {
+      await claimTicket(ticket.id);
+      toast.success("Ticket pris en charge");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de prendre en charge");
+    } finally {
+      setIsClaiming(false);
+    }
   }
 
   async function handleDelete() {
@@ -155,7 +171,19 @@ export function AttributesPanel({
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Assigné à</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Assigné à</Label>
+          {currentAgentId && ticket.assigneeId !== currentAgentId && (
+            <button
+              type="button"
+              onClick={handleClaim}
+              disabled={isClaiming}
+              className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+            >
+              {isClaiming ? "…" : "Prendre en charge"}
+            </button>
+          )}
+        </div>
         <Select
           value={ticket.assigneeId ?? NONE}
           onValueChange={(v) => apply({ assigneeId: v === NONE ? null : v })}
