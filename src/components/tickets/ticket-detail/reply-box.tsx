@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
@@ -23,6 +24,28 @@ export function ReplyBox({
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+
+  async function handleSuggest() {
+    setIsSuggesting(true);
+    try {
+      const response = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ticketId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error ?? "Impossible de générer une suggestion.");
+      }
+      setContent(result.suggestion);
+      toast.success("Suggestion générée");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de générer une suggestion.");
+    } finally {
+      setIsSuggesting(false);
+    }
+  }
 
   async function handleSubmit() {
     if (!content.trim()) return;
@@ -96,6 +119,19 @@ export function ReplyBox({
         onChange={(e) => setContent(e.target.value)}
         rows={4}
       />
+
+      {!isPrivate && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleSuggest}
+          disabled={isSuggesting}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {isSuggesting ? "Génération…" : "Suggérer une réponse"}
+        </Button>
+      )}
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">

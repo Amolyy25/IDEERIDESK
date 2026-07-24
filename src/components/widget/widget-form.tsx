@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { AttachmentPreview } from "@/components/widget/attachment-preview";
 import { WidgetSuccess } from "@/components/widget/widget-success";
+import { KnowledgeSuggestions } from "@/components/widget/knowledge-suggestions";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 import {
@@ -65,6 +66,9 @@ export function WidgetForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [kbArticles, setKbArticles] = useState<
+    { id: string; title: string; excerpt: string | null; content: string }[]
+  >([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -77,6 +81,30 @@ export function WidgetForm({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  // Suggère des articles de la base de connaissances pendant la saisie, pour
+  // éviter au client d'ouvrir un ticket si la réponse existe déjà — débounced
+  // pour ne pas interroger l'API à chaque frappe.
+  useEffect(() => {
+    const query = `${subject} ${description}`.trim();
+
+    const timeout = setTimeout(async () => {
+      if (query.length < 3) {
+        setKbArticles([]);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/widget/knowledge-base?q=${encodeURIComponent(query)}`);
+        if (!response.ok) return;
+        const result = await response.json();
+        setKbArticles(result.articles ?? []);
+      } catch {
+        // Suggestion non bloquante : une erreur réseau ne doit pas gêner l'envoi du ticket.
+      }
+    }, 400);
+
+    return () => clearTimeout(timeout);
+  }, [subject, description]);
 
   const isIdentified = Boolean(context.userEmail);
 
@@ -251,6 +279,8 @@ export function WidgetForm({
           className="h-10"
         />
       </div>
+
+      <KnowledgeSuggestions articles={kbArticles} />
 
       <div className="space-y-2">
         <Label>Produit concerné</Label>

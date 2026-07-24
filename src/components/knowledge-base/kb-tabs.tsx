@@ -5,24 +5,24 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { label: "Général", href: "/settings/general" },
-  { label: "Statuts de ticket", href: "/settings/statuses" },
-  { label: "Priorités", href: "/settings/priorities" },
-  { label: "Produits concernés", href: "/settings/categories" },
-  { label: "Champs personnalisés", href: "/settings/custom-fields" },
-  { label: "E-mail", href: "/settings/email" },
-  { label: "IA", href: "/settings/ai" },
-  { label: "Automatisations", href: "/settings/automations" },
-  { label: "Agents", href: "/settings/agents" },
+  { label: "Articles", href: "/knowledge-base" },
+  { label: "Catégories", href: "/knowledge-base/categories" },
+  { label: "Modèles", href: "/knowledge-base/templates" },
 ];
 
-export function SettingsTabs() {
+export function KbTabs() {
   const pathname = usePathname();
 
   return (
     <div className="flex gap-1 border-b">
       {tabs.map((tab) => {
-        const isActive = pathname.startsWith(tab.href);
+        const isActive =
+          tab.href === "/knowledge-base"
+            ? pathname === "/knowledge-base" ||
+              (pathname.startsWith("/knowledge-base/") &&
+                !pathname.startsWith("/knowledge-base/categories") &&
+                !pathname.startsWith("/knowledge-base/templates"))
+            : pathname.startsWith(tab.href);
         return (
           <Link
             key={tab.href}

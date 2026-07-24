@@ -76,6 +76,9 @@ model TicketStatus {
 
   tickets Ticket[]
 
+  automationTriggers AutomationRule[] @relation("AutomationTriggerStatus")
+  automationActions  AutomationRule[] @relation("AutomationActionStatus")
+
   @@map("ticket_statuses")
 }
 
@@ -283,4 +286,89 @@ model GlobalSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("global_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Base de connaissances (FAQ) & modèles d'articles
+// ---------------------------------------------------------------------------
+
+enum KnowledgeArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model KnowledgeCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  articles KnowledgeArticle[]
+
+  @@map("knowledge_categories")
+}
+
+model KnowledgeArticle {
+  id          String                 @id @default(cuid())
+  title       String
+  slug        String                 @unique
+  excerpt     String?
+  content     String
+  status      KnowledgeArticleStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  category   KnowledgeCategory? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("knowledge_articles")
+}
+
+// Trames réutilisables pour rédiger un nouvel article plus vite (pas liées à
+// un article précis : appliquer un modèle copie simplement son contenu dans
+// l'éditeur, l'agent part de là).
+model ArticleTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("article_templates")
+}
+
+// ---------------------------------------------------------------------------
+// Automatisations (ex : fermeture automatique des tickets inactifs)
+// ---------------------------------------------------------------------------
+
+model AutomationRule {
+  id        String  @id @default(cuid())
+  name      String
+  isActive  Boolean @default(true)
+
+  // Délai d'inactivité (basé sur `Ticket.updatedAt`) avant que la règle ne
+  // s'applique à un ticket dans le statut déclencheur.
+  delayDays Int @default(3)
+
+  triggerStatus   TicketStatus @relation("AutomationTriggerStatus", fields: [triggerStatusId], references: [id])
+  triggerStatusId String
+
+  actionStatus   TicketStatus @relation("AutomationActionStatus", fields: [actionStatusId], references: [id])
+  actionStatusId String
+
+  addNote     Boolean @default(true)
+  noteContent String  @default("Ticket automatiquement fermé après inactivité.")
+
+  sendEmail    Boolean @default(false)
+  emailContent String?
+
+  lastRunAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("automation_rules")
 }

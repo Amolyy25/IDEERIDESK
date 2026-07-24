@@ -9,7 +9,7 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 const navItems = [
   { label: "Tickets", href: "/tickets", icon: Ticket },
   { label: "Clients", href: "/clients", icon: Users },
-  { label: "Base de connaissances", href: null, icon: BookOpen },
+  { label: "Base de connaissances", href: "/knowledge-base", icon: BookOpen },
   { label: "Paramètres", href: "/settings", icon: Settings },
 ];
 
