@@ -24,8 +24,14 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/tickets/${row.original.id}`}
-        className="font-medium text-foreground hover:text-primary"
+        className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
       >
+        {row.original.hasUnreadActivity && (
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+            title="Activité non vue"
+          />
+        )}
         {row.original.subject}
       </Link>
     ),

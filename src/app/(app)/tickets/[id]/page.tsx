@@ -15,6 +15,7 @@ import { AttributesPanel } from "@/components/tickets/ticket-detail/attributes-p
 import { MessageThread } from "@/components/tickets/ticket-detail/message-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
+import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
 
 export default async function TicketDetailPage({
   params,
@@ -41,6 +42,7 @@ export default async function TicketDetailPage({
 
   return (
     <div className="flex h-full">
+      <MarkAsRead ticketId={ticket.id} hasUnreadActivity={ticket.hasUnreadActivity} />
       <div className="flex-1 overflow-y-auto p-6">
         <Link
           href="/tickets"

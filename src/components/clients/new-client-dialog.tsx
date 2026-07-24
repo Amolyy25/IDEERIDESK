@@ -34,8 +34,8 @@ export function NewClientDialog() {
       toast.success("Client créé");
       setOpen(false);
       router.refresh();
-    } catch {
-      toast.error("Impossible de créer le client");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de créer le client");
     } finally {
       setIsSubmitting(false);
     }

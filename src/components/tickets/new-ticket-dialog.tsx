@@ -62,8 +62,8 @@ export function NewTicketDialog({
       toast.success("Ticket créé");
       setOpen(false);
       router.push(`/tickets/${ticket.id}`);
-    } catch {
-      toast.error("Impossible de créer le ticket");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de créer le ticket");
     } finally {
       setIsSubmitting(false);
     }

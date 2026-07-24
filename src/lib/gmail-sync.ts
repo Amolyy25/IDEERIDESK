@@ -20,15 +20,6 @@ function getHeader(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, nam
   return headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? undefined;
 }
 
-function parseFromHeader(from: string | undefined) {
-  if (!from) return { name: undefined, email: undefined };
-  const match = from.match(/^(?:"?([^"<]*)"?\s*)?<?([^\s<>]+@[^\s<>]+)>?$/);
-  if (!match) return { name: undefined, email: undefined };
-  const name = match[1]?.trim() || undefined;
-  const email = match[2]?.trim().toLowerCase();
-  return { name, email };
-}
-
 function stripHtml(html: string) {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -88,17 +79,6 @@ function extractAttachmentParts(part: gmail_v1.Schema$MessagePart | undefined): 
 
   walk(part);
   return results;
-}
-
-async function findOrCreateClient(from: string | undefined) {
-  const { name, email } = parseFromHeader(from);
-  if (!email) return null;
-
-  return prisma.client.upsert({
-    where: { email },
-    update: name ? { name } : {},
-    create: { name: name ?? email, email },
-  });
 }
 
 async function resolveTicket(subject: string | undefined, gmailThreadId: string) {
@@ -166,79 +146,64 @@ async function processInboundMessage(gmail: gmail_v1.Gmail, gmailMessageId: stri
   });
 
   const headers = message.payload?.headers;
-  const from = getHeader(headers, "From");
   const subject = getHeader(headers, "Subject");
   const messageIdHeader = getHeader(headers, "Message-ID");
   const gmailThreadId = message.threadId ?? gmailMessageId;
 
-  const client = await findOrCreateClient(from);
+  const existingTicket = await resolveTicket(subject, gmailThreadId);
+
+  // La boîte connectée est une boîte Gmail normale, pas une adresse dédiée
+  // exclusivement au support — elle reçoit aussi des emails sans rapport
+  // avec un ticket. On ne crée donc plus de ticket à partir d'un email
+  // inconnu : seuls les emails qui répondent à un ticket déjà existant
+  // (créé via le dashboard ou le widget) sont pris en compte. Un email sans
+  // correspondance est simplement ignoré, pas transformé en ticket parasite.
+  if (!existingTicket) {
+    return { skipped: false as const, action: "ignored" as const };
+  }
+
   const body = extractBody(message.payload);
   const content = body.text?.trim() || (body.html ? stripHtml(body.html) : "") || "(message vide)";
   const attachmentParts = extractAttachmentParts(message.payload);
 
-  const existingTicket = await resolveTicket(subject, gmailThreadId);
-
-  if (existingTicket) {
-    const created = await prisma.message.create({
-      data: {
-        ticketId: existingTicket.id,
-        content,
-        authorType: "CLIENT",
-        isPrivate: false,
-        gmailMessageId,
-      },
-    });
-    await prisma.ticket.update({
-      where: { id: existingTicket.id },
-      data: {
-        gmailThreadId,
-        emailMessageId: messageIdHeader ?? existingTicket.emailMessageId,
-        updatedAt: new Date(),
-      },
-    });
-
-    const attachments = await downloadAttachments(gmail, gmailMessageId, attachmentParts);
-    if (attachments.length > 0) {
-      await prisma.attachment.createMany({
-        data: attachments.map((a) => ({ ...a, ticketId: existingTicket.id })),
-      });
-    }
-
-    return { skipped: false as const, action: "appended" as const, ticketId: existingTicket.id, messageId: created.id };
-  }
-
-  const [defaultStatus, defaultPriority] = await Promise.all([
-    prisma.ticketStatus.findFirst({ where: { isDefault: true }, orderBy: { order: "asc" } }),
-    prisma.ticketPriority.findFirst({ where: { isDefault: true }, orderBy: { order: "asc" } }),
-  ]);
-  if (!defaultStatus || !defaultPriority) {
-    throw new Error("Aucun statut ou priorité par défaut n'est configuré.");
-  }
-
-  const attachments = await downloadAttachments(gmail, gmailMessageId, attachmentParts);
-
-  const ticket = await prisma.ticket.create({
+  const created = await prisma.message.create({
     data: {
-      subject: subject?.trim() || "(sans objet)",
-      description: content,
-      source: "EMAIL",
-      statusId: defaultStatus.id,
-      priorityId: defaultPriority.id,
-      clientId: client?.id,
-      gmailThreadId,
+      ticketId: existingTicket.id,
+      content,
+      authorType: "CLIENT",
+      isPrivate: false,
       gmailMessageId,
-      emailMessageId: messageIdHeader,
-      attachments: { create: attachments },
+    },
+  });
+  await prisma.ticket.update({
+    where: { id: existingTicket.id },
+    data: {
+      gmailThreadId,
+      emailMessageId: messageIdHeader ?? existingTicket.emailMessageId,
+      hasUnreadActivity: true,
+      updatedAt: new Date(),
     },
   });
 
-  return { skipped: false as const, action: "created" as const, ticketId: ticket.id };
+  const attachments = await downloadAttachments(gmail, gmailMessageId, attachmentParts);
+  if (attachments.length > 0) {
+    await prisma.attachment.createMany({
+      data: attachments.map((a) => ({ ...a, ticketId: existingTicket.id })),
+    });
+  }
+
+  return {
+    skipped: false as const,
+    action: "appended" as const,
+    ticketId: existingTicket.id,
+    messageId: created.id,
+  };
 }
 
 export async function syncGmailInbox() {
   const authenticated = await getAuthenticatedGmailClient();
   if (!authenticated) {
-    return { connected: false as const, created: 0, appended: 0, skipped: 0 };
+    return { connected: false as const, appended: 0, ignored: 0, skipped: 0, failed: 0 };
   }
   const { gmail, account } = authenticated;
 
@@ -266,24 +231,30 @@ export async function syncGmailInbox() {
     messageIds = Array.from(seen);
     newHistoryId = data.historyId ?? account.historyId;
   } else {
-    // Premher sync : pas d'historique connu, on amorce le curseur sans
+    // Premier sync : pas d'historique connu, on amorce le curseur sans
     // traiter le backlog complet (on récupère juste le point de départ).
     const { data: profile } = await gmail.users.getProfile({ userId: "me" });
     newHistoryId = profile.historyId ?? null;
   }
 
-  let created = 0;
   let appended = 0;
+  let ignored = 0;
   let skipped = 0;
+  let failed = 0;
 
   for (const id of messageIds) {
     try {
       const result = await processInboundMessage(gmail, id);
       if (result.skipped) skipped++;
-      else if (result.action === "created") created++;
+      else if (result.action === "ignored") ignored++;
       else appended++;
-    } catch {
-      skipped++;
+    } catch (error) {
+      // Distinct de `skipped` (déjà traité, cas normal) : ici le message n'a
+      // jamais été enregistré et sera retenté au prochain sync tant que
+      // l'erreur persiste — sans ce log, un email malformé qui plante en
+      // boucle est invisible (le compteur ne dit pas lequel ni pourquoi).
+      failed++;
+      console.error(`[gmail-sync] échec du traitement du message ${id} :`, error);
     }
   }
 
@@ -294,5 +265,5 @@ export async function syncGmailInbox() {
     });
   }
 
-  return { connected: true as const, created, appended, skipped };
+  return { connected: true as const, appended, ignored, skipped, failed };
 }

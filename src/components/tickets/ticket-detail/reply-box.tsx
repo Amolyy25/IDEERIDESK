@@ -34,8 +34,8 @@ export function ReplyBox({ ticketId, currentAgentName }: { ticketId: string; cur
       }
 
       router.refresh();
-    } catch {
-      toast.error("Impossible d'envoyer le message");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible d'envoyer le message");
     } finally {
       setIsSubmitting(false);
     }

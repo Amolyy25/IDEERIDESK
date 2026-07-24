@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createOAuthClient } from "@/lib/google-oauth";
+import { requireAdmin } from "@/lib/require-admin";
 
 const SENDER_NAME_KEY = "email_sender_name";
 const DEFAULT_SENDER_NAME = "Ideeri Support";
@@ -23,6 +24,7 @@ export async function getEmailAccountStatus() {
 }
 
 export async function updateSenderName(name: string) {
+  await requireAdmin();
   const senderName = z.string().trim().min(1).max(120).parse(name);
 
   await prisma.globalSetting.upsert({
@@ -39,6 +41,7 @@ export async function updateSenderName(name: string) {
 }
 
 export async function disconnectEmailAccount() {
+  await requireAdmin();
   const account = await prisma.emailAccount.findFirst();
   if (!account) return;
 

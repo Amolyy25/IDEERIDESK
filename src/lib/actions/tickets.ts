@@ -37,6 +37,10 @@ export type TicketListFilters = {
   sortDir?: "asc" | "desc";
 };
 
+export async function getUnreadTicketCount() {
+  return prisma.ticket.count({ where: { hasUnreadActivity: true } });
+}
+
 export async function getTickets(filters: TicketListFilters = {}) {
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
@@ -87,6 +91,14 @@ export async function getTicketById(id: string) {
       },
     },
   });
+}
+
+export async function markTicketAsRead(id: string) {
+  await prisma.ticket.updateMany({
+    where: { id, hasUnreadActivity: true },
+    data: { hasUnreadActivity: false },
+  });
+  revalidatePath("/tickets");
 }
 
 const createTicketSchema = z.object({
@@ -148,6 +160,13 @@ export async function updateTicketAttributes(
     },
   });
   revalidatePath(`/tickets/${id}`);
+  revalidatePath("/tickets");
+}
+
+export async function deleteTicket(id: string) {
+  // Messages et pièces jointes suivent en cascade (onDelete: Cascade côté
+  // schéma) — pas de nettoyage manuel à faire ici.
+  await prisma.ticket.delete({ where: { id } });
   revalidatePath("/tickets");
 }
 

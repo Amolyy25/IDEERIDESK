@@ -22,7 +22,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { disconnectEmailAccount, updateSenderName } from "@/lib/actions/email-account";
-import { triggerManualGmailSync } from "@/lib/actions/gmail-sync";
 import { formatDateTime } from "@/lib/format-date";
 
 type EmailAccountStatus = {
@@ -34,10 +33,12 @@ type EmailAccountStatus = {
 
 export function EmailSettingsPanel({
   status,
+  isAdmin,
   justConnected,
   oauthError,
 }: {
   status: EmailAccountStatus;
+  isAdmin: boolean;
   justConnected: boolean;
   oauthError: string | null;
 }) {
@@ -45,7 +46,6 @@ export function EmailSettingsPanel({
   const [senderName, setSenderName] = useState(status.senderName);
   const [isSavingName, setIsSavingName] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (justConnected) {
@@ -60,8 +60,8 @@ export function EmailSettingsPanel({
     try {
       await updateSenderName(senderName);
       toast.success("Nom de l'expéditeur enregistré");
-    } catch {
-      toast.error("Impossible d'enregistrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible d'enregistrer");
       setSenderName(status.senderName);
     } finally {
       setIsSavingName(false);
@@ -74,29 +74,10 @@ export function EmailSettingsPanel({
       await disconnectEmailAccount();
       toast.success("Gmail déconnecté");
       router.refresh();
-    } catch {
-      toast.error("La déconnexion a échoué");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "La déconnexion a échoué");
     } finally {
       setIsDisconnecting(false);
-    }
-  }
-
-  async function handleSync() {
-    setIsSyncing(true);
-    try {
-      const result = await triggerManualGmailSync();
-      if (!result.connected) {
-        toast.error("Gmail n'est pas connecté");
-      } else {
-        toast.success(
-          `Synchronisation terminée : ${result.created} ticket(s) créé(s), ${result.appended} message(s) ajouté(s)`
-        );
-      }
-      router.refresh();
-    } catch {
-      toast.error("La synchronisation a échoué");
-    } finally {
-      setIsSyncing(false);
     }
   }
 
@@ -126,29 +107,31 @@ export function EmailSettingsPanel({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary">Connecté</Badge>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={isDisconnecting}>
-                    Déconnecter
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Déconnecter Gmail ?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      La réception et l&apos;envoi d&apos;emails seront interrompus jusqu&apos;à
-                      une nouvelle connexion.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDisconnect}>Déconnecter</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              {isAdmin && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isDisconnecting}>
+                      Déconnecter
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Déconnecter Gmail ?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        La réception et l&apos;envoi d&apos;emails seront interrompus jusqu&apos;à
+                        une nouvelle connexion.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDisconnect}>Déconnecter</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           </div>
-        ) : (
+        ) : isAdmin ? (
           <div className="rounded-lg border p-4">
             <p className="mb-3 text-sm text-muted-foreground">
               Connectez la boîte email support pour transformer automatiquement les emails
@@ -157,6 +140,12 @@ export function EmailSettingsPanel({
             <Button asChild size="sm">
               <Link href="/api/auth/gmail/start">Connecter Gmail</Link>
             </Button>
+          </div>
+        ) : (
+          <div className="rounded-lg border p-4">
+            <p className="text-sm text-muted-foreground">
+              Aucune boîte email connectée. Seul un administrateur peut connecter Gmail.
+            </p>
           </div>
         )}
       </div>
@@ -170,11 +159,12 @@ export function EmailSettingsPanel({
           value={senderName}
           onChange={(e) => setSenderName(e.target.value)}
           onBlur={handleSenderNameBlur}
-          disabled={isSavingName}
+          disabled={isSavingName || !isAdmin}
         />
         <p className="text-xs text-muted-foreground">
-          Affiché comme nom d&apos;expéditeur dans les emails envoyés aux clients (ex. &laquo;{" "}
-          {senderName || "Ideeri Support"} &raquo;).
+          {isAdmin
+            ? `Affiché comme nom d'expéditeur dans les emails envoyés aux clients (ex. « ${senderName || "Ideeri Support"} »).`
+            : "Réglage partagé par toute l'équipe — modifiable uniquement par un administrateur."}
         </p>
       </div>
 
@@ -184,14 +174,11 @@ export function EmailSettingsPanel({
           <div className="space-y-2">
             <h2 className="text-sm font-medium">Synchronisation</h2>
             <p className="text-xs text-muted-foreground">
-              Les emails entrants sont récupérés par sondage périodique. Utilisez ce bouton
-              pour forcer une vérification immédiate, ou programmez un appel régulier vers{" "}
-              <code className="rounded bg-muted px-1 py-0.5">/api/gmail/sync</code> (avec le
-              secret configuré côté serveur) pour une synchronisation automatique.
+              Automatique, en arrière-plan pendant qu&apos;un agent a le tableau de bord
+              ouvert. Seules les réponses à un ticket déjà créé (depuis le tableau de bord
+              ou le widget) sont prises en compte — un email sans rapport avec un ticket
+              existant est ignoré, pas transformé en nouveau ticket.
             </p>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing}>
-              {isSyncing ? "Synchronisation…" : "Synchroniser maintenant"}
-            </Button>
           </div>
         </>
       )}

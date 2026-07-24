@@ -144,6 +144,12 @@ model Ticket {
   updatedAt   DateTime     @updatedAt
   closedAt    DateTime?
 
+  // Activité non vue depuis la dernière ouverture par un agent (ex: réponse
+  // client reçue par email). Mis à true par la synchro Gmail, remis à false
+  // à l'ouverture de la fiche ticket — sert d'indicateur simple (pas de suivi
+  // "lu" par agent individuel, volontairement, pour rester simple).
+  hasUnreadActivity Boolean @default(false)
+
   // Threading email : identifiant de conversation Gmail et Message-ID RFC822 du
   // dernier tour (entrant ou sortant), utilisé pour l'en-tête In-Reply-To de la
   // prochaine réponse sortante.

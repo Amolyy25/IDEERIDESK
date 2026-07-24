@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getGoogleAuthUrl } from "@/lib/google-oauth";
+import { requireAdmin } from "@/lib/require-admin";
 
 export async function GET() {
   try {
+    await requireAdmin();
     return NextResponse.redirect(getGoogleAuthUrl());
   } catch (error) {
     const message = error instanceof Error ? error.message : "Configuration Gmail invalide.";

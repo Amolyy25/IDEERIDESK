@@ -8,7 +8,10 @@ export const widgetTicketSchema = z.object({
   subject: z.string().trim().min(1, "Sujet requis").max(200),
   description: z.string().trim().min(1, "Description requise").max(5000),
   name: z.string().trim().min(1).max(120).optional(),
-  email: z.string().trim().email("Email invalide"),
+  // Normalisé en minuscules pour matcher Client.email de façon cohérente
+  // avec la synchro Gmail (sinon "Jean@Ex.com" et "jean@ex.com" créent deux
+  // fiches client distinctes pour la même personne).
+  email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
   categoryId: z.string().optional(),
   sourceUrl: z.string().trim().max(2000).optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),

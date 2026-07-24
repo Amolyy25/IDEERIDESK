@@ -22,8 +22,8 @@ export function GeneralSettingsForm({ settings }: { settings: GlobalSetting[] })
     try {
       await updateGlobalSetting(key, value);
       toast.success("Paramètre enregistré");
-    } catch {
-      toast.error("Impossible d'enregistrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible d'enregistrer");
       setValues((prev) => ({ ...prev, [key]: initialValue }));
     } finally {
       setSavingKey(null);

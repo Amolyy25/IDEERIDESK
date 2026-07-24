@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,7 +13,19 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { updateTicketAttributes } from "@/lib/actions/tickets";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { updateTicketAttributes, deleteTicket } from "@/lib/actions/tickets";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import type {
   Agent,
@@ -42,6 +55,7 @@ export function AttributesPanel({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
     (ticket.metadata as Record<string, unknown>) ?? {}
   );
@@ -51,8 +65,8 @@ export function AttributesPanel({
       try {
         await updateTicketAttributes(ticket.id, input);
         router.refresh();
-      } catch {
-        toast.error("Mise à jour impossible");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Mise à jour impossible");
       }
     });
   }
@@ -61,6 +75,18 @@ export function AttributesPanel({
     const next = { ...metadata, [key]: value };
     setMetadata(next);
     apply({ metadata: next });
+  }
+
+  async function handleDelete() {
+    setIsDeleting(true);
+    try {
+      await deleteTicket(ticket.id);
+      toast.success("Ticket supprimé");
+      router.push("/tickets");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Suppression impossible");
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -194,6 +220,30 @@ export function AttributesPanel({
           </div>
         </>
       )}
+
+      <Separator />
+
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive" size="sm" disabled={isDeleting}>
+            <Trash2 className="h-3.5 w-3.5" />
+            Supprimer le ticket
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce ticket ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le fil de messages et les pièces jointes
+              associées seront définitivement supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Supprimer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

@@ -15,7 +15,13 @@ const navItems = [
 
 type CurrentAgent = { name: string | null | undefined; email: string | null | undefined };
 
-export function Sidebar({ currentAgent }: { currentAgent: CurrentAgent }) {
+export function Sidebar({
+  currentAgent,
+  unreadCount,
+}: {
+  currentAgent: CurrentAgent;
+  unreadCount: number;
+}) {
   const pathname = usePathname();
 
   return (
@@ -42,6 +48,8 @@ export function Sidebar({ currentAgent }: { currentAgent: CurrentAgent }) {
             );
           }
 
+          const showUnreadBadge = item.href === "/tickets" && unreadCount > 0;
+
           return (
             <Link
               key={item.label}
@@ -54,7 +62,12 @@ export function Sidebar({ currentAgent }: { currentAgent: CurrentAgent }) {
               )}
             >
               <Icon className="h-4 w-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {showUnreadBadge && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {unreadCount}
+                </span>
+              )}
             </Link>
           );
         })}
