@@ -6,6 +6,10 @@ const allowedDomain = process.env.ALLOWED_GOOGLE_DOMAIN?.toLowerCase();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  // Railway (comme la plupart des PaaS hors Vercel) n'est pas dans la liste
+  // d'hôtes reconnus par défaut par Auth.js — sans ça, la détection de l'URL
+  // publique derrière son proxy peut être instable.
+  trustHost: true,
   callbacks: {
     async signIn({ user }) {
       const email = user.email?.toLowerCase();

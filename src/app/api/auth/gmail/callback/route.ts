@@ -4,7 +4,11 @@ import { createOAuthClient, exchangeCodeForTokens } from "@/lib/google-oauth";
 import { prisma } from "@/lib/prisma";
 
 function redirectToSettings(request: NextRequest, params: Record<string, string>) {
-  const url = new URL("/settings/email", request.url);
+  // Derrière le proxy Railway, `request.url` reflète l'hôte interne du
+  // conteneur (ex: localhost:8080), pas le domaine public — on privilégie
+  // APP_URL, la seule source fiable de l'URL publique réelle.
+  const base = process.env.APP_URL || request.url;
+  const url = new URL("/settings/email", base);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return NextResponse.redirect(url);
 }
@@ -52,7 +56,8 @@ export async function GET(request: NextRequest) {
     });
 
     return redirectToSettings(request, { connected: "1" });
-  } catch {
+  } catch (error) {
+    console.error("[gmail/callback] échec de la connexion Gmail :", error);
     return redirectToSettings(request, {
       error: "La connexion à Gmail a échoué. Merci de réessayer.",
     });
