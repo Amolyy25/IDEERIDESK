@@ -16,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { SharePanel } from "@/components/knowledge-base/share-panel";
 import { createKnowledgeArticle, updateKnowledgeArticle } from "@/lib/actions/knowledge-base";
 import type { KnowledgeArticleListItem } from "@/lib/actions/knowledge-base";
 import type {
@@ -27,14 +29,28 @@ import { cn } from "@/lib/utils";
 
 const NONE = "__none__";
 
+async function uploadArticleImage(file: File) {
+  const formData = new FormData();
+  formData.set("file", file);
+  const response = await fetch("/api/knowledge-base/images", { method: "POST", body: formData });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error ?? "Envoi de l'image impossible");
+  }
+  const body = await response.json();
+  return body.url as string;
+}
+
 export function ArticleForm({
   article,
   categories,
   templates,
+  allArticles,
 }: {
   article?: KnowledgeArticleListItem;
   categories: KnowledgeCategory[];
   templates: ArticleTemplate[];
+  allArticles: KnowledgeArticleListItem[];
 }) {
   const router = useRouter();
   const isEditing = Boolean(article);
@@ -108,13 +124,15 @@ export function ArticleForm({
             className="h-auto border-none px-0 text-xl font-semibold shadow-none focus-visible:ring-0"
           />
 
-          <Textarea
+          <RichTextEditor
             value={content}
-            onChange={(e) => setContent(e.target.value)}
-            required
-            rows={20}
+            onChange={setContent}
             placeholder="Décrivez la solution étape par étape…"
-            className="text-sm leading-relaxed"
+            minHeight="420px"
+            internalLinkTargets={allArticles
+              .filter((a) => a.id !== article?.id)
+              .map((a) => ({ id: a.id, title: a.title, slug: a.slug }))}
+            onUploadImage={uploadArticleImage}
           />
         </div>
 
@@ -191,6 +209,12 @@ export function ArticleForm({
               placeholder="Affiché dans les listes et suggestions."
             />
           </div>
+
+          <SharePanel
+            articleId={article?.id ?? null}
+            shareToken={article?.shareToken ?? null}
+            shareScope={article?.shareScope ?? null}
+          />
         </div>
       </div>
     </form>

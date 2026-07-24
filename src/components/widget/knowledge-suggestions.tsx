@@ -5,6 +5,13 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 type SuggestedArticle = { id: string; title: string; excerpt: string | null; content: string };
 
+// Le contenu d'un article est du HTML riche (éditeur Tiptap) depuis l'ajout
+// de l'éditeur riche — sans ça, les balises brutes s'affichaient telles
+// quelles dans cet aperçu en texte simple.
+function stripHtml(html: string) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function KnowledgeSuggestions({ articles }: { articles: SuggestedArticle[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -34,7 +41,7 @@ export function KnowledgeSuggestions({ articles }: { articles: SuggestedArticle[
               </button>
               {isOpen && (
                 <p className="whitespace-pre-wrap border-t px-3 py-2 text-sm text-muted-foreground">
-                  {article.content}
+                  {stripHtml(article.content)}
                 </p>
               )}
             </div>

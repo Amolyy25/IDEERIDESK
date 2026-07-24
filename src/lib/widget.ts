@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, TicketSource } from "@/generated/prisma/client";
+import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 
 export { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 
@@ -38,7 +39,8 @@ export type WidgetAttachmentInput = {
 
 export async function createWidgetTicket(
   input: WidgetTicketInput,
-  attachments: WidgetAttachmentInput[]
+  attachments: WidgetAttachmentInput[],
+  source: TicketSource = "WIDGET_PAPAIRIS"
 ) {
   const [defaultStatus, defaultPriority] = await Promise.all([
     prisma.ticketStatus.findFirst({
@@ -78,7 +80,7 @@ export async function createWidgetTicket(
     data: {
       subject: input.subject,
       description: input.description,
-      source: "WIDGET_PAPAIRIS",
+      source,
       sourceUrl: input.sourceUrl || null,
       categoryId: input.categoryId || null,
       statusId: defaultStatus.id,
@@ -100,4 +102,66 @@ export async function createWidgetTicket(
   });
 
   return ticket;
+}
+
+function parseCustomFields(raw: string | undefined) {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type ParsedWidgetRequest =
+  | { ok: true; data: WidgetTicketInput; attachments: WidgetAttachmentInput[] }
+  | { ok: false; error: string; status: number };
+
+// Partagé par le widget Papairis et le portail public : même formulaire de
+// création de ticket sans connexion, seule la valeur `source` enregistrée en
+// base diffère (voir `createWidgetTicket`).
+export async function parseWidgetFormRequest(formData: FormData): Promise<ParsedWidgetRequest> {
+  const rawInput = {
+    subject: formData.get("subject")?.toString() ?? "",
+    description: formData.get("description")?.toString() ?? "",
+    name: formData.get("name")?.toString() || undefined,
+    email: formData.get("email")?.toString() ?? "",
+    categoryId: formData.get("categoryId")?.toString() || undefined,
+    sourceUrl: formData.get("sourceUrl")?.toString() || undefined,
+    customFields: parseCustomFields(formData.get("customFields")?.toString()),
+    papairisContext: {
+      userId: formData.get("papairisUserId")?.toString() || undefined,
+      appVersion: formData.get("papairisAppVersion")?.toString() || undefined,
+      papairisClientId: formData.get("papairisClientId")?.toString() || undefined,
+    },
+  };
+
+  const parsed = widgetTicketSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Formulaire invalide.",
+      status: 400,
+    };
+  }
+
+  const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File);
+  if (files.length > MAX_ATTACHMENTS) {
+    return {
+      ok: false,
+      error: `Vous pouvez joindre au maximum ${MAX_ATTACHMENTS} fichiers.`,
+      status: 400,
+    };
+  }
+
+  const attachments: WidgetAttachmentInput[] = [];
+  for (const file of files) {
+    const error = validateAttachmentFile(file);
+    if (error) return { ok: false, error, status: 400 };
+    const buffer = new Uint8Array(await file.arrayBuffer()).slice();
+    attachments.push({ filename: file.name, mimeType: file.type, size: file.size, buffer });
+  }
+
+  return { ok: true, data: parsed.data, attachments };
 }

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const ticket = await createWidgetTicket(parsed.data, parsed.attachments, "WIDGET_PAPAIRIS");
+    const ticket = await createWidgetTicket(parsed.data, parsed.attachments, "PORTAL");
     return NextResponse.json({ id: ticket.id, number: ticket.number }, { status: 201 });
   } catch (error) {
     if (error instanceof WidgetValidationError) {

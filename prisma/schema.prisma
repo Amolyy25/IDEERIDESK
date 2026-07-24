@@ -91,6 +91,8 @@ model TicketStatus {
   // Un seul statut peut porter ce flag — cible automatique du bouton
   // "Prendre en charge" sur un ticket (comme isDefault, géré en singleton).
   isInProgressDefault Boolean @default(false)
+  // Idem pour le bouton "Clore ce ticket" — singleton, cible du statut de clôture.
+  isCloseDefault Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -164,6 +166,7 @@ enum TicketSource {
   WIDGET_PAPAIRIS
   EMAIL
   DIRECT
+  PORTAL
 }
 
 model Ticket {
@@ -298,6 +301,28 @@ model EmailAccount {
 // Paramètres généraux (clé / valeur)
 // ---------------------------------------------------------------------------
 
+// Modèle d'email envoyé par le bouton "Clore ce ticket" — singleton (une seule
+// ligne, comme EmailAccount). Pas de ligne = pas d'email de clôture envoyé.
+model TicketClosureTemplate {
+  id        String   @id @default(cuid())
+  bodyHtml  String
+  updatedAt DateTime @updatedAt
+
+  @@map("ticket_closure_template")
+}
+
+// Portail public (page d'accueil) — singleton, comme EmailAccount et
+// TicketClosureTemplate. Pas de ligne = valeurs par défaut (message vide,
+// FAQ affichée).
+model PortalSettings {
+  id           String   @id @default(cuid())
+  introMessage String?
+  faqEnabled   Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+
+  @@map("portal_settings")
+}
+
 model GlobalSetting {
   key         String   @id
   value       String
@@ -344,9 +369,35 @@ model KnowledgeArticle {
   category   KnowledgeCategory? @relation(fields: [categoryId], references: [id])
   categoryId String?
 
+  // Lien de partage optionnel — absent tant que l'auteur n'a pas activé le
+  // partage. `shareScope` choisit au cas par cas si le lien est consultable
+  // sans connexion (PUBLIC) ou seulement par un agent connecté (INTERNAL).
+  shareToken String?             @unique
+  shareScope KnowledgeShareScope?
+
   @@index([categoryId])
   @@index([status])
   @@map("knowledge_articles")
+}
+
+enum KnowledgeShareScope {
+  PUBLIC
+  INTERNAL
+}
+
+// Images insérées dans le contenu riche d'un article — stockées en base
+// comme les pièces jointes de ticket (pas de stockage fichier persistant
+// simple sur Railway). Pas de FK vers l'article : une image reste valide même
+// déplacée entre articles ou collée avant la première sauvegarde.
+model KnowledgeArticleImage {
+  id        String   @id @default(cuid())
+  filename  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@map("knowledge_article_images")
 }
 
 // Trames réutilisables pour rédiger un nouvel article plus vite (pas liées à

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Trash2, CheckCircle2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { updateTicketAttributes, deleteTicket, claimTicket } from "@/lib/actions/tickets";
+import { updateTicketAttributes, deleteTicket, claimTicket, closeTicket } from "@/lib/actions/tickets";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import type {
   Agent,
@@ -59,6 +59,7 @@ export function AttributesPanel({
   const [isPending, startTransition] = useTransition();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
     (ticket.metadata as Record<string, unknown>) ?? {}
   );
@@ -90,6 +91,19 @@ export function AttributesPanel({
       toast.error(error instanceof Error ? error.message : "Impossible de prendre en charge");
     } finally {
       setIsClaiming(false);
+    }
+  }
+
+  async function handleClose() {
+    setIsClosing(true);
+    try {
+      const result = await closeTicket(ticket.id);
+      toast.success(result.emailSent ? "Ticket clôturé, email envoyé au client" : "Ticket clôturé");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible de clore ce ticket");
+    } finally {
+      setIsClosing(false);
     }
   }
 
@@ -250,6 +264,13 @@ export function AttributesPanel({
       )}
 
       <Separator />
+
+      {!ticket.closedAt && (
+        <Button size="sm" onClick={handleClose} disabled={isClosing}>
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {isClosing ? "Clôture…" : "Clore ce ticket"}
+        </Button>
+      )}
 
       <AlertDialog>
         <AlertDialogTrigger asChild>

@@ -172,6 +172,108 @@ export async function deleteKnowledgeArticle(id: string) {
   revalidatePath("/knowledge-base");
 }
 
+export async function getKnowledgeArticleBySlug(slug: string) {
+  return prisma.knowledgeArticle.findUnique({ where: { slug }, include: articleInclude });
+}
+
+// ---------------------------------------------------------------------------
+// FAQ publique (portail, sans connexion) — filtrées côté requête, jamais côté
+// rendu : un article DRAFT ne doit jamais transiter vers le navigateur, même
+// pour être écarté ensuite.
+// ---------------------------------------------------------------------------
+
+export async function getPublishedArticlesByCategory() {
+  const categories = await prisma.knowledgeCategory.findMany({
+    orderBy: { order: "asc" },
+    include: {
+      articles: {
+        where: { status: "PUBLISHED" },
+        select: { id: true, title: true, slug: true, excerpt: true },
+        orderBy: { title: "asc" },
+      },
+    },
+  });
+
+  const uncategorized = await prisma.knowledgeArticle.findMany({
+    where: { status: "PUBLISHED", categoryId: null },
+    select: { id: true, title: true, slug: true, excerpt: true },
+    orderBy: { title: "asc" },
+  });
+
+  return { categories, uncategorized };
+}
+
+export async function getPublishedArticleBySlug(slug: string) {
+  return prisma.knowledgeArticle.findFirst({ where: { slug, status: "PUBLISHED" } });
+}
+
+// ---------------------------------------------------------------------------
+// Partage — un article peut être accessible via un lien à part, choisi au cas
+// par cas comme PUBLIC (sans connexion) ou INTERNAL (agents connectés
+// uniquement). Pas de lien tant que le partage n'est pas activé. Le lien est
+// un slug lisible (dérivé du titre, éditable), pas un token opaque — plus
+// simple à partager et à reconnaître qu'un identifiant aléatoire.
+// ---------------------------------------------------------------------------
+
+const SHARE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+async function uniqueShareSlug(title: string, excludeId?: string) {
+  const base = slugify(title) || "article";
+  let slug = base;
+  let suffix = 1;
+  while (
+    await prisma.knowledgeArticle.findFirst({
+      where: { shareToken: slug, id: excludeId ? { not: excludeId } : undefined },
+    })
+  ) {
+    suffix += 1;
+    slug = `${base}-${suffix}`;
+  }
+  return slug;
+}
+
+export async function generateArticleShareLink(id: string, scope: "PUBLIC" | "INTERNAL") {
+  const existing = await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id } });
+  const shareToken = existing.shareToken ?? (await uniqueShareSlug(existing.title, id));
+  const updated = await prisma.knowledgeArticle.update({
+    where: { id },
+    data: { shareToken, shareScope: scope },
+  });
+  revalidatePath(`/knowledge-base/${id}`);
+  return { shareToken: updated.shareToken as string };
+}
+
+export async function updateArticleShareSlug(id: string, rawSlug: string) {
+  const slug = rawSlug.trim().toLowerCase();
+  if (!SHARE_SLUG_PATTERN.test(slug)) {
+    throw new Error("Lien invalide : lettres minuscules, chiffres et tirets uniquement.");
+  }
+  const conflict = await prisma.knowledgeArticle.findFirst({
+    where: { shareToken: slug, id: { not: id } },
+  });
+  if (conflict) {
+    throw new Error("Ce lien est déjà utilisé par un autre article.");
+  }
+  const updated = await prisma.knowledgeArticle.update({
+    where: { id },
+    data: { shareToken: slug },
+  });
+  revalidatePath(`/knowledge-base/${id}`);
+  return { shareToken: updated.shareToken as string };
+}
+
+export async function revokeArticleShareLink(id: string) {
+  await prisma.knowledgeArticle.update({
+    where: { id },
+    data: { shareToken: null, shareScope: null },
+  });
+  revalidatePath(`/knowledge-base/${id}`);
+}
+
+export async function getArticleByShareToken(token: string) {
+  return prisma.knowledgeArticle.findUnique({ where: { shareToken: token } });
+}
+
 // ---------------------------------------------------------------------------
 // Recherche (widget public + assistant IA) — uniquement les articles publiés
 // ---------------------------------------------------------------------------

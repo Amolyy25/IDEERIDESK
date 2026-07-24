@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { sendTicketReplyEmail } from "@/lib/gmail-send";
+import { sendTicketReplyEmail, sendTicketClosureEmail } from "@/lib/gmail-send";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
 import { auth } from "@/auth";
 import { requireCanApprove } from "@/lib/require-permission";
@@ -195,6 +195,68 @@ export async function claimTicket(id: string) {
   });
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
+}
+
+export async function closeTicket(id: string) {
+  const session = await auth();
+  const agentId = session?.user?.id;
+  if (!agentId) {
+    throw new Error("Vous devez être connecté pour clore un ticket.");
+  }
+  if (!session.user.canRespond) {
+    throw new Error("Vous n'avez pas la permission de clore un ticket (lecture seule).");
+  }
+
+  const closeStatus = await prisma.ticketStatus.findFirst({ where: { isCloseDefault: true } });
+  if (!closeStatus) {
+    throw new Error(
+      "Aucun statut de clôture configuré. Choisissez-en un dans Paramètres > Statuts de ticket."
+    );
+  }
+
+  const ticket = await prisma.ticket.findUnique({ where: { id }, include: { client: true } });
+  if (!ticket) {
+    throw new Error("Ticket introuvable.");
+  }
+
+  await prisma.ticket.update({
+    where: { id },
+    data: { statusId: closeStatus.id, closedAt: new Date() },
+  });
+
+  // L'email de clôture est optionnel : sans modèle configuré, le ticket se
+  // ferme silencieusement (comportement demandé — pas de spam si l'équipe n'a
+  // pas encore rédigé de message de clôture).
+  const template = await prisma.ticketClosureTemplate.findFirst();
+  let emailSent = false;
+  let emailSkippedReason: string | null = null;
+
+  if (template?.bodyHtml && ticket.client?.email) {
+    const { senderName } = await getEmailAccountStatus();
+    const result = await sendTicketClosureEmail({
+      ticket,
+      clientEmail: ticket.client.email,
+      senderName,
+      bodyHtml: template.bodyHtml,
+    });
+    emailSent = result.sent;
+    emailSkippedReason = result.sent ? null : result.error ?? null;
+
+    await prisma.message.create({
+      data: {
+        ticketId: id,
+        content: result.sent
+          ? "Email de clôture envoyé au client."
+          : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
+        authorType: "SYSTEM",
+        isPrivate: true,
+      },
+    });
+  }
+
+  revalidatePath(`/tickets/${id}`);
+  revalidatePath("/tickets");
+  return { emailSent, emailSkippedReason };
 }
 
 export async function deleteTicket(id: string) {

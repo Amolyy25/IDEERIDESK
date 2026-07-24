@@ -3,12 +3,20 @@ import { getAuthenticatedGmailClient } from "@/lib/google-oauth";
 import {
   renderTicketReplyEmailHtml,
   renderTicketReplyEmailText,
+  renderTicketClosureEmailHtml,
+  renderTicketClosureEmailText,
   type EmailHistoryEntry,
 } from "@/lib/email-template";
 import { prisma } from "@/lib/prisma";
 
 function toBase64Url(buffer: Buffer) {
   return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// `public/logoIdeeri.jpeg` doit être atteignable par une URL absolue — les
+// clients mail chargent les images depuis le web, pas depuis notre serveur.
+function getLogoUrl() {
+  return process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
 }
 
 export async function sendTicketReplyEmail({
@@ -36,10 +44,7 @@ export async function sendTicketReplyEmail({
   }
   const { gmail, account } = authenticated;
 
-  // `public/logoIdeeri.jpeg` doit être atteignable par une URL absolue —
-  // les clients mail chargent les images depuis le web, pas depuis notre
-  // serveur de fichiers statiques local.
-  const logoUrl = process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
+  const logoUrl = getLogoUrl();
 
   const subject = `Re: [#${ticket.number}] ${ticket.subject}`;
   const html = renderTicketReplyEmailHtml({
@@ -93,6 +98,58 @@ export async function sendTicketReplyEmail({
         gmailThreadId: sent.threadId ?? ticket.gmailThreadId,
         emailMessageId: newMessageIdHeader ?? ticket.emailMessageId,
       },
+    });
+
+    return { sent: true, gmailMessageId: sent.id ?? undefined };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+export async function sendTicketClosureEmail({
+  ticket,
+  clientEmail,
+  senderName,
+  bodyHtml,
+}: {
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+    gmailThreadId: string | null;
+    emailMessageId: string | null;
+  };
+  clientEmail: string;
+  senderName: string;
+  bodyHtml: string;
+}): Promise<{ sent: boolean; gmailMessageId?: string; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const logoUrl = getLogoUrl();
+  const subject = `Re: [#${ticket.number}] ${ticket.subject} — Ticket clôturé`;
+  const html = renderTicketClosureEmailHtml({ ticketNumber: ticket.number, senderName, bodyHtml, logoUrl });
+  const text = renderTicketClosureEmailText({ ticketNumber: ticket.number, senderName, bodyHtml });
+
+  try {
+    const mail = new MailComposer({
+      from: `"${senderName}" <${account.email}>`,
+      to: clientEmail,
+      subject,
+      text,
+      html,
+      inReplyTo: ticket.emailMessageId ?? undefined,
+      references: ticket.emailMessageId ?? undefined,
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+
+    const { data: sent } = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw, threadId: ticket.gmailThreadId ?? undefined },
     });
 
     return { sent: true, gmailMessageId: sent.id ?? undefined };

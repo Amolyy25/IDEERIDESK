@@ -39,6 +39,7 @@ export function StatusDialog({
         isClosed: formData.get("isClosed") === "on",
         isDefault: formData.get("isDefault") === "on",
         isInProgressDefault: formData.get("isInProgressDefault") === "on",
+        isCloseDefault: formData.get("isCloseDefault") === "on",
       };
       if (status) {
         await updateTicketStatus(status.id, input);
@@ -105,6 +106,20 @@ export function StatusDialog({
               className="text-sm font-normal text-muted-foreground"
             >
               Statut appliqué par le bouton « Prendre en charge »
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="isCloseDefault"
+              name="isCloseDefault"
+              defaultChecked={status?.isCloseDefault}
+            />
+            <Label
+              htmlFor="isCloseDefault"
+              className="text-sm font-normal text-muted-foreground"
+            >
+              Statut appliqué par le bouton « Clore ce ticket »
             </Label>
           </div>
 

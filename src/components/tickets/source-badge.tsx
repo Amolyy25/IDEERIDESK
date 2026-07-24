@@ -1,4 +1,4 @@
-import { Globe, Mail, MessageSquare } from "lucide-react";
+import { Globe, Mail, MessageSquare, LayoutTemplate } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ticketSourceLabels } from "@/lib/ticket-source";
 import type { TicketSource } from "@/generated/prisma/client";
@@ -8,6 +8,7 @@ const sourceIcons: Record<TicketSource, typeof Globe> = {
   WIDGET_PAPAIRIS: MessageSquare,
   EMAIL: Mail,
   DIRECT: Globe,
+  PORTAL: LayoutTemplate,
 };
 
 export function SourceBadge({ source, className }: { source: TicketSource; className?: string }) {

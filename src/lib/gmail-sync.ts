@@ -41,13 +41,20 @@ function stripHtml(html: string) {
 // automatiquement par son client mail (Gmail, Outlook, Apple Mail…) — sans
 // ça, chaque réponse traînerait tout l'historique déjà visible dans le fil
 // du ticket, en double, à chaque tour.
+//
+// Le pattern FR/EN exige un vrai format de date (jour abrégé + date + heure)
+// immédiatement après "Le"/"On" — pas juste "Le"/"On" suivi de n'importe quoi.
+// Bug réel rencontré sans cette contrainte : un message client commençant par
+// "Le problème est résolu." matchait lui-même comme début de citation (le
+// moteur regex trouvait "a écrit :" de la VRAIE citation plus loin dans le
+// texte et coupait depuis ce "Le" initial), vidant tout le message utile.
 // `[\s\S]` (pas `.`) et pas d'ancre `$` de fin : les clients mail en texte
 // brut wrappent les longues lignes d'en-tête ("...a" / "écrit :" finissent
 // sur deux lignes séparées) — un `.{0,120}` qui ne traverse pas les sauts de
 // ligne raterait exactement ce cas, pourtant le plus courant.
 const QUOTE_HEADER_PATTERNS = [
-  /^Le\s[\s\S]{0,150}?a\s+écrit\s?:/im, // Gmail/Apple Mail FR : "Le ven. 24 juil. 2026 à 15:36, X <y> a écrit :"
-  /^On\s[\s\S]{0,150}?wrote\s?:/im, // Gmail/Apple Mail EN : "On Fri, Jul 24, 2026 at 3:36 PM X <y> wrote:"
+  /^Le\s+\w{2,4}\.\s+\d{1,2}\s+\w+\.?\s+\d{4}\s+à\s+\d{1,2}[:h]\d{2}[\s\S]{0,100}?a\s+écrit\s?:/im, // Gmail/Apple Mail FR : "Le ven. 24 juil. 2026 à 15:36, X <y> a écrit :"
+  /^On\s+\w{3},\s+\w+\s+\d{1,2},\s+\d{4}[\s\S]{0,100}?wrote\s?:/im, // Gmail/Apple Mail EN : "On Fri, Jul 24, 2026 at 3:36 PM X <y> wrote:"
   /^-{2,}\s?(Original Message|Message d'origine)\s?-{2,}/im, // Outlook
 ];
 

@@ -116,6 +116,77 @@ export function renderTicketReplyEmailHtml({
 </html>`;
 }
 
+// L'email de clôture est rédigé par un admin via un éditeur riche (HTML déjà
+// formé, pas du texte brut à échapper/paragraphes comme `bodyText` ailleurs
+// dans ce fichier) — il est inséré tel quel dans le gabarit.
+export function renderTicketClosureEmailHtml({
+  ticketNumber,
+  senderName,
+  bodyHtml,
+  logoUrl,
+}: {
+  ticketNumber: number;
+  senderName: string;
+  bodyHtml: string;
+  logoUrl?: string | null;
+}) {
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 4px;">
+                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
+                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber} · Clôturé</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 28px;font-size:14px;line-height:1.6;color:#18181b;">
+                ${bodyHtml}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function stripHtmlForText(html: string) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function renderTicketClosureEmailText({
+  ticketNumber,
+  senderName,
+  bodyHtml,
+}: {
+  ticketNumber: number;
+  senderName: string;
+  bodyHtml: string;
+}) {
+  return `${stripHtmlForText(bodyHtml)}\n\n—\n${senderName} · Ticket #${ticketNumber} · Clôturé`;
+}
+
 export function renderTicketReplyEmailText({
   ticketNumber,
   senderName,

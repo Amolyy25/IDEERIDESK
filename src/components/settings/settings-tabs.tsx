@@ -6,11 +6,13 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { label: "Général", href: "/settings/general" },
+  { label: "Portail", href: "/settings/portal" },
   { label: "Statuts de ticket", href: "/settings/statuses" },
   { label: "Priorités", href: "/settings/priorities" },
   { label: "Produits concernés", href: "/settings/categories" },
   { label: "Champs personnalisés", href: "/settings/custom-fields" },
   { label: "E-mail", href: "/settings/email" },
+  { label: "Clôture", href: "/settings/closure" },
   { label: "IA", href: "/settings/ai" },
   { label: "Automatisations", href: "/settings/automations" },
 ];

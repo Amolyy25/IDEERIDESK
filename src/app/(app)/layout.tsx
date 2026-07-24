@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // DB-backed authorization gate, re-checked on every protected navigation.
   // Middleware only does a cheap edge-side "is there a session at all" check.
   if (!session?.user?.id) {
-    redirect("/");
+    redirect("/login");
   }
 
   const [unreadCount, emailStatus] = await Promise.all([

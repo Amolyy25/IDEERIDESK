@@ -1,62 +1,65 @@
 import Image from "next/image";
-import { redirect } from "next/navigation";
-import { auth, signIn } from "@/auth";
-import { Button } from "@/components/ui/button";
-import { GoogleIcon } from "@/components/icons/google-icon";
+import Link from "next/link";
+import type { Metadata } from "next";
+import { getTicketCategories } from "@/lib/actions/categories";
+import { getCustomFields } from "@/lib/actions/custom-fields";
+import { getPortalSettings } from "@/lib/actions/portal-settings";
+import { PortalTicketForm } from "@/components/portal/portal-ticket-form";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  AccessDenied:
-    "Accès refusé. Ce compte Google n'est pas autorisé, ou a été désactivé par un administrateur.",
+export const metadata: Metadata = {
+  title: "Support — Ideeri",
+  description: "Contactez le support Ideeri ou consultez la FAQ.",
 };
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const [session, params] = await Promise.all([auth(), searchParams]);
-  if (session) redirect("/tickets");
+// Dépend de données modifiables en admin (produits, champs personnalisés,
+// message d'accueil) — sans ça, Next préconstruit "/" en statique et un
+// changement de config n'apparaît qu'au prochain déploiement.
+export const dynamic = "force-dynamic";
 
-  const errorMessage = params.error
-    ? ERROR_MESSAGES[params.error] ?? "La connexion a échoué. Merci de réessayer."
-    : null;
+export default async function PortalPage() {
+  const [categories, customFields, portalSettings] = await Promise.all([
+    getTicketCategories(),
+    getCustomFields(),
+    getPortalSettings(),
+  ]);
+
+  const activeCustomFields = customFields.filter((field) => field.isActive);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
-      <div className="w-full max-w-sm rounded-xl border border-t-2 border-t-primary bg-card p-8 shadow-sm">
-        <div className="mb-8 flex flex-col items-center gap-6">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-5">
           <Image
             src="/logoIdeeri.jpeg"
             alt="Ideeri"
-            width={120}
-            height={32}
-            className="h-8 w-auto"
+            width={100}
+            height={26}
+            className="h-6 w-auto"
             priority
           />
-          <div className="text-center">
-            <h1 className="text-lg font-semibold tracking-tight">Connexion</h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Accédez à l&apos;espace agent avec votre compte Google professionnel.
-            </p>
+          <div className="flex items-center gap-4 text-sm">
+            {portalSettings.faqEnabled && (
+              <Link href="/faq" className="text-muted-foreground hover:text-foreground">
+                FAQ
+              </Link>
+            )}
+            <Link href="/login" className="text-muted-foreground hover:text-foreground">
+              Se connecter
+            </Link>
           </div>
         </div>
+      </header>
 
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/tickets" });
-          }}
-        >
-          <Button type="submit" variant="outline" size="lg" className="w-full gap-2.5 font-medium">
-            <GoogleIcon className="h-4 w-4" />
-            Se connecter avec Google
-          </Button>
-        </form>
+      <main className="mx-auto max-w-2xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold">Comment pouvons-nous vous aider ?</h1>
+          {portalSettings.introMessage && (
+            <p className="mt-2 text-sm text-muted-foreground">{portalSettings.introMessage}</p>
+          )}
+        </div>
 
-        {errorMessage && (
-          <p className="mt-4 text-center text-sm text-destructive">{errorMessage}</p>
-        )}
-      </div>
+        <PortalTicketForm categories={categories} customFields={activeCustomFields} />
+      </main>
     </div>
   );
 }
