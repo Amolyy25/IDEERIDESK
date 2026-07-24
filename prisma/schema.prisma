@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Agents (utilisateurs internes de l'application)
+// ---------------------------------------------------------------------------
+
+enum AgentRole {
+  ADMIN
+  AGENT
+}
+
+model Agent {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String
+  role      AgentRole @default(AGENT)
+  avatarUrl String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  assignedTickets Ticket[]  @relation("TicketAssignee")
+  messages        Message[]
+
+  @@map("agents")
+}
+
+// ---------------------------------------------------------------------------
+// Clients (contacts finaux à l'origine des tickets)
+// ---------------------------------------------------------------------------
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  company   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@map("clients")
+}
+
+// ---------------------------------------------------------------------------
+// Paramétrage des tickets (100% administrable, aucune valeur en dur)
+// ---------------------------------------------------------------------------
+
+model TicketStatus {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#71717a")
+  order     Int      @default(0)
+  isDefault Boolean  @default(false)
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@map("ticket_statuses")
+}
+
+model TicketPriority {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#71717a")
+  order     Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@map("ticket_priorities")
+}
+
+model TicketCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String   @default("#71717a")
+  order       Int      @default(0)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@map("ticket_categories")
+}
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  DROPDOWN
+  CHECKBOX
+}
+
+model CustomField {
+  id         String          @id @default(cuid())
+  label      String
+  key        String          @unique
+  type       CustomFieldType
+  options    Json? // liste de choix pour le type DROPDOWN, ex: ["Option A", "Option B"]
+  helpText   String? // petit texte d'aide affiché sous le champ (widget + fiche ticket)
+  autofillFromSourceUrl Boolean @default(false) // champs TEXT uniquement : pré-rempli avec l'URL de la page d'origine sur le widget
+  isRequired Boolean         @default(false)
+  order      Int             @default(0)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@map("custom_fields")
+}
+
+// ---------------------------------------------------------------------------
+// Tickets & fil de messages
+// ---------------------------------------------------------------------------
+
+enum TicketSource {
+  WIDGET_PAPAIRIS
+  EMAIL
+  DIRECT
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  number      Int          @unique @default(autoincrement())
+  subject     String
+  description String
+  source      TicketSource @default(DIRECT)
+  sourceUrl   String? // page Papairis (ou autre) sur laquelle se trouvait le client
+  metadata    Json         @default("{}") // valeurs des champs personnalisés (clé = CustomField.key) + contexte Papairis (clé "_papairis")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  closedAt    DateTime?
+
+  // Threading email : identifiant de conversation Gmail et Message-ID RFC822 du
+  // dernier tour (entrant ou sortant), utilisé pour l'en-tête In-Reply-To de la
+  // prochaine réponse sortante.
+  gmailThreadId  String?
+  gmailMessageId String? @unique // id Gmail du 1er message entrant ayant créé ce ticket (dédoublonnage sync)
+  emailMessageId String?
+
+  status   TicketStatus @relation(fields: [statusId], references: [id])
+  statusId String
+
+  priority   TicketPriority @relation(fields: [priorityId], references: [id])
+  priorityId String
+
+  category   TicketCategory? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+
+  assignee   Agent?  @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  assigneeId String?
+
+  client   Client? @relation(fields: [clientId], references: [id])
+  clientId String?
+
+  messages    Message[]
+  attachments Attachment[]
+
+  @@index([statusId])
+  @@index([priorityId])
+  @@index([categoryId])
+  @@index([assigneeId])
+  @@index([clientId])
+  @@index([gmailThreadId])
+  @@map("tickets")
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  filename  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  @@index([ticketId])
+  @@map("attachments")
+}
+
+enum MessageAuthorType {
+  AGENT
+  CLIENT
+  SYSTEM
+}
+
+model Message {
+  id         String            @id @default(cuid())
+  content    String
+  authorType MessageAuthorType
+  // Note interne (non visible du client, pas d'envoi d'email) vs réponse
+  // publique. Fait déjà office de "is_internal" — pas de champ dupliqué.
+  isPrivate  Boolean           @default(false)
+  emailSent  Boolean           @default(false) // réponse publique effectivement envoyée par email
+  gmailMessageId String?       @unique // id Gmail du message entrant/sortant correspondant (dédoublonnage sync)
+  createdAt  DateTime          @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  agent   Agent?  @relation(fields: [agentId], references: [id])
+  agentId String?
+
+  @@index([ticketId])
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Intégration Gmail (une seule boîte support connectée à la fois)
+// ---------------------------------------------------------------------------
+
+model EmailAccount {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  accessToken  String
+  refreshToken String
+  tokenExpiry  DateTime?
+  historyId    String? // curseur de synchronisation incrémentale Gmail
+  connectedAt  DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("email_accounts")
+}
+
+// ---------------------------------------------------------------------------
+// Paramètres généraux (clé / valeur)
+// ---------------------------------------------------------------------------
+
+model GlobalSetting {
+  key         String   @id
+  value       String
+  label       String
+  description String?
+  multiline   Boolean  @default(false) // affiche un textarea plutôt qu'un input dans /settings/general
+  updatedAt   DateTime @updatedAt
+
+  @@map("global_settings")
+}
