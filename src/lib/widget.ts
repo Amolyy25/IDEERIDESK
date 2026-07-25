@@ -15,6 +15,10 @@ export const widgetTicketSchema = z.object({
   email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
   categoryId: z.string().optional(),
   sourceUrl: z.string().trim().max(2000).optional(),
+  // Slug de la source (`Source.slug`) dont le formulaire a été soumis. Absent
+  // pour les intégrations historiques, qui retombent alors sur la source par
+  // défaut de la route appelée.
+  sourceSlug: z.string().trim().max(60).optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   papairisContext: z
     .object({
@@ -37,10 +41,14 @@ export type WidgetAttachmentInput = {
   buffer: Uint8Array<ArrayBuffer>;
 };
 
+function isEmptyValue(value: unknown) {
+  return value === undefined || value === null || value === "" || value === false;
+}
+
 export async function createWidgetTicket(
   input: WidgetTicketInput,
   attachments: WidgetAttachmentInput[],
-  source: TicketSource = "WIDGET_PAPAIRIS"
+  fallbackSource: TicketSource = "WIDGET_PAPAIRIS"
 ) {
   const [defaultStatus, defaultPriority] = await Promise.all([
     prisma.ticketStatus.findFirst({
@@ -57,15 +65,42 @@ export async function createWidgetTicket(
     throw new WidgetValidationError("Aucun statut ou priorité par défaut n'est configuré.");
   }
 
-  const activeCustomFields = await prisma.customField.findMany({ where: { isActive: true } });
-  const customFieldValues = input.customFields ?? {};
+  // La source détermine à la fois la classification du ticket et les champs
+  // attendus. Une source désactivée n'accepte plus de soumission.
+  const source = input.sourceSlug
+    ? await prisma.source.findUnique({
+        where: { slug: input.sourceSlug },
+        include: { fields: { orderBy: { order: "asc" } } },
+      })
+    : null;
 
-  for (const field of activeCustomFields) {
-    if (!field.isRequired) continue;
-    const value = customFieldValues[field.key];
-    const isEmpty =
-      value === undefined || value === null || value === "" || value === false;
-    if (isEmpty) {
+  if (input.sourceSlug && (!source || !source.isActive)) {
+    throw new WidgetValidationError("Ce formulaire n'est plus disponible.");
+  }
+
+  const fieldValues = input.customFields ?? {};
+
+  if (!source || source.useGlobalCustomFields) {
+    const activeCustomFields = await prisma.customField.findMany({ where: { isActive: true } });
+    for (const field of activeCustomFields) {
+      if (!field.isRequired) continue;
+      if (isEmptyValue(fieldValues[field.key])) {
+        throw new WidgetValidationError(`Le champ « ${field.label} » est obligatoire.`);
+      }
+    }
+  }
+
+  for (const field of source?.fields ?? []) {
+    if (!field.isRequired || field.type === "HEADER") continue;
+    // Un champ « fichier » est satisfait par les pièces jointes du formulaire :
+    // elles arrivent toutes dans la même liste, quel que soit le sélecteur.
+    if (field.type === "FILE") {
+      if (attachments.length === 0) {
+        throw new WidgetValidationError(`Le champ « ${field.label} » est obligatoire.`);
+      }
+      continue;
+    }
+    if (isEmptyValue(fieldValues[field.key])) {
       throw new WidgetValidationError(`Le champ « ${field.label} » est obligatoire.`);
     }
   }
@@ -80,14 +115,15 @@ export async function createWidgetTicket(
     data: {
       subject: input.subject,
       description: input.description,
-      source,
+      source: source?.ticketSource ?? fallbackSource,
+      formSourceId: source?.id ?? null,
       sourceUrl: input.sourceUrl || null,
       categoryId: input.categoryId || null,
       statusId: defaultStatus.id,
       priorityId: defaultPriority.id,
       clientId: client.id,
       metadata: {
-        ...customFieldValues,
+        ...fieldValues,
         _papairis: input.papairisContext ?? {},
       } as Prisma.InputJsonValue,
       attachments: {
@@ -119,8 +155,9 @@ export type ParsedWidgetRequest =
   | { ok: false; error: string; status: number };
 
 // Partagé par le widget Papairis et le portail public : même formulaire de
-// création de ticket sans connexion, seule la valeur `source` enregistrée en
-// base diffère (voir `createWidgetTicket`).
+// création de ticket sans connexion. La classification enregistrée vient de la
+// source soumise (`sourceSlug`), ou à défaut de la route appelée (voir
+// `createWidgetTicket`).
 export async function parseWidgetFormRequest(formData: FormData): Promise<ParsedWidgetRequest> {
   const rawInput = {
     subject: formData.get("subject")?.toString() ?? "",
@@ -129,6 +166,7 @@ export async function parseWidgetFormRequest(formData: FormData): Promise<Parsed
     email: formData.get("email")?.toString() ?? "",
     categoryId: formData.get("categoryId")?.toString() || undefined,
     sourceUrl: formData.get("sourceUrl")?.toString() || undefined,
+    sourceSlug: formData.get("sourceSlug")?.toString() || undefined,
     customFields: parseCustomFields(formData.get("customFields")?.toString()),
     papairisContext: {
       userId: formData.get("papairisUserId")?.toString() || undefined,

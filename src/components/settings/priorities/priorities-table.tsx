@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -43,17 +43,6 @@ export function PrioritiesTable({ priorities }: { priorities: TicketPriority[] }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <PriorityDialog
-          trigger={
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              Nouvelle priorité
-            </Button>
-          }
-        />
-      </div>
-
       <div className="rounded-lg border">
         <Table>
           <TableHeader>

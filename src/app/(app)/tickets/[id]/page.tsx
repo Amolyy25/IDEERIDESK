@@ -1,6 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { getTicketById } from "@/lib/actions/tickets";
 import { getTicketStatuses } from "@/lib/actions/statuses";
@@ -8,10 +6,10 @@ import { getTicketPriorities } from "@/lib/actions/priorities";
 import { getTicketCategories } from "@/lib/actions/categories";
 import { getAgents } from "@/lib/actions/agents";
 import { getCustomFields } from "@/lib/actions/custom-fields";
-import { StatusDot } from "@/components/tickets/status-dot";
-import { SourceBadge } from "@/components/tickets/source-badge";
+import { getSourceFields } from "@/lib/actions/sources";
 import { formatDateTime } from "@/lib/format-date";
 import { AttributesPanel } from "@/components/tickets/ticket-detail/attributes-panel";
+import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
 import { MessageThread } from "@/components/tickets/ticket-detail/message-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
@@ -39,41 +37,46 @@ export default async function TicketDetailPage({
   }
 
   const activeCustomFields = customFields.filter((field) => field.isActive);
+  // Champs du formulaire par lequel le ticket est arrivé : sert à afficher les
+  // réponses collectées, stockées dans `metadata` sous la clé de chaque champ.
+  const sourceFields = ticket.formSourceId ? await getSourceFields(ticket.formSourceId) : [];
 
   return (
     <div className="flex h-full">
       <MarkAsRead ticketId={ticket.id} hasUnreadActivity={ticket.hasUnreadActivity} />
-      <div className="flex-1 overflow-y-auto p-6">
-        <Link
-          href="/tickets"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Tickets
-        </Link>
 
-        <div className="mb-2 flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">#{ticket.number}</span>
-          <StatusDot color={ticket.status.color} label={ticket.status.name} />
-          <StatusDot color={ticket.priority.color} label={ticket.priority.name} />
-          <SourceBadge source={ticket.source} />
-        </div>
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <TicketHeader ticket={ticket} currentAgentId={session?.user?.id ?? null} />
 
-        <h1 className="mb-1 text-xl font-semibold">{ticket.subject}</h1>
-        <p className="mb-6 text-xs text-muted-foreground">
-          Créé le {formatDateTime(ticket.createdAt)}
-        </p>
+        <div className="mx-auto w-full max-w-3xl space-y-6 px-6 py-6">
+          {/* La demande d'origine ouvre le fil : même forme qu'un message, avec
+              son auteur et sa date, plutôt qu'un encadré anonyme détaché. */}
+          <article className="rounded-lg border bg-card p-4">
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {ticket.client?.name ?? "Demande initiale"}
+              </span>
+              <span>{formatDateTime(ticket.createdAt)}</span>
+            </div>
+            <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
+            <AttachmentsList attachments={ticket.attachments} />
+          </article>
 
-        <div className="mb-6 rounded-lg border bg-card p-4">
-          <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
-        </div>
+          <section className="space-y-3">
+            <h2 className="text-sm font-medium">
+              Conversation
+              {ticket.messages.length > 0 && (
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  {ticket.messages.length}
+                </span>
+              )}
+            </h2>
+            <MessageThread
+              messages={ticket.messages}
+              canApprove={session?.user?.canApprove ?? false}
+            />
+          </section>
 
-        <AttachmentsList attachments={ticket.attachments} />
-
-        <h2 className="mb-3 text-sm font-medium">Conversation</h2>
-        <MessageThread messages={ticket.messages} canApprove={session?.user?.canApprove ?? false} />
-
-        <div className="mt-4">
           <ReplyBox
             ticketId={ticket.id}
             currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
@@ -90,7 +93,7 @@ export default async function TicketDetailPage({
         categories={categories}
         agents={agents}
         customFields={activeCustomFields}
-        currentAgentId={session?.user?.id ?? null}
+        sourceFields={sourceFields}
       />
     </div>
   );

@@ -10,7 +10,7 @@ export function SignOutButton() {
       onClick={() => signOut({ callbackUrl: "/" })}
       aria-label="Se déconnecter"
       title="Se déconnecter"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
     >
       <LogOut className="h-3.5 w-3.5" />
     </button>

@@ -1,20 +1,23 @@
 import { auth } from "@/auth";
 import { getClosureTemplate } from "@/lib/actions/closure-settings";
 import { ClosureTemplateForm } from "@/components/settings/closure/closure-template-form";
+import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+
+const HREF = "/settings/closure";
 
 export default async function ClosureSettingsPage() {
   const session = await auth();
 
   if (session?.user?.role !== "ADMIN") {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Cette page est réservée aux administrateurs.
-      </p>
-    );
+    return <SettingsAdminOnly href={HREF} />;
   }
 
   const template = await getClosureTemplate();
   const logoUrl = process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
 
-  return <ClosureTemplateForm template={template} logoUrl={logoUrl} />;
+  return (
+    <SettingsSection href={HREF}>
+      <ClosureTemplateForm template={template} logoUrl={logoUrl} />
+    </SettingsSection>
+  );
 }

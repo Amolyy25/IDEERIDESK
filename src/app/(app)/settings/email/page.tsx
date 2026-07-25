@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
 import { EmailSettingsPanel } from "@/components/settings/email/email-settings-panel";
+import { SettingsSection } from "@/components/settings/settings-section";
 
 export default async function EmailSettingsPage({
   searchParams,
@@ -14,11 +15,13 @@ export default async function EmailSettingsPage({
   ]);
 
   return (
-    <EmailSettingsPanel
-      status={status}
-      isAdmin={session?.user?.role === "ADMIN"}
-      justConnected={params.connected === "1"}
-      oauthError={params.error ?? null}
-    />
+    <SettingsSection href="/settings/email">
+      <EmailSettingsPanel
+        status={status}
+        isAdmin={session?.user?.role === "ADMIN"}
+        justConnected={params.connected === "1"}
+        oauthError={params.error ?? null}
+      />
+    </SettingsSection>
   );
 }

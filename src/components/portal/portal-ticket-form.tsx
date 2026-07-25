@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/select";
 import { AttachmentPreview } from "@/components/widget/attachment-preview";
 import { KnowledgeSuggestions } from "@/components/widget/knowledge-suggestions";
+import { SourceFieldInput } from "@/components/widget/source-field-input";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
+import { isDecorativeField, type SourceFormView } from "@/lib/sources";
 import type { CustomField, TicketCategory } from "@/generated/prisma/client";
 
 const NONE = "__none__";
@@ -24,9 +26,16 @@ const NONE = "__none__";
 type Attachment = { file: File; previewUrl: string };
 
 export function PortalTicketForm({
+  form,
   categories,
   customFields,
 }: {
+  /**
+   * Formulaire configuré pour la source « portail » (cf. /settings/sources).
+   * Seuls les champs et blocs sont repris ici : l'habillage du portail (logo,
+   * titres) reste piloté par les réglages du portail.
+   */
+  form: SourceFormView;
   categories: TicketCategory[];
   customFields: CustomField[];
 }) {
@@ -37,6 +46,7 @@ export function PortalTicketForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const [sourceFieldValues, setSourceFieldValues] = useState<Record<string, unknown>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -103,6 +113,10 @@ export function PortalTicketForm({
   }
 
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    // La zone de pièces jointes peut être désactivée pour la source ; un champ
+    // « fichier » du formulaire, lui, reste toujours opérant.
+    if (!form.allowAttachments) return;
+
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -113,6 +127,7 @@ export function PortalTicketForm({
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDraggingOver(false);
+    if (!form.allowAttachments) return;
     addFiles(Array.from(event.dataTransfer.files));
   }
 
@@ -130,6 +145,17 @@ export function PortalTicketForm({
       return;
     }
 
+    const missingSourceField = form.fields.find((field) => {
+      if (!field.isRequired || isDecorativeField(field.type)) return false;
+      if (field.type === "FILE") return attachments.length === 0;
+      const value = sourceFieldValues[field.key];
+      return value === undefined || value === null || value === "" || value === false;
+    });
+    if (missingSourceField) {
+      setFormError(`Le champ « ${missingSourceField.label} » est obligatoire.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -139,7 +165,13 @@ export function PortalTicketForm({
       formData.set("email", email);
       if (name) formData.set("name", name);
       if (categoryId !== NONE) formData.set("categoryId", categoryId);
-      if (customFields.length) formData.set("customFields", JSON.stringify(customFieldValues));
+      if (form.slug) formData.set("sourceSlug", form.slug);
+      if (customFields.length || form.fields.length) {
+        formData.set(
+          "customFields",
+          JSON.stringify({ ...customFieldValues, ...sourceFieldValues })
+        );
+      }
       attachments.forEach((attachment) => formData.append("attachments", attachment.file));
 
       const response = await fetch("/api/portal/tickets", { method: "POST", body: formData });
@@ -162,7 +194,8 @@ export function PortalTicketForm({
       <div className="rounded-lg border bg-card p-8 text-center">
         <h2 className="text-lg font-semibold">Ticket #{ticketNumber} créé</h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Nous avons bien reçu votre demande, vous recevrez une réponse par email.
+          {form.successMessage ||
+            "Nous avons bien reçu votre demande, vous recevrez une réponse par email."}
         </p>
         <Button
           variant="outline"
@@ -173,6 +206,7 @@ export function PortalTicketForm({
             setDescription("");
             setCategoryId(NONE);
             setCustomFieldValues({});
+            setSourceFieldValues({});
             setAttachments([]);
           }}
         >
@@ -216,7 +250,7 @@ export function PortalTicketForm({
 
       <KnowledgeSuggestions articles={kbArticles} />
 
-      {categories.length > 0 && (
+      {form.showCategoryField && categories.length > 0 && (
         <div className="space-y-2">
           <Label>Produit concerné</Label>
           <Select value={categoryId} onValueChange={setCategoryId}>
@@ -241,6 +275,16 @@ export function PortalTicketForm({
           field={field}
           value={customFieldValues[field.key]}
           onChange={(value) => setCustomFieldValues((prev) => ({ ...prev, [field.key]: value }))}
+        />
+      ))}
+
+      {form.fields.map((field) => (
+        <SourceFieldInput
+          key={field.id}
+          field={field}
+          value={sourceFieldValues[field.key]}
+          onChange={(value) => setSourceFieldValues((prev) => ({ ...prev, [field.key]: value }))}
+          onFiles={addFiles}
         />
       ))}
 
@@ -276,7 +320,7 @@ export function PortalTicketForm({
             />
           ))}
 
-          {attachments.length < MAX_ATTACHMENTS && (
+          {form.allowAttachments && attachments.length < MAX_ATTACHMENTS && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -303,7 +347,7 @@ export function PortalTicketForm({
       {formError && <p className="text-sm text-destructive">{formError}</p>}
 
       <Button type="submit" disabled={isSubmitting} className="h-10 w-full text-sm">
-        {isSubmitting ? "Envoi…" : "Envoyer"}
+        {isSubmitting ? "Envoi…" : form.submitLabel}
       </Button>
     </form>
   );

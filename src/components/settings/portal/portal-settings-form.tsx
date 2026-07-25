@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
-import { ExternalLink, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -96,24 +95,11 @@ export function PortalSettingsForm({ settings }: { settings: PortalConfig }) {
     toast.info("Valeurs par défaut rétablies — enregistrez pour appliquer");
   }
 
+  // La colonne d'aperçu passe sous les réglages en dessous de `xl` : la barre
+  // latérale des paramètres laisse trop peu de place pour deux colonnes.
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_440px]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="min-w-0 space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-medium">Portail public</h2>
-            <p className="text-sm text-muted-foreground">
-              Apparence et contenu des pages publiques : accueil, FAQ et création de ticket.
-            </p>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/" target="_blank">
-              <ExternalLink className="h-3.5 w-3.5" />
-              Voir
-            </Link>
-          </Button>
-        </div>
-
         <Tabs defaultValue="identite">
           <TabsList className="flex-wrap">
             <TabsTrigger value="identite">Identité</TabsTrigger>
@@ -549,7 +535,7 @@ export function PortalSettingsForm({ settings }: { settings: PortalConfig }) {
         </div>
       </div>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
+      <div className="xl:sticky xl:top-6 xl:self-start">
         <p className="mb-2 text-xs text-muted-foreground">
           Aperçu en direct — reflète les réglages en cours, avant enregistrement.
         </p>

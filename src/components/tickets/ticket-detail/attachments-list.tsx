@@ -14,7 +14,7 @@ export function AttachmentsList({
   if (attachments.length === 0) return null;
 
   return (
-    <div className="mb-6 flex flex-wrap gap-2">
+    <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
       {attachments.map((attachment) => (
         <a
           key={attachment.id}

@@ -5,6 +5,8 @@ import { getTicketCategories } from "@/lib/actions/categories";
 import { getCustomFields } from "@/lib/actions/custom-fields";
 import { getPortalSettings } from "@/lib/actions/portal-settings";
 import { getPublishedArticlesByCategory } from "@/lib/actions/knowledge-base";
+import { getSourceForm } from "@/lib/actions/sources";
+import { SOURCE_FORM_DEFAULTS } from "@/lib/sources";
 import { PortalTicketForm } from "@/components/portal/portal-ticket-form";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { PortalFooter } from "@/components/portal/portal-footer";
@@ -14,16 +16,24 @@ export const metadata: Metadata = {
   description: "Décrivez votre demande, notre équipe support vous répond par email.",
 };
 
+// Source administrable correspondant à ce formulaire (créée par la migration).
+const PORTAL_SOURCE_SLUG = "portail";
+
 export default async function NewTicketPage() {
-  const [categories, customFields, config, { categories: faqCategories, uncategorized }] =
+  const [categories, customFields, config, { categories: faqCategories, uncategorized }, form] =
     await Promise.all([
       getTicketCategories(),
       getCustomFields(),
       getPortalSettings(),
       getPublishedArticlesByCategory(),
+      getSourceForm(PORTAL_SOURCE_SLUG),
     ]);
 
-  const activeCustomFields = customFields.filter((field) => field.isActive);
+  // Source supprimée ou désactivée : le formulaire garde son comportement de base.
+  const formConfig = form ?? { ...SOURCE_FORM_DEFAULTS, slug: null, useGlobalCustomFields: true };
+  const activeCustomFields = formConfig.useGlobalCustomFields
+    ? customFields.filter((field) => field.isActive)
+    : [];
   // Même règle que sur l'accueil : pas de lien FAQ si elle est désactivée ou
   // vide, sinon le visiteur atterrit sur une page sans réponse.
   const hasArticles =
@@ -56,7 +66,11 @@ export default async function NewTicketPage() {
           </p>
         </div>
 
-        <PortalTicketForm categories={categories} customFields={activeCustomFields} />
+        <PortalTicketForm
+          form={formConfig}
+          categories={categories}
+          customFields={activeCustomFields}
+        />
       </main>
 
       <PortalFooter config={config} faqHref={faqHref} containerClassName="max-w-2xl" />

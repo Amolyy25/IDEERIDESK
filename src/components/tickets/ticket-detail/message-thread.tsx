@@ -56,7 +56,12 @@ export function MessageThread({
   }
 
   if (messages.length === 0) {
-    return <p className="text-sm text-muted-foreground">Aucun message pour le moment.</p>;
+    return (
+      <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+        Aucune réponse pour l&apos;instant. Écrivez au client ci-dessous, ou laissez une note
+        interne pour l&apos;équipe.
+      </p>
+    );
   }
 
   return (

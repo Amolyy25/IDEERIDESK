@@ -169,6 +169,82 @@ enum TicketSource {
   PORTAL
 }
 
+// ---------------------------------------------------------------------------
+// Sources de tickets & formulaires sur-mesure
+// ---------------------------------------------------------------------------
+
+// Point d'entrée administrable (widget embarqué dans un logiciel, formulaire
+// web, application mobile…). Chaque source porte son propre formulaire public,
+// servi par /widget?source=<slug>. `ticketSource` reste l'ancienne
+// classification en enum, conservée pour les filtres et badges existants.
+model Source {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  ticketSource TicketSource @default(WIDGET_PAPAIRIS)
+
+  // --- Branding du formulaire ---
+  // URL du logo / image d'en-tête : soit un visuel téléversé (servi par
+  // /api/portal/assets/<id>), soit une URL externe saisie à la main.
+  logoUrl String?
+
+  // --- Contenu du formulaire ---
+  formTitle       String  @default("Contacter le support")
+  formDescription String?
+  submitLabel     String  @default("Envoyer")
+  successMessage  String?
+
+  // --- Blocs standards, activables source par source ---
+  showCategoryField Boolean @default(true)
+  allowAttachments  Boolean @default(true)
+  showBannerMessage Boolean @default(true) // bandeau global `widget_banner_message`
+  // Les champs personnalisés globaux (CustomField) s'ajoutent aux champs
+  // propres à la source. Désactivé, seuls les champs ci-dessous s'affichent.
+  useGlobalCustomFields Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields  SourceField[]
+  tickets Ticket[]
+
+  @@map("sources")
+}
+
+enum SourceFieldType {
+  TEXT
+  TEXTAREA
+  SELECT
+  CHECKBOX
+  FILE
+  HEADER // pur habillage : titre de section, sans valeur saisie
+}
+
+// Champ du formulaire d'une source. `key` est dérivée du libellé à la création
+// puis figée : c'est la clé sous laquelle la réponse est stockée dans
+// `Ticket.metadata`, renommer le libellé ne doit pas orpheliner l'historique.
+model SourceField {
+  id          String          @id @default(cuid())
+  type        SourceFieldType
+  label       String
+  key         String
+  placeholder String?
+  helpText    String?
+  isRequired  Boolean         @default(false)
+  options     Json? // liste de choix pour le type SELECT, ex: ["Option A", "Option B"]
+  order       Int             @default(0)
+
+  source   Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId String
+
+  @@unique([sourceId, key])
+  @@index([sourceId])
+  @@map("source_fields")
+}
+
 model Ticket {
   id          String       @id @default(cuid())
   number      Int          @unique @default(autoincrement())
@@ -209,9 +285,15 @@ model Ticket {
   client   Client? @relation(fields: [clientId], references: [id])
   clientId String?
 
+  // Source administrable à l'origine du ticket (null pour les tickets créés
+  // avant les sources, par email ou à la main depuis le back-office).
+  formSource   Source? @relation(fields: [formSourceId], references: [id])
+  formSourceId String?
+
   messages    Message[]
   attachments Attachment[]
 
+  @@index([formSourceId])
   @@index([statusId])
   @@index([priorityId])
   @@index([categoryId])
@@ -407,9 +489,9 @@ model PortalSettings {
   @@map("portal_settings")
 }
 
-// Logo et favicon du portail, stockés en base comme KnowledgeArticleImage
-// (pas de disque persistant en production) et servis par
-// /api/portal/assets/[id].
+// Visuels publics (logo et favicon du portail, en-tête des formulaires de
+// source), stockés en base comme KnowledgeArticleImage — pas de disque
+// persistant en production — et servis par /api/portal/assets/[id].
 model PortalAsset {
   id        String   @id @default(cuid())
   filename  String

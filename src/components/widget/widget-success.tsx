@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button";
 
 export function WidgetSuccess({
   ticketNumber,
+  message,
   onClose,
 }: {
   ticketNumber: number;
+  /** Message de confirmation propre à la source, à défaut du texte générique. */
+  message?: string | null;
   onClose: () => void;
 }) {
   return (
@@ -16,7 +19,7 @@ export function WidgetSuccess({
       <div className="space-y-1">
         <p className="text-sm font-medium">Ticket #{ticketNumber} créé</p>
         <p className="text-sm text-muted-foreground">
-          Nous avons bien reçu votre demande. Notre équipe vous répondra rapidement.
+          {message || "Nous avons bien reçu votre demande. Notre équipe vous répondra rapidement."}
         </p>
       </div>
       <Button size="sm" variant="outline" onClick={onClose}>

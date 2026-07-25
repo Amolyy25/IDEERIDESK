@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2, CheckCircle2 } from "lucide-react";
+import { ExternalLink, Trash2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -25,11 +24,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { updateTicketAttributes, deleteTicket, claimTicket, closeTicket } from "@/lib/actions/tickets";
+import { updateTicketAttributes, deleteTicket } from "@/lib/actions/tickets";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import type {
   Agent,
   CustomField,
+  SourceField,
   TicketCategory,
   TicketPriority,
   TicketStatus,
@@ -38,6 +38,27 @@ import type { TicketWithMessages } from "@/lib/actions/tickets";
 
 const NONE = "__none__";
 
+/** Bloc de la colonne, avec son intitulé en petites capitales. */
+function PanelBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border-b px-5 py-4 last:border-b-0">
+      <p className="pb-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+        {title}
+      </p>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
 export function AttributesPanel({
   ticket,
   statuses,
@@ -45,7 +66,7 @@ export function AttributesPanel({
   categories,
   agents,
   customFields,
-  currentAgentId,
+  sourceFields,
 }: {
   ticket: TicketWithMessages;
   statuses: TicketStatus[];
@@ -53,16 +74,27 @@ export function AttributesPanel({
   categories: TicketCategory[];
   agents: Agent[];
   customFields: CustomField[];
-  currentAgentId: string | null;
+  /** Champs du formulaire de la source d'origine, en lecture seule. */
+  sourceFields: SourceField[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isClaiming, setIsClaiming] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
-    (ticket.metadata as Record<string, unknown>) ?? {}
+    (ticket.metadata as Record<string, unknown>) ?? {},
   );
+
+  // Réponses aux champs propres à la source : en lecture seule, contrairement
+  // aux champs personnalisés globaux qu'un agent peut corriger.
+  const formAnswers = sourceFields
+    .filter((field) => field.type !== "HEADER" && field.type !== "FILE")
+    .map((field) => {
+      const raw = metadata[field.key];
+      const value =
+        typeof raw === "boolean" ? (raw ? "Oui" : "Non") : typeof raw === "string" ? raw : "";
+      return { key: field.key, label: field.label, value };
+    })
+    .filter((answer) => answer.value !== "");
 
   function apply(input: Parameters<typeof updateTicketAttributes>[1]) {
     startTransition(async () => {
@@ -81,32 +113,6 @@ export function AttributesPanel({
     apply({ metadata: next });
   }
 
-  async function handleClaim() {
-    setIsClaiming(true);
-    try {
-      await claimTicket(ticket.id);
-      toast.success("Ticket pris en charge");
-      router.refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Impossible de prendre en charge");
-    } finally {
-      setIsClaiming(false);
-    }
-  }
-
-  async function handleClose() {
-    setIsClosing(true);
-    try {
-      const result = await closeTicket(ticket.id);
-      toast.success(result.emailSent ? "Ticket clôturé, email envoyé au client" : "Ticket clôturé");
-      router.refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Impossible de clore ce ticket");
-    } finally {
-      setIsClosing(false);
-    }
-  }
-
   async function handleDelete() {
     setIsDeleting(true);
     try {
@@ -120,136 +126,128 @@ export function AttributesPanel({
   }
 
   return (
-    <aside className="flex w-80 flex-col gap-5 border-l p-5">
-      <div>
+    <aside className="flex w-80 shrink-0 flex-col border-l">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-5">
         <h2 className="text-sm font-medium">Attributs</h2>
-        {isPending && <p className="text-xs text-muted-foreground">Enregistrement…</p>}
+        {isPending && <span className="text-xs text-muted-foreground">Enregistrement…</span>}
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Statut</Label>
-        <Select
-          value={ticket.statusId}
-          onValueChange={(v) => apply({ statusId: v })}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {statuses.map((status) => (
-              <SelectItem key={status.id} value={status.id}>
-                {status.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <PanelBlock title="Suivi">
+          <Field label="Statut">
+            <Select value={ticket.statusId} onValueChange={(v) => apply({ statusId: v })}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map((status) => (
+                  <SelectItem key={status.id} value={status.id}>
+                    {status.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Priorité</Label>
-        <Select
-          value={ticket.priorityId}
-          onValueChange={(v) => apply({ priorityId: v })}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {priorities.map((priority) => (
-              <SelectItem key={priority.id} value={priority.id}>
-                {priority.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          <Field label="Priorité">
+            <Select value={ticket.priorityId} onValueChange={(v) => apply({ priorityId: v })}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {priorities.map((priority) => (
+                  <SelectItem key={priority.id} value={priority.id}>
+                    {priority.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </PanelBlock>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Produit concerné</Label>
-        <Select
-          value={ticket.categoryId ?? NONE}
-          onValueChange={(v) => apply({ categoryId: v === NONE ? null : v })}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Aucun</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground">Assigné à</Label>
-          {currentAgentId && ticket.assigneeId !== currentAgentId && (
-            <button
-              type="button"
-              onClick={handleClaim}
-              disabled={isClaiming}
-              className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+        <PanelBlock title="Affectation">
+          <Field label="Produit concerné">
+            <Select
+              value={ticket.categoryId ?? NONE}
+              onValueChange={(v) => apply({ categoryId: v === NONE ? null : v })}
             >
-              {isClaiming ? "…" : "Prendre en charge"}
-            </button>
-          )}
-        </div>
-        <Select
-          value={ticket.assigneeId ?? NONE}
-          onValueChange={(v) => apply({ assigneeId: v === NONE ? null : v })}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Non assigné</SelectItem>
-            {agents.map((agent) => (
-              <SelectItem key={agent.id} value={agent.id}>
-                {agent.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Aucun</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-      {ticket.client && (
-        <>
-          <Separator />
-          <div className="space-y-1">
-            <h3 className="text-xs font-medium text-muted-foreground">Client</h3>
-            <p className="text-sm">{ticket.client.name}</p>
-            <p className="text-sm text-muted-foreground">{ticket.client.email}</p>
-          </div>
-        </>
-      )}
+          <Field label="Assigné à">
+            <Select
+              value={ticket.assigneeId ?? NONE}
+              onValueChange={(v) => apply({ assigneeId: v === NONE ? null : v })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Non assigné</SelectItem>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </PanelBlock>
 
-      {ticket.sourceUrl && (
-        <>
-          <Separator />
-          <div className="space-y-1">
-            <h3 className="text-xs font-medium text-muted-foreground">Page d&apos;origine</h3>
+        {ticket.client && (
+          <PanelBlock title="Client">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">{ticket.client.name}</p>
+              <a
+                href={`mailto:${ticket.client.email}`}
+                className="block truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
+                title={ticket.client.email}
+              >
+                {ticket.client.email}
+              </a>
+            </div>
+          </PanelBlock>
+        )}
+
+        {ticket.sourceUrl && (
+          <PanelBlock title="Page d'origine">
             <a
               href={ticket.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="block truncate text-sm text-primary hover:underline"
+              className="flex items-start gap-1.5 text-sm text-primary hover:underline"
               title={ticket.sourceUrl}
             >
-              {ticket.sourceUrl}
+              <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 break-all">{ticket.sourceUrl}</span>
             </a>
-          </div>
-        </>
-      )}
+          </PanelBlock>
+        )}
 
-      {customFields.length > 0 && (
-        <>
-          <Separator />
-          <div className="space-y-4">
-            <h3 className="text-xs font-medium text-muted-foreground">Champs personnalisés</h3>
+        {formAnswers.length > 0 && (
+          <PanelBlock title="Réponses du formulaire">
+            {formAnswers.map((answer) => (
+              <div key={answer.key} className="space-y-0.5">
+                <p className="text-xs text-muted-foreground">{answer.label}</p>
+                <p className="whitespace-pre-wrap text-sm">{answer.value}</p>
+              </div>
+            ))}
+          </PanelBlock>
+        )}
+
+        {customFields.length > 0 && (
+          <PanelBlock title="Champs personnalisés">
             {customFields.map((field) => (
               <CustomFieldInput
                 key={field.id}
@@ -259,40 +257,38 @@ export function AttributesPanel({
                 compact
               />
             ))}
-          </div>
-        </>
-      )}
+          </PanelBlock>
+        )}
+      </div>
 
-      <Separator />
-
-      {!ticket.closedAt && (
-        <Button size="sm" onClick={handleClose} disabled={isClosing}>
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {isClosing ? "Clôture…" : "Clore ce ticket"}
-        </Button>
-      )}
-
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button variant="destructive" size="sm" disabled={isDeleting}>
-            <Trash2 className="h-3.5 w-3.5" />
-            Supprimer le ticket
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer ce ticket ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irréversible. Le fil de messages et les pièces jointes
-              associées seront définitivement supprimés.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Supprimer</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <div className="shrink-0 border-t px-5 py-3">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={isDeleting}
+              className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Supprimer le ticket
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer ce ticket ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irréversible. Le fil de messages et les pièces jointes
+                associées seront définitivement supprimés.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete}>Supprimer</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </aside>
   );
 }

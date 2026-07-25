@@ -16,8 +16,10 @@ import {
 import { AttachmentPreview } from "@/components/widget/attachment-preview";
 import { WidgetSuccess } from "@/components/widget/widget-success";
 import { KnowledgeSuggestions } from "@/components/widget/knowledge-suggestions";
+import { SourceFieldInput } from "@/components/widget/source-field-input";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
+import { isDecorativeField, type SourceFormView } from "@/lib/sources";
 import {
   isPapairisContextMessage,
   PAPAIRIS_CLOSE_MESSAGE_TYPE,
@@ -31,11 +33,14 @@ const NONE = "__none__";
 type Attachment = { file: File; previewUrl: string };
 
 export function WidgetForm({
+  form,
   categories,
   customFields,
   initialContext,
   bannerMessage,
 }: {
+  /** Formulaire configuré pour la source appelée (cf. /settings/sources). */
+  form: SourceFormView;
   categories: TicketCategory[];
   customFields: CustomField[];
   initialContext: PapairisContext;
@@ -61,6 +66,7 @@ export function WidgetForm({
     }
     return values;
   });
+  const [sourceFieldValues, setSourceFieldValues] = useState<Record<string, unknown>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -141,6 +147,10 @@ export function WidgetForm({
   }
 
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    // La zone de pièces jointes peut être désactivée pour la source ; un champ
+    // « fichier » du formulaire, lui, reste toujours opérant.
+    if (!form.allowAttachments) return;
+
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -151,6 +161,7 @@ export function WidgetForm({
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDraggingOver(false);
+    if (!form.allowAttachments) return;
     addFiles(Array.from(event.dataTransfer.files));
   }
 
@@ -172,6 +183,19 @@ export function WidgetForm({
       return;
     }
 
+    // Les champs de la source sont revalidés côté serveur : ce contrôle sert
+    // seulement à éviter un aller-retour réseau inutile.
+    const missingSourceField = form.fields.find((field) => {
+      if (!field.isRequired || isDecorativeField(field.type)) return false;
+      if (field.type === "FILE") return attachments.length === 0;
+      const value = sourceFieldValues[field.key];
+      return value === undefined || value === null || value === "" || value === false;
+    });
+    if (missingSourceField) {
+      setFormError(`Le champ « ${missingSourceField.label} » est obligatoire.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -187,7 +211,15 @@ export function WidgetForm({
       if (context.userId) formData.set("papairisUserId", context.userId);
       if (context.appVersion) formData.set("papairisAppVersion", context.appVersion);
       if (context.papairisClientId) formData.set("papairisClientId", context.papairisClientId);
-      if (customFields.length) formData.set("customFields", JSON.stringify(customFieldValues));
+      if (form.slug) formData.set("sourceSlug", form.slug);
+      // Même sac de valeurs pour les champs globaux et ceux de la source : les
+      // clés sont uniques et atterrissent toutes dans `Ticket.metadata`.
+      if (customFields.length || form.fields.length) {
+        formData.set(
+          "customFields",
+          JSON.stringify({ ...customFieldValues, ...sourceFieldValues })
+        );
+      }
       attachments.forEach((attachment) => formData.append("attachments", attachment.file));
 
       const response = await fetch("/api/widget/tickets", {
@@ -213,6 +245,7 @@ export function WidgetForm({
     return (
       <WidgetSuccess
         ticketNumber={ticketNumber}
+        message={form.successMessage}
         onClose={() => sendToParent(PAPAIRIS_CLOSE_MESSAGE_TYPE)}
       />
     );
@@ -220,11 +253,19 @@ export function WidgetForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-5 p-6">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">Contacter le support</h1>
-        <p className="text-sm text-muted-foreground">
-          Décrivez votre problème, nous vous répondrons rapidement.
-        </p>
+      <div className="space-y-3">
+        {form.logoUrl && (
+          // <img> volontaire : le visuel peut venir d'une route API dynamique ou
+          // d'une URL externe arbitraire, next/image n'apporte rien ici.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={form.logoUrl} alt="" className="h-8 w-auto object-contain" />
+        )}
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">{form.formTitle}</h1>
+          {form.formDescription && (
+            <p className="text-sm text-muted-foreground">{form.formDescription}</p>
+          )}
+        </div>
       </div>
 
       {bannerMessage && (
@@ -282,22 +323,24 @@ export function WidgetForm({
 
       <KnowledgeSuggestions articles={kbArticles} />
 
-      <div className="space-y-2">
-        <Label>Produit concerné</Label>
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger className="h-10 w-full">
-            <SelectValue placeholder="Sélectionner…" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Non spécifié</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {form.showCategoryField && (
+        <div className="space-y-2">
+          <Label>Produit concerné</Label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
+            <SelectTrigger className="h-10 w-full">
+              <SelectValue placeholder="Sélectionner…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>Non spécifié</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {customFields.map((field) => (
         <CustomFieldInput
@@ -307,6 +350,18 @@ export function WidgetForm({
           onChange={(value) =>
             setCustomFieldValues((prev) => ({ ...prev, [field.key]: value }))
           }
+        />
+      ))}
+
+      {form.fields.map((field) => (
+        <SourceFieldInput
+          key={field.id}
+          field={field}
+          value={sourceFieldValues[field.key]}
+          onChange={(value) =>
+            setSourceFieldValues((prev) => ({ ...prev, [field.key]: value }))
+          }
+          onFiles={addFiles}
         />
       ))}
 
@@ -330,7 +385,11 @@ export function WidgetForm({
             onPaste={handlePaste}
             required
             rows={5}
-            placeholder="Décrivez votre problème… (vous pouvez coller ou glisser une capture d'écran)"
+            placeholder={
+              form.allowAttachments
+                ? "Décrivez votre problème… (vous pouvez coller ou glisser une capture d'écran)"
+                : "Décrivez votre problème…"
+            }
           />
         </div>
 
@@ -344,7 +403,7 @@ export function WidgetForm({
             />
           ))}
 
-          {attachments.length < MAX_ATTACHMENTS && (
+          {form.allowAttachments && attachments.length < MAX_ATTACHMENTS && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -371,7 +430,7 @@ export function WidgetForm({
       {formError && <p className="text-sm text-destructive">{formError}</p>}
 
       <Button type="submit" disabled={isSubmitting} className="mt-1 h-10 w-full text-sm">
-        {isSubmitting ? "Envoi…" : "Envoyer"}
+        {isSubmitting ? "Envoi…" : form.submitLabel}
       </Button>
     </form>
   );

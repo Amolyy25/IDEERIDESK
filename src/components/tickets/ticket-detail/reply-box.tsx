@@ -85,8 +85,15 @@ export function ReplyBox({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
-      <div className="inline-flex rounded-md border p-0.5">
+    <div
+      className={cn(
+        "space-y-3 rounded-lg border p-4 transition-colors",
+        // Même code couleur que les notes internes du fil : impossible de se
+        // tromper sur ce que le client verra.
+        isPrivate && "border-primary/40 bg-primary/5",
+      )}
+    >
+      <div className="inline-flex rounded-md border bg-background p-0.5">
         <button
           type="button"
           onClick={() => setIsPrivate(false)}
@@ -120,35 +127,36 @@ export function ReplyBox({
         rows={4}
       />
 
-      {!isPrivate && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleSuggest}
-          disabled={isSuggesting}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          {isSuggesting ? "Génération…" : "Suggérer une réponse"}
-        </Button>
-      )}
-
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           {isPrivate ? "Note visible par l'équipe" : "Répond en tant que"}{" "}
           <span className="font-medium text-foreground">{currentAgentName}</span>
           {!isPrivate && requiresApproval && " · nécessite une validation"}
         </p>
 
-        <Button onClick={handleSubmit} disabled={isSubmitting || !content.trim()} size="sm">
-          {isSubmitting
-            ? "Envoi…"
-            : isPrivate
-              ? "Ajouter la note"
-              : requiresApproval
-                ? "Envoyer pour validation"
-                : "Envoyer"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isPrivate && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSuggest}
+              disabled={isSuggesting}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isSuggesting ? "Génération…" : "Suggérer une réponse"}
+            </Button>
+          )}
+          <Button onClick={handleSubmit} disabled={isSubmitting || !content.trim()} size="sm">
+            {isSubmitting
+              ? "Envoi…"
+              : isPrivate
+                ? "Ajouter la note"
+                : requiresApproval
+                  ? "Envoyer pour validation"
+                  : "Envoyer"}
+          </Button>
+        </div>
       </div>
     </div>
   );
