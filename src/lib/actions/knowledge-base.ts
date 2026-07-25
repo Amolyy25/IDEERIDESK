@@ -281,6 +281,7 @@ export async function getArticleByShareToken(token: string) {
 export type PublicKnowledgeArticle = {
   id: string;
   title: string;
+  slug: string;
   excerpt: string | null;
   content: string;
 };
@@ -305,7 +306,7 @@ export async function searchPublishedArticles(
         { content: { contains: word, mode: "insensitive" as const } },
       ]),
     },
-    select: { id: true, title: true, excerpt: true, content: true },
+    select: { id: true, title: true, slug: true, excerpt: true, content: true },
     orderBy: { updatedAt: "desc" },
     take: limit,
   });

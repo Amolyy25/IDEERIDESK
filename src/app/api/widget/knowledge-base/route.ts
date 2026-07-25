@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchPublishedArticles } from "@/lib/actions/knowledge-base";
+import { getPortalSettings } from "@/lib/actions/portal-settings";
+import { htmlToPlainText } from "@/lib/article-html";
+
+const PREVIEW_LENGTH = 180;
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
@@ -7,13 +11,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ articles: [] });
   }
 
-  const articles = await searchPublishedArticles(query, 4);
+  const [articles, portal] = await Promise.all([
+    searchPublishedArticles(query, 4),
+    getPortalSettings(),
+  ]);
+
   return NextResponse.json({
-    articles: articles.map((a) => ({
-      id: a.id,
-      title: a.title,
-      excerpt: a.excerpt,
-      content: a.content,
+    articles: articles.map((article) => ({
+      id: article.id,
+      title: article.title,
+      // Aperçu d'une ou deux lignes, calculé côté serveur : le contenu est du
+      // HTML riche, l'afficher tel quel montrait les balises au visiteur.
+      preview: article.excerpt || htmlToPlainText(article.content, PREVIEW_LENGTH),
+      // La page publique de l'article n'existe que si la FAQ du portail est
+      // activée. Sinon on renvoie le contenu, affiché formaté sur place.
+      url: portal.faqEnabled ? `/faq/${article.slug}` : null,
+      html: portal.faqEnabled ? null : article.content,
     })),
   });
 }

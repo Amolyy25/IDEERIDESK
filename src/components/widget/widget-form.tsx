@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/select";
 import { AttachmentPreview } from "@/components/widget/attachment-preview";
 import { WidgetSuccess } from "@/components/widget/widget-success";
-import { KnowledgeSuggestions } from "@/components/widget/knowledge-suggestions";
+import {
+  KnowledgeSuggestions,
+  type SuggestedArticle,
+} from "@/components/widget/knowledge-suggestions";
 import { SourceFieldInput } from "@/components/widget/source-field-input";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
 import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
@@ -72,9 +75,7 @@ export function WidgetForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [kbArticles, setKbArticles] = useState<
-    { id: string; title: string; excerpt: string | null; content: string }[]
-  >([]);
+  const [kbArticles, setKbArticles] = useState<SuggestedArticle[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
