@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono, Fraunces } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -18,6 +18,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Serif d'affichage chaude, réservée aux titres du portail public (accueil,
+// FAQ). Volontairement absente de l'app interne, qui reste en Inter.
+const fraunces = Fraunces({
+  variable: "--font-display",
+  subsets: ["latin"],
+  axes: ["opsz", "SOFT"],
+});
+
 export const metadata: Metadata = {
   title: "Ideeri Desk",
   description: "Ticketing interne Ideeri",
@@ -31,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${sans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${sans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <TooltipProvider delayDuration={200}>

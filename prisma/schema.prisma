@@ -311,16 +311,114 @@ model TicketClosureTemplate {
   @@map("ticket_closure_template")
 }
 
-// Portail public (page d'accueil) — singleton, comme EmailAccount et
-// TicketClosureTemplate. Pas de ligne = valeurs par défaut (message vide,
-// FAQ affichée).
+enum PortalColorMode {
+  LIGHT
+  DARK
+}
+
+// Disposition de la barre de navigation du portail.
+enum PortalNavVariant {
+  LOGO_LEFT // logo à gauche, liens + CTA à droite
+  LINKS_CENTER // logo à gauche, liens centrés, CTA à droite
+  CENTERED // logo centré, liens sur une seconde ligne centrée
+  MINIMAL // logo à gauche, seulement le CTA à droite
+}
+
+enum PortalAlign {
+  LEFT
+  CENTER
+}
+
+// Portail public (accueil, FAQ, création de ticket) — singleton, comme
+// EmailAccount et TicketClosureTemplate. Pas de ligne = toutes les valeurs par
+// défaut ci-dessous (voir aussi PORTAL_DEFAULTS dans src/lib/portal-theme.ts,
+// qui doit rester aligné avec ces @default).
 model PortalSettings {
-  id           String   @id @default(cuid())
-  introMessage String?
-  faqEnabled   Boolean  @default(true)
-  updatedAt    DateTime @updatedAt
+  id String @id @default(cuid())
+
+  // --- Identité ---
+  siteName        String  @default("Ideeri")
+  tagline         String? @default("Support")
+  showTagline     Boolean @default(true)
+  showLogo        Boolean @default(true)
+  showSiteName    Boolean @default(false)
+  logoAssetId     String?
+  logoHeight      Int     @default(24) // hauteur d'affichage du logo, en px
+  faviconAssetId  String?
+  metaTitle       String?
+  metaDescription String?
+
+  // --- Apparence --- (couleurs en hex ; null = valeur par défaut du thème)
+  colorMode              PortalColorMode @default(LIGHT)
+  primaryColor           String          @default("#ecb300")
+  primaryForegroundColor String          @default("#0a0a0a")
+  backgroundColor        String?
+  foregroundColor        String?
+  cardColor              String?
+  borderColor            String?
+  mutedColor             String?
+  mutedForegroundColor   String?
+  radius                 Float           @default(0.5) // en rem
+  fontSans               String          @default("inter")
+  fontDisplay            String          @default("fraunces")
+
+  // --- Navigation --- navLinks : [{ label, href, newTab }]
+  navVariant    PortalNavVariant @default(LOGO_LEFT)
+  navSticky     Boolean          @default(true)
+  navBlur       Boolean          @default(true)
+  navBordered   Boolean          @default(true)
+  navShowFaq    Boolean          @default(true)
+  navShowLogin  Boolean          @default(true)
+  navCtaEnabled Boolean          @default(true)
+  navCtaLabel   String           @default("Créer un ticket")
+  navLinks      Json             @default("[]")
+
+  // --- Hero ---
+  heroEnabled  Boolean     @default(true)
+  heroEyebrow  String?     @default("Centre d'aide Ideeri")
+  heroTitle    String?     @default("Comment pouvons-nous vous aider ?")
+  introMessage String? // sous-titre du hero, aussi réutilisé sur /nouveau-ticket
+  heroAlign    PortalAlign @default(CENTER)
+  heroGlow     Boolean     @default(true)
+
+  // --- Cartes « deux chemins » --- (icônes : noms lucide de PORTAL_ICONS)
+  cardsEnabled    Boolean @default(true)
+  faqCardTitle    String  @default("Consulter la FAQ")
+  faqCardText     String  @default("Les réponses aux questions les plus fréquentes sur nos logiciels, classées par produit.")
+  faqCardIcon     String  @default("BookOpen")
+  ticketCardTitle String  @default("Créer un ticket")
+  ticketCardText  String  @default("Une question précise ou un problème ? Décrivez votre demande, nous vous répondons par email.")
+  ticketCardIcon  String  @default("MessagesSquare")
+
+  // --- Section FAQ ---
+  faqEnabled       Boolean @default(true)
+  faqEyebrow       String? @default("Foire aux questions")
+  faqTitle         String? @default("Trouvez votre réponse")
+  faqSearchEnabled Boolean @default(true)
+
+  // --- Pied de page --- footerLinks : [{ label, href, newTab }]
+  footerEnabled Boolean @default(true)
+  footerText    String? @default("Support Ideeri")
+  footerIcon    String  @default("LifeBuoy")
+  footerLinks   Json    @default("[]")
+
+  updatedAt DateTime @updatedAt
 
   @@map("portal_settings")
+}
+
+// Logo et favicon du portail, stockés en base comme KnowledgeArticleImage
+// (pas de disque persistant en production) et servis par
+// /api/portal/assets/[id].
+model PortalAsset {
+  id        String   @id @default(cuid())
+  filename  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@map("portal_assets")
 }
 
 model GlobalSetting {
