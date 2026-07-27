@@ -91,6 +91,13 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         description: "Compte Gmail relié au support et synchronisation des réponses.",
       },
       {
+        href: "/settings/acknowledgement",
+        label: "Accusé de réception",
+        description:
+          "L'email envoyé au client dès qu'il dépose un ticket depuis un formulaire public.",
+        adminOnly: true,
+      },
+      {
         href: "/settings/closure",
         label: "Message de clôture",
         description: "L'email envoyé au client quand son ticket est clos.",

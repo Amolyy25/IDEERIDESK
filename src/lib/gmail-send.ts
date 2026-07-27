@@ -1,3 +1,4 @@
+import type { gmail_v1 } from "googleapis";
 import MailComposer from "nodemailer/lib/mail-composer";
 import { getAuthenticatedGmailClient } from "@/lib/google-oauth";
 import {
@@ -7,6 +8,8 @@ import {
   renderTicketClosureEmailText,
   renderAgentApprovalEmailHtml,
   renderAgentApprovalEmailText,
+  renderTicketAcknowledgementEmailHtml,
+  renderTicketAcknowledgementEmailText,
   type EmailHistoryEntry,
 } from "@/lib/email-template";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +22,20 @@ function toBase64Url(buffer: Buffer) {
 // clients mail chargent les images depuis le web, pas depuis notre serveur.
 function getLogoUrl() {
   return process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
+}
+
+// En-tête Message-ID RFC822 du message qu'on vient d'envoyer : Gmail ne le
+// renvoie pas dans la réponse de `send`, il faut relire le message.
+async function fetchSentMessageIdHeader(gmail: gmail_v1.Gmail, messageId: string) {
+  const { data } = await gmail.users.messages.get({
+    userId: "me",
+    id: messageId,
+    format: "metadata",
+    metadataHeaders: ["Message-ID"],
+  });
+  return (
+    data.payload?.headers?.find((h) => h.name?.toLowerCase() === "message-id")?.value ?? undefined
+  );
 }
 
 export async function sendTicketReplyEmail({
@@ -81,24 +98,89 @@ export async function sendTicketReplyEmail({
       requestBody: { raw, threadId: ticket.gmailThreadId ?? undefined },
     });
 
-    let newMessageIdHeader: string | undefined;
-    if (sent.id) {
-      const { data: fullSent } = await gmail.users.messages.get({
-        userId: "me",
-        id: sent.id,
-        format: "metadata",
-        metadataHeaders: ["Message-ID"],
-      });
-      newMessageIdHeader = fullSent.payload?.headers?.find(
-        (h) => h.name?.toLowerCase() === "message-id"
-      )?.value ?? undefined;
-    }
+    const newMessageIdHeader = sent.id
+      ? await fetchSentMessageIdHeader(gmail, sent.id)
+      : undefined;
 
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
         gmailThreadId: sent.threadId ?? ticket.gmailThreadId,
         emailMessageId: newMessageIdHeader ?? ticket.emailMessageId,
+      },
+    });
+
+    return { sent: true, gmailMessageId: sent.id ?? undefined };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/**
+ * Accusé de réception envoyé au client dès la création de son ticket depuis un
+ * formulaire public. Premier message du fil : pas de threadId ni d'In-Reply-To,
+ * mais on enregistre le fil et le Message-ID créés sur le ticket pour que les
+ * réponses suivantes de l'équipe (et celles du client) restent dans ce fil.
+ */
+export async function sendTicketAcknowledgementEmail({
+  ticket,
+  clientEmail,
+  senderName,
+  bodyHtml,
+}: {
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+  };
+  clientEmail: string;
+  senderName: string;
+  bodyHtml: string;
+}): Promise<{ sent: boolean; gmailMessageId?: string; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const logoUrl = getLogoUrl();
+  const subject = `[#${ticket.number}] ${ticket.subject}`;
+  const html = renderTicketAcknowledgementEmailHtml({
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    senderName,
+    bodyHtml,
+    logoUrl,
+  });
+  const text = renderTicketAcknowledgementEmailText({
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    senderName,
+    bodyHtml,
+  });
+
+  try {
+    const mail = new MailComposer({
+      from: `"${senderName}" <${account.email}>`,
+      to: clientEmail,
+      subject,
+      text,
+      html,
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    const { data: sent } = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw },
+    });
+
+    const messageIdHeader = sent.id ? await fetchSentMessageIdHeader(gmail, sent.id) : undefined;
+
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        gmailThreadId: sent.threadId ?? undefined,
+        emailMessageId: messageIdHeader ?? undefined,
       },
     });
 

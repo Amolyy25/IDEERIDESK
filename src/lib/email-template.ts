@@ -157,6 +157,99 @@ export function renderTicketClosureEmailHtml({
 </html>`;
 }
 
+/**
+ * Corps proposé dans /settings/acknowledgement quand aucun modèle n'est encore
+ * enregistré. Rien n'est envoyé tant qu'un admin ne l'a pas validé.
+ */
+export const DEFAULT_ACKNOWLEDGEMENT_BODY_HTML = `<p>Bonjour,</p><p>Nous avons bien reçu votre demande et notre équipe support la prend en charge.</p><p>Vous recevrez une réponse dans les meilleurs délais. Conservez cet email : vous pouvez y répondre pour nous transmettre toute information complémentaire.</p><p>Merci de votre confiance.</p>`;
+
+// Accusé de réception envoyé dès la création d'un ticket depuis un formulaire
+// public. Comme la clôture, le corps est rédigé par un admin dans un éditeur
+// riche : `bodyHtml` est déjà du HTML, inséré tel quel.
+export function renderTicketAcknowledgementEmailHtml({
+  ticketNumber,
+  ticketSubject,
+  senderName,
+  bodyHtml,
+  logoUrl,
+}: {
+  ticketNumber: number;
+  ticketSubject: string;
+  senderName: string;
+  bodyHtml: string;
+  logoUrl?: string | null;
+}) {
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 4px;">
+                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
+                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber} · Demande reçue</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
+                ${bodyHtml}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:4px 32px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
+                        Votre demande
+                      </p>
+                      <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;">
+                        #${ticketNumber} — ${escapeHtml(ticketSubject)}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
+                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
+                  Vous pouvez répondre directement à cet email pour compléter votre demande.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+export function renderTicketAcknowledgementEmailText({
+  ticketNumber,
+  ticketSubject,
+  senderName,
+  bodyHtml,
+}: {
+  ticketNumber: number;
+  ticketSubject: string;
+  senderName: string;
+  bodyHtml: string;
+}) {
+  return `${stripHtmlForText(bodyHtml)}
+
+Votre demande
+#${ticketNumber} — ${ticketSubject}
+
+—
+${senderName} · Ticket #${ticketNumber}
+Vous pouvez répondre directement à cet email pour compléter votre demande.`;
+}
+
 function stripHtmlForText(html: string) {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, "")

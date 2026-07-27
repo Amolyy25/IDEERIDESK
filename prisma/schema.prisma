@@ -413,6 +413,17 @@ model TicketClosureTemplate {
   @@map("ticket_closure_template")
 }
 
+// Accusé de réception envoyé au client dès la création d'un ticket depuis un
+// formulaire public (portail, widget, sources) — singleton comme
+// TicketClosureTemplate. Pas de ligne = aucun accusé envoyé.
+model TicketAcknowledgementTemplate {
+  id        String   @id @default(cuid())
+  bodyHtml  String
+  updatedAt DateTime @updatedAt
+
+  @@map("ticket_acknowledgement_template")
+}
+
 enum PortalColorMode {
   LIGHT
   DARK

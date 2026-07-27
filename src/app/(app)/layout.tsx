@@ -37,7 +37,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         unreadCount={unreadCount}
         pendingAgentCount={pendingAgentCount}
       />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      {/* `min-w-0` : sans ça, un contenu large (tableau, texte long) élargit
+          `main` au-delà du viewport et le parent `overflow-hidden` le rogne. */}
+      <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

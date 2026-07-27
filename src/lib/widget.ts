@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma, TicketSource } from "@/generated/prisma/client";
 import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
+import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 
 export { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 
@@ -136,6 +137,11 @@ export async function createWidgetTicket(
       },
     },
   });
+
+  // Accusé de réception au client : best-effort et non bloquant côté résultat —
+  // `sendTicketAcknowledgement` ne lève pas, le ticket reste créé même si Gmail
+  // n'est pas connecté ou si aucun modèle n'est configuré.
+  await sendTicketAcknowledgement(ticket.id);
 
   return ticket;
 }
