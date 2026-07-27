@@ -1,5 +1,5 @@
 import type { DefaultSession } from "next-auth";
-import type { AgentRole } from "@/generated/prisma/client";
+import type { AgentRole, AgentApprovalStatus } from "@/generated/prisma/client";
 
 declare module "next-auth" {
   interface Session {
@@ -9,6 +9,7 @@ declare module "next-auth" {
       canRespond: boolean;
       requiresApproval: boolean;
       canApprove: boolean;
+      approvalStatus: AgentApprovalStatus;
     } & DefaultSession["user"];
   }
 }

@@ -7,7 +7,7 @@ import { GoogleIcon } from "@/components/icons/google-icon";
 
 const ERROR_MESSAGES: Record<string, string> = {
   AccessDenied:
-    "Accès refusé. Ce compte Google n'est pas autorisé, ou a été désactivé par un administrateur.",
+    "Accès refusé. Ce compte Google n'est pas autorisé, ou a été refusé / désactivé par un administrateur.",
 };
 
 export default async function Home({
@@ -16,7 +16,12 @@ export default async function Home({
   searchParams: Promise<{ error?: string }>;
 }) {
   const [session, params] = await Promise.all([auth(), searchParams]);
-  if (session) redirect("/tickets");
+  // `user.id` n'est posé que si l'agent existe et est actif : sans lui, on
+  // reste sur l'écran de connexion plutôt que de rebondir sur une page
+  // protégée qui renverrait ici (boucle de redirection).
+  if (session?.user?.id) {
+    redirect(session.user.approvalStatus === "APPROVED" ? "/tickets" : "/en-attente");
+  }
 
   const errorMessage = params.error
     ? ERROR_MESSAGES[params.error] ?? "La connexion a échoué. Merci de réessayer."

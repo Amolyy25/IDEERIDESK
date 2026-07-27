@@ -61,7 +61,11 @@ function NavLink({
       <span className="flex-1 truncate">{item.label}</span>
       {badge !== null && (
         <span
-          aria-label={`${badge} ticket${badge > 1 ? "s" : ""} avec de l'activité non lue`}
+          aria-label={
+            item.href === "/agents"
+              ? `${badge} demande${badge > 1 ? "s" : ""} d'accès en attente`
+              : `${badge} ticket${badge > 1 ? "s" : ""} avec de l'activité non lue`
+          }
           className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sidebar-primary px-1 text-[10px] font-semibold tabular-nums text-sidebar-primary-foreground"
         >
           {badge}
@@ -74,9 +78,12 @@ function NavLink({
 export function Sidebar({
   currentAgent,
   unreadCount,
+  pendingAgentCount,
 }: {
   currentAgent: CurrentAgent;
   unreadCount: number;
+  /** Demandes d'accès en attente — toujours 0 pour un non-admin. */
+  pendingAgentCount: number;
 }) {
   const pathname = usePathname();
 
@@ -84,9 +91,13 @@ export function Sidebar({
   // préfixe de route en attrape une autre (`/agents` vs `/agents-archive`).
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  // Le compteur ne concerne que les tickets : ailleurs, pas de pastille.
-  const badgeFor = (href: string) =>
-    href === "/tickets" && unreadCount > 0 ? unreadCount : null;
+  // Deux pastilles seulement : activité non lue sur les tickets, demandes
+  // d'accès en attente sur l'équipe (visible des seuls admins).
+  const badgeFor = (href: string) => {
+    if (href === "/tickets") return unreadCount > 0 ? unreadCount : null;
+    if (href === "/agents") return pendingAgentCount > 0 ? pendingAgentCount : null;
+    return null;
+  };
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">

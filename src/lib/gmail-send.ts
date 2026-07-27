@@ -5,6 +5,8 @@ import {
   renderTicketReplyEmailText,
   renderTicketClosureEmailHtml,
   renderTicketClosureEmailText,
+  renderAgentApprovalEmailHtml,
+  renderAgentApprovalEmailText,
   type EmailHistoryEntry,
 } from "@/lib/email-template";
 import { prisma } from "@/lib/prisma";
@@ -101,6 +103,45 @@ export async function sendTicketReplyEmail({
     });
 
     return { sent: true, gmailMessageId: sent.id ?? undefined };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/**
+ * Notifie un nouvel agent que son accès vient d'être validé. Hors fil de
+ * discussion d'un ticket : pas de threadId ni d'en-tête In-Reply-To.
+ */
+export async function sendAgentApprovalEmail({
+  to,
+  agentName,
+}: {
+  to: string;
+  agentName: string;
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const appUrl = process.env.APP_URL ?? null;
+  const html = renderAgentApprovalEmailHtml({ agentName, appUrl, logoUrl: getLogoUrl() });
+  const text = renderAgentApprovalEmailText({ agentName, appUrl });
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      subject: "Votre accès à Ideeri Desk est validé",
+      text,
+      html,
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
   } catch (error) {
     return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
   }

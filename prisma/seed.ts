@@ -205,6 +205,8 @@ async function main() {
       email: "agent@ideeri.fr",
       name: "Agent Support",
       role: "ADMIN",
+      approvalStatus: "APPROVED",
+      approvalDecidedAt: new Date(),
     },
   });
 

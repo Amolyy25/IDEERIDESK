@@ -21,14 +21,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const existingAgent = await prisma.agent.findUnique({ where: { email } });
       if (existingAgent) {
-        // Un agent désactivé par un admin ne peut plus se reconnecter.
-        return existingAgent.isActive;
+        // Un agent désactivé ou refusé par un admin ne peut plus se reconnecter.
+        // Un compte encore en attente est laissé passer : il n'accède à rien
+        // (le layout `(app)` le renvoie vers /en-attente), mais il peut voir
+        // l'état de sa demande plutôt qu'un simple « accès refusé ».
+        return existingAgent.isActive && existingAgent.approvalStatus !== "REJECTED";
       }
 
-      // Première connexion : auto-provisionné comme agent standard. Un admin
-      // pourra changer le rôle ou désactiver le compte depuis les paramètres.
+      // Première connexion : compte créé en attente de validation. Un admin
+      // l'approuve (ou le refuse) depuis /agents, puis ajuste rôle et
+      // permissions fines.
       await prisma.agent.create({
-        data: { email, name: user.name ?? email, role: "AGENT" },
+        data: {
+          email,
+          name: user.name ?? email,
+          role: "AGENT",
+          approvalStatus: "PENDING",
+        },
       });
       return true;
     },
@@ -47,6 +56,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.canRespond = agent.canRespond;
         session.user.requiresApproval = agent.requiresApproval;
         session.user.canApprove = agent.canApprove;
+        // Lu à chaque requête (pas figé dans le token) : une approbation prend
+        // effet à la navigation suivante, sans reconnexion.
+        session.user.approvalStatus = agent.approvalStatus;
       }
 
       return session;

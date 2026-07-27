@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getUnreadTicketCount } from "@/lib/actions/tickets";
+import { countPendingAgents } from "@/lib/actions/agents";
 import { Sidebar } from "@/components/layout/sidebar";
 import { GmailAutoSync } from "@/components/layout/gmail-auto-sync";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
@@ -16,9 +17,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  const [unreadCount, emailStatus] = await Promise.all([
+  // Compte créé à la première connexion mais pas encore tranché par un admin :
+  // aucune page de l'espace agent ne doit s'ouvrir.
+  if (session.user.approvalStatus !== "APPROVED") {
+    redirect("/en-attente");
+  }
+
+  const [unreadCount, emailStatus, pendingAgentCount] = await Promise.all([
     getUnreadTicketCount(),
     getEmailAccountStatus(),
+    session.user.role === "ADMIN" ? countPendingAgents() : Promise.resolve(0),
   ]);
 
   return (
@@ -27,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar
         currentAgent={{ name: session.user.name, email: session.user.email }}
         unreadCount={unreadCount}
+        pendingAgentCount={pendingAgentCount}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>

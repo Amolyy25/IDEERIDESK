@@ -16,6 +16,16 @@ enum AgentRole {
   AGENT
 }
 
+// Toute première connexion Google crée un agent en attente : il peut se
+// connecter mais n'accède à rien tant qu'un admin n'a pas tranché depuis
+// /agents. REJECTED bloque la reconnexion (comme isActive à false, mais sans
+// avoir jamais eu accès).
+enum AgentApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Agent {
   id        String    @id @default(cuid())
   email     String    @unique
@@ -23,6 +33,9 @@ model Agent {
   role      AgentRole @default(AGENT)
   avatarUrl String?
   isActive  Boolean   @default(true)
+
+  approvalStatus AgentApprovalStatus @default(PENDING)
+  approvalDecidedAt DateTime?
 
   // Permissions fines, indépendantes du rôle ADMIN/AGENT (qui régit l'accès
   // aux paramètres) : un agent "lecture seule" ne peut ni répondre ni modifier
@@ -40,6 +53,13 @@ model Agent {
   approvedMessages Message[] @relation("MessageApprovedBy")
   groups           Group[]
 
+  // Admin ayant approuvé/refusé ce compte (null pour les comptes créés avant
+  // le workflow d'approbation).
+  approvalDecidedBy   Agent?  @relation("AgentApprovalDecidedBy", fields: [approvalDecidedById], references: [id])
+  approvalDecidedById String?
+  approvalDecisions   Agent[] @relation("AgentApprovalDecidedBy")
+
+  @@index([approvalStatus])
   @@map("agents")
 }
 

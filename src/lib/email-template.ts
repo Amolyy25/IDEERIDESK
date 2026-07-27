@@ -187,6 +187,81 @@ export function renderTicketClosureEmailText({
   return `${stripHtmlForText(bodyHtml)}\n\n—\n${senderName} · Ticket #${ticketNumber} · Clôturé`;
 }
 
+// Email interne (destinataire = un agent Ideeri, pas un client) envoyé quand
+// un admin approuve une demande d'accès à l'espace agent.
+export function renderAgentApprovalEmailHtml({
+  agentName,
+  appUrl,
+  logoUrl,
+}: {
+  agentName: string;
+  appUrl: string | null;
+  logoUrl?: string | null;
+}) {
+  const ctaUrl = appUrl ? `${appUrl}/tickets` : null;
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 4px;">
+                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
+                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">Ideeri Desk</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Accès validé</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
+                <p style="margin:0 0 16px;">Bonjour ${escapeHtml(agentName)},</p>
+                <p style="margin:0 0 16px;">
+                  Votre demande d'accès à l'espace agent Ideeri Desk vient d'être validée
+                  par un administrateur. Vous pouvez dès maintenant vous connecter avec
+                  votre compte Google.
+                </p>
+                ${
+                  ctaUrl
+                    ? `<p style="margin:0 0 16px;">
+                  <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">Ouvrir Ideeri Desk</a>
+                </p>`
+                    : ""
+                }
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
+                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
+                  Email automatique — inutile d'y répondre.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+export function renderAgentApprovalEmailText({
+  agentName,
+  appUrl,
+}: {
+  agentName: string;
+  appUrl: string | null;
+}) {
+  const cta = appUrl ? `\n\nOuvrir Ideeri Desk : ${appUrl}/tickets` : "";
+  return `Bonjour ${agentName},
+
+Votre demande d'accès à l'espace agent Ideeri Desk vient d'être validée par un administrateur. Vous pouvez dès maintenant vous connecter avec votre compte Google.${cta}
+
+—
+Email automatique — inutile d'y répondre.`;
+}
+
 export function renderTicketReplyEmailText({
   ticketNumber,
   senderName,

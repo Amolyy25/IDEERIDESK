@@ -16,5 +16,12 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/tickets/:path*", "/clients/:path*", "/settings/:path*"],
+  matcher: [
+    "/tickets/:path*",
+    "/clients/:path*",
+    "/agents/:path*",
+    "/knowledge-base/:path*",
+    "/settings/:path*",
+    "/en-attente",
+  ],
 };
