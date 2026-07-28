@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { createArticleTemplate, updateArticleTemplate } from "@/lib/actions/knowledge-base";
 import type { ArticleTemplate } from "@/generated/prisma/client";
 
@@ -74,6 +75,10 @@ export function TemplateDialog({
               defaultValue={template?.content}
               placeholder={"## Problème\n\n## Solution\n\n## Étapes"}
             />
+
+            {/* La trame passe par le même nettoyage que le contenu d'un article
+                (elle est copiée telle quelle dans l'éditeur). */}
+            <HtmlPolicyHint profile="article" />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>

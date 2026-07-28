@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { SharePanel } from "@/components/knowledge-base/share-panel";
 import { createKnowledgeArticle, updateKnowledgeArticle } from "@/lib/actions/knowledge-base";
 import type { KnowledgeArticleListItem } from "@/lib/actions/knowledge-base";
@@ -134,6 +135,8 @@ export function ArticleForm({
               .map((a) => ({ id: a.id, title: a.title, slug: a.slug }))}
             onUploadImage={uploadArticleImage}
           />
+
+          <HtmlPolicyHint profile="article" />
         </div>
 
         <div className="space-y-5 lg:border-l lg:pl-6">

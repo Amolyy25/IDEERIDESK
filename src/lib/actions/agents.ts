@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
 import { sendAgentApprovalEmail } from "@/lib/gmail-send";
 
 // Agents réellement utilisables (assignation d'un ticket, membres d'un
 // groupe…) : actifs ET approuvés par un admin.
 export async function getAgents() {
+  await requireApprovedAgent();
   return prisma.agent.findMany({
     where: { isActive: true, approvalStatus: "APPROVED" },
     orderBy: { name: "asc" },
@@ -18,10 +19,12 @@ export async function getAgents() {
 // Lecture ouverte à tout agent connecté (la page /agents est consultable par
 // tous) — seules les mutations (`updateAgentPermissions`) sont admin-only.
 export async function getAllAgents() {
+  await requireApprovedAgent();
   return prisma.agent.findMany({ orderBy: { createdAt: "asc" } });
 }
 
 export async function countPendingAgents() {
+  await requireApprovedAgent();
   return prisma.agent.count({ where: { approvalStatus: "PENDING" } });
 }
 

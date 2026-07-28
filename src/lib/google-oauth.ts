@@ -30,12 +30,23 @@ export function createOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-export function getGoogleAuthUrl() {
+/** Nom du cookie portant le `state` OAuth, comparé au retour de Google. */
+export const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
+
+/**
+ * `state` obligatoire : sans lui, le callback accepte n'importe quel code
+ * d'autorisation valide pour notre client_id — un tiers peut donc faire
+ * enregistrer SA boîte Gmail comme boîte support (le client_id est public,
+ * il apparaît dans l'URL de consentement de la connexion Google). Le secret
+ * est déposé en cookie par la route de départ et revérifié au retour.
+ */
+export function getGoogleAuthUrl(state: string) {
   const client = createOAuthClient();
   return client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent", // forces Google to always return a refresh_token, not just on first consent
     scope: GMAIL_SCOPES,
+    state,
   });
 }
 

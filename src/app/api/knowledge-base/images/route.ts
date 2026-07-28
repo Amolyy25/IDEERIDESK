@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { requireCanRespond } from "@/lib/require-permission";
 import { validateAttachmentFile } from "@/lib/attachment-rules";
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
+  // Dépôt de fichier en base : réservé aux agents habilités à rédiger, pas à
+  // tout porteur de cookie de session.
+  try {
+    await requireCanRespond();
+  } catch {
+    return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
   }
 
   const formData = await request.formData();

@@ -9,7 +9,12 @@ declare module "next-auth" {
       canRespond: boolean;
       requiresApproval: boolean;
       canApprove: boolean;
-      approvalStatus: AgentApprovalStatus;
+      /**
+       * Posé dès qu'un agent actif est reconnu, même sans approbation — c'est
+       * le seul champ disponible avant qu'un admin ait tranché (voir le
+       * callback `session` dans `@/auth`). Absent pour un visiteur anonyme.
+       */
+      approvalStatus?: AgentApprovalStatus;
     } & DefaultSession["user"];
   }
 }

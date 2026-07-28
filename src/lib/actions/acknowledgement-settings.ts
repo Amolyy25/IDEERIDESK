@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
+import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 
 export async function getAcknowledgementTemplate() {
+  await requireAdmin();
   return prisma.ticketAcknowledgementTemplate.findFirst();
 }
 
@@ -17,7 +19,10 @@ export async function saveAcknowledgementTemplate(
   input: z.infer<typeof acknowledgementTemplateSchema>
 ) {
   await requireAdmin();
-  const data = acknowledgementTemplateSchema.parse(input);
+  const parsed = acknowledgementTemplateSchema.parse(input);
+  // Inséré tel quel dans le gabarit d'email : profil « email », qui conserve
+  // les styles inline nécessaires à la mise en forme.
+  const data = { bodyHtml: sanitizeEmailHtml(parsed.bodyHtml) };
 
   const existing = await prisma.ticketAcknowledgementTemplate.findFirst();
   if (existing) {

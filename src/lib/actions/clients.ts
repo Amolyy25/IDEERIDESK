@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import {
+  requireAdmin,
+  requireApprovedAgent,
+  requireCanRespond,
+} from "@/lib/require-permission";
 
 const clientSchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(120),
@@ -15,6 +20,7 @@ const clientSchema = z.object({
 });
 
 export async function getClients() {
+  await requireApprovedAgent();
   return prisma.client.findMany({
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { tickets: true } } },
@@ -22,6 +28,7 @@ export async function getClients() {
 }
 
 export async function createClient(input: z.infer<typeof clientSchema>) {
+  await requireCanRespond();
   const data = clientSchema.parse(input);
 
   const existing = await prisma.client.findUnique({ where: { email: data.email } });
@@ -35,6 +42,8 @@ export async function createClient(input: z.infer<typeof clientSchema>) {
 }
 
 export async function deleteClient(id: string) {
+  // Effacement d'une fiche client : réservé aux admins.
+  await requireAdmin();
   const ticketCount = await prisma.ticket.count({ where: { clientId: id } });
   if (ticketCount > 0) {
     throw new Error("Ce client a des tickets associés et ne peut pas être supprimé.");

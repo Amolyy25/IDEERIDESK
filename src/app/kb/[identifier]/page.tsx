@@ -30,14 +30,17 @@ export default async function KnowledgeBasePage({
     );
   }
 
-  const article = await getKnowledgeArticleBySlug(identifier);
-  if (!article) {
-    notFound();
-  }
-
+  // Session vérifiée AVANT la lecture par slug : `getKnowledgeArticleBySlug`
+  // exige désormais un agent approuvé et lèverait pour un visiteur anonyme, là
+  // où on veut le renvoyer proprement vers la connexion.
   const session = await auth();
   if (!session?.user?.id) {
     redirect("/login");
+  }
+
+  const article = await getKnowledgeArticleBySlug(identifier);
+  if (!article) {
+    notFound();
   }
 
   return (

@@ -178,12 +178,13 @@ export function RichTextEditor({
   // par Tiptap — le presse-papier fournit alors du `text/html`. Ce bouton
   // couvre le cas différent où l'utilisateur colle le CODE SOURCE HTML en tant
   // que texte brut (ex: un email exporté) : `insertContent` avec une chaîne
-  // la fait analyser comme balisage, pas comme texte littéral. Le CSS (balise
-  // `<style>`) est préservé et réellement appliqué (voir StyleBlock). Le JS
-  // (`<script>`) est en revanche systématiquement retiré : un article peut
-  // être partagé publiquement sans connexion, un script exécutable dans son
-  // contenu serait une faille XSS stockée pour n'importe quel visiteur du
-  // lien — ce n'est pas négociable, quel que soit le contenu collé.
+  // la fait analyser comme balisage, pas comme texte littéral.
+  //
+  // Le CSS (balise `<style>`, attributs `style=`) est conservé : un article
+  // doit pouvoir embarquer sa mise en forme. Le JS est retiré ici par confort
+  // d'édition, mais la vraie barrière est `sanitizeRichHtml`, appliquée à
+  // l'enregistrement ET au rendu — un filtrage fait uniquement ici se
+  // contournerait en appelant l'action directement.
   function applyHtml() {
     const safeHtml = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "");
     if (safeHtml.trim()) {

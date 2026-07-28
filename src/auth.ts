@@ -4,17 +4,38 @@ import authConfig from "@/auth.config";
 
 const allowedDomain = process.env.ALLOWED_GOOGLE_DOMAIN?.toLowerCase();
 
+// Sans domaine autorisé, n'importe quel compte Google peut créer une demande
+// d'accès. Toléré en développement, refusé en production : une variable oubliée
+// ne doit pas dégrader silencieusement le filtre d'entrée. Vérifié à la
+// connexion et non au chargement du module — ce fichier est importé pendant la
+// compilation, où les variables d'exécution ne sont pas encore celles du
+// serveur, et un `throw` y ferait échouer le build.
+function domainFilterIsUsable() {
+  return Boolean(allowedDomain) || process.env.NODE_ENV !== "production";
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   // Railway (comme la plupart des PaaS hors Vercel) n'est pas dans la liste
   // d'hôtes reconnus par défaut par Auth.js — sans ça, la détection de l'URL
   // publique derrière son proxy peut être instable.
   trustHost: true,
+  // Durée explicite plutôt que le défaut de la librairie (30 jours) : cette
+  // application donne accès aux données personnelles des clients finaux des
+  // agences, une session oubliée sur un poste partagé ne doit pas survivre
+  // une semaine.
+  session: { strategy: "jwt", maxAge: 12 * 60 * 60, updateAge: 60 * 60 },
   callbacks: {
     async signIn({ user }) {
       const email = user.email?.toLowerCase();
       if (!email) return false;
 
+      if (!domainFilterIsUsable()) {
+        console.error(
+          "[auth] connexion refusée : ALLOWED_GOOGLE_DOMAIN n'est pas défini en production."
+        );
+        return false;
+      }
       if (allowedDomain && !email.endsWith(`@${allowedDomain}`)) {
         return false;
       }
@@ -23,8 +44,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (existingAgent) {
         // Un agent désactivé ou refusé par un admin ne peut plus se reconnecter.
         // Un compte encore en attente est laissé passer : il n'accède à rien
-        // (le layout `(app)` le renvoie vers /en-attente), mais il peut voir
-        // l'état de sa demande plutôt qu'un simple « accès refusé ».
+        // (voir le callback `session` ci-dessous, qui ne lui donne aucune
+        // identité exploitable), mais il peut voir l'état de sa demande plutôt
+        // qu'un simple « accès refusé ».
         return existingAgent.isActive && existingAgent.approvalStatus !== "REJECTED";
       }
 
@@ -46,20 +68,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!email) return session;
 
       const agent = await prisma.agent.findUnique({ where: { email } });
-      // Agent introuvable ou désactivé depuis la création du token : on ne
-      // rattache pas d'id/rôle, ce qui fait échouer les vérifications en
-      // aval (ex: le layout protégé redirige vers la connexion).
-      if (agent?.isActive) {
-        session.user.id = agent.id;
-        session.user.role = agent.role;
-        session.user.name = agent.name;
-        session.user.canRespond = agent.canRespond;
-        session.user.requiresApproval = agent.requiresApproval;
-        session.user.canApprove = agent.canApprove;
-        // Lu à chaque requête (pas figé dans le token) : une approbation prend
-        // effet à la navigation suivante, sans reconnexion.
-        session.user.approvalStatus = agent.approvalStatus;
-      }
+      // Agent introuvable ou désactivé depuis la création du token : aucune
+      // information n'est rattachée, ce qui fait échouer toutes les
+      // vérifications en aval.
+      if (!agent?.isActive) return session;
+
+      // Toujours exposé, même sans approbation : /login et /en-attente s'en
+      // servent pour distinguer « connecté mais pas encore tranché » de « pas
+      // connecté du tout ». Lu à chaque requête (pas figé dans le token) : une
+      // approbation prend effet à la navigation suivante, sans reconnexion.
+      session.user.approvalStatus = agent.approvalStatus;
+
+      // Tant qu'un admin n'a pas tranché, le compte n'obtient NI id, NI rôle,
+      // NI permission. C'est ce qui empêche un compte en attente d'utiliser les
+      // routes API et les Server Actions, qui ne voient qu'une session sans
+      // identité : le blocage n'est pas la redirection du layout `(app)` (elle
+      // ne s'exécute que pour une navigation de page), c'est cette absence
+      // d'identité.
+      if (agent.approvalStatus !== "APPROVED") return session;
+
+      session.user.id = agent.id;
+      session.user.role = agent.role;
+      session.user.name = agent.name;
+      session.user.canRespond = agent.canRespond;
+      session.user.requiresApproval = agent.requiresApproval;
+      session.user.canApprove = agent.canApprove;
 
       return session;
     },

@@ -1,6 +1,7 @@
 import type { gmail_v1 } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedGmailClient } from "@/lib/google-oauth";
+import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_SIZE } from "@/lib/attachment-rules";
 
 const TICKET_TAG_PATTERN = /\[#(\d+)\]/;
 
@@ -166,6 +167,14 @@ async function downloadAttachments(
     } else {
       continue;
     }
+    // Seul chemin d'écriture de pièces jointes alimenté par des tiers non
+    // authentifiés (n'importe qui peut répondre à un ticket par email). Sans ce
+    // filtre, un `text/html` ou un SVG entrant est stocké tel quel puis resservi
+    // par /api/attachments/[id] : script exécuté en même origine que
+    // l'application, avec la session de l'agent qui l'ouvre.
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(part.mimeType)) continue;
+    if (buffer.byteLength > MAX_ATTACHMENT_SIZE) continue;
+
     attachments.push({
       filename: part.filename,
       mimeType: part.mimeType,
@@ -300,7 +309,11 @@ export async function syncGmailInbox() {
       // l'erreur persiste — sans ce log, un email malformé qui plante en
       // boucle est invisible (le compteur ne dit pas lequel ni pourquoi).
       failed++;
-      console.error(`[gmail-sync] échec du traitement du message ${id} :`, error);
+      // Message d'erreur seul, jamais l'objet complet : il contient des
+      // extraits d'email, donc des données personnelles de clients finaux, qui
+      // n'ont pas à se retrouver dans les logs de la plateforme.
+      const reason = error instanceof Error ? error.message : "erreur inconnue";
+      console.error(`[gmail-sync] échec du traitement du message ${id} : ${reason}`);
     }
   }
 

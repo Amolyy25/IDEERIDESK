@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
+import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 
 export async function getClosureTemplate() {
+  await requireAdmin();
   return prisma.ticketClosureTemplate.findFirst();
 }
 
@@ -15,7 +17,11 @@ const closureTemplateSchema = z.object({
 
 export async function saveClosureTemplate(input: z.infer<typeof closureTemplateSchema>) {
   await requireAdmin();
-  const data = closureTemplateSchema.parse(input);
+  const parsed = closureTemplateSchema.parse(input);
+  // Inséré tel quel dans le gabarit d'email (email-template.ts). Profil
+  // « email » : les styles inline sont conservés, un email en a besoin ; seul
+  // ce qui pourrait s'exécuter est retiré.
+  const data = { bodyHtml: sanitizeEmailHtml(parsed.bodyHtml) };
 
   const existing = await prisma.ticketClosureTemplate.findFirst();
   if (existing) {

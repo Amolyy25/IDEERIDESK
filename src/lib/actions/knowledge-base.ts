@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
+import { requireApprovedAgent, requireCanRespond } from "@/lib/require-permission";
+import { sanitizeRichHtml } from "@/lib/sanitize-html";
 
 // ---------------------------------------------------------------------------
 // Catégories
@@ -14,10 +17,12 @@ const categorySchema = z.object({
 });
 
 export async function getKnowledgeCategories() {
+  await requireApprovedAgent();
   return prisma.knowledgeCategory.findMany({ orderBy: { order: "asc" } });
 }
 
 export async function createKnowledgeCategory(input: z.infer<typeof categorySchema>) {
+  await requireCanRespond();
   const data = categorySchema.parse(input);
   const count = await prisma.knowledgeCategory.count();
   await prisma.knowledgeCategory.create({ data: { ...data, order: count } });
@@ -25,12 +30,14 @@ export async function createKnowledgeCategory(input: z.infer<typeof categorySche
 }
 
 export async function updateKnowledgeCategory(id: string, input: z.infer<typeof categorySchema>) {
+  await requireCanRespond();
   const data = categorySchema.parse(input);
   await prisma.knowledgeCategory.update({ where: { id }, data });
   revalidatePath("/knowledge-base/categories");
 }
 
 export async function deleteKnowledgeCategory(id: string) {
+  await requireCanRespond();
   const inUse = await prisma.knowledgeArticle.count({ where: { categoryId: id } });
   if (inUse > 0) {
     throw new Error("Cette catégorie contient des articles et ne peut pas être supprimée.");
@@ -49,22 +56,31 @@ const templateSchema = z.object({
 });
 
 export async function getArticleTemplates() {
+  await requireApprovedAgent();
   return prisma.articleTemplate.findMany({ orderBy: { name: "asc" } });
 }
 
 export async function createArticleTemplate(input: z.infer<typeof templateSchema>) {
+  await requireCanRespond();
   const data = templateSchema.parse(input);
-  await prisma.articleTemplate.create({ data });
+  await prisma.articleTemplate.create({
+    data: { ...data, content: sanitizeRichHtml(data.content) },
+  });
   revalidatePath("/knowledge-base/templates");
 }
 
 export async function updateArticleTemplate(id: string, input: z.infer<typeof templateSchema>) {
+  await requireCanRespond();
   const data = templateSchema.parse(input);
-  await prisma.articleTemplate.update({ where: { id }, data });
+  await prisma.articleTemplate.update({
+    where: { id },
+    data: { ...data, content: sanitizeRichHtml(data.content) },
+  });
   revalidatePath("/knowledge-base/templates");
 }
 
 export async function deleteArticleTemplate(id: string) {
+  await requireCanRespond();
   await prisma.articleTemplate.delete({ where: { id } });
   revalidatePath("/knowledge-base/templates");
 }
@@ -115,6 +131,7 @@ export type KnowledgeArticleListItem = Prisma.KnowledgeArticleGetPayload<{
 }>;
 
 export async function getKnowledgeArticles() {
+  await requireApprovedAgent();
   return prisma.knowledgeArticle.findMany({
     include: articleInclude,
     orderBy: { updatedAt: "desc" },
@@ -122,10 +139,12 @@ export async function getKnowledgeArticles() {
 }
 
 export async function getKnowledgeArticleById(id: string) {
+  await requireApprovedAgent();
   return prisma.knowledgeArticle.findUnique({ where: { id }, include: articleInclude });
 }
 
 export async function createKnowledgeArticle(input: z.infer<typeof articleSchema>) {
+  await requireCanRespond();
   const data = articleSchema.parse(input);
   const slug = await uniqueSlug(data.title);
 
@@ -133,7 +152,11 @@ export async function createKnowledgeArticle(input: z.infer<typeof articleSchema
     data: {
       title: data.title,
       excerpt: data.excerpt || null,
-      content: data.content,
+      // Assaini à l'écriture : le contenu est rendu via
+      // `dangerouslySetInnerHTML` sur des pages publiques et dans le
+      // navigateur d'admins. Stocker déjà propre garantit qu'aucun futur point
+      // de rendu ne réintroduit la faille.
+      content: sanitizeRichHtml(data.content),
       status: data.status,
       categoryId: data.categoryId || null,
       slug,
@@ -145,6 +168,7 @@ export async function createKnowledgeArticle(input: z.infer<typeof articleSchema
 }
 
 export async function updateKnowledgeArticle(id: string, input: z.infer<typeof articleSchema>) {
+  await requireCanRespond();
   const data = articleSchema.parse(input);
   const existing = await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id } });
 
@@ -156,7 +180,7 @@ export async function updateKnowledgeArticle(id: string, input: z.infer<typeof a
     data: {
       title: data.title,
       excerpt: data.excerpt || null,
-      content: data.content,
+      content: sanitizeRichHtml(data.content),
       status: data.status,
       categoryId: data.categoryId || null,
       slug,
@@ -168,11 +192,13 @@ export async function updateKnowledgeArticle(id: string, input: z.infer<typeof a
 }
 
 export async function deleteKnowledgeArticle(id: string) {
+  await requireCanRespond();
   await prisma.knowledgeArticle.delete({ where: { id } });
   revalidatePath("/knowledge-base");
 }
 
 export async function getKnowledgeArticleBySlug(slug: string) {
+  await requireApprovedAgent();
   return prisma.knowledgeArticle.findUnique({ where: { slug }, include: articleInclude });
 }
 
@@ -217,22 +243,31 @@ export async function getPublishedArticleBySlug(slug: string) {
 
 const SHARE_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+// Le lien de partage est le SEUL rempart devant un article que l'auteur n'a pas
+// publié dans la FAQ. Un slug dérivé du seul titre se devine à partir du titre
+// ou d'une liste de mots : on lui adjoint donc un segment aléatoire. La partie
+// lisible reste devant, le lien continue de se reconnaître d'un coup d'œil.
+const SHARE_SLUG_ENTROPY_BYTES = 12;
+
+function shareSlugSuffix() {
+  return randomBytes(SHARE_SLUG_ENTROPY_BYTES).toString("base64url").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 async function uniqueShareSlug(title: string, excludeId?: string) {
   const base = slugify(title) || "article";
-  let slug = base;
-  let suffix = 1;
+  let slug = `${base}-${shareSlugSuffix()}`;
   while (
     await prisma.knowledgeArticle.findFirst({
       where: { shareToken: slug, id: excludeId ? { not: excludeId } : undefined },
     })
   ) {
-    suffix += 1;
-    slug = `${base}-${suffix}`;
+    slug = `${base}-${shareSlugSuffix()}`;
   }
   return slug;
 }
 
 export async function generateArticleShareLink(id: string, scope: "PUBLIC" | "INTERNAL") {
+  await requireCanRespond();
   const existing = await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id } });
   const shareToken = existing.shareToken ?? (await uniqueShareSlug(existing.title, id));
   const updated = await prisma.knowledgeArticle.update({
@@ -244,10 +279,15 @@ export async function generateArticleShareLink(id: string, scope: "PUBLIC" | "IN
 }
 
 export async function updateArticleShareSlug(id: string, rawSlug: string) {
-  const slug = rawSlug.trim().toLowerCase();
-  if (!SHARE_SLUG_PATTERN.test(slug)) {
+  await requireCanRespond();
+  const base = rawSlug.trim().toLowerCase();
+  if (!SHARE_SLUG_PATTERN.test(base)) {
     throw new Error("Lien invalide : lettres minuscules, chiffres et tirets uniquement.");
   }
+  // Même exigence que pour un lien généré : un slug entièrement choisi par
+  // l'auteur serait devinable, et c'est précisément ce lien qui donne accès à
+  // un article non publié.
+  const slug = `${base}-${shareSlugSuffix()}`;
   const conflict = await prisma.knowledgeArticle.findFirst({
     where: { shareToken: slug, id: { not: id } },
   });
@@ -263,6 +303,7 @@ export async function updateArticleShareSlug(id: string, rawSlug: string) {
 }
 
 export async function revokeArticleShareLink(id: string) {
+  await requireCanRespond();
   await prisma.knowledgeArticle.update({
     where: { id },
     data: { shareToken: null, shareScope: null },
@@ -270,6 +311,8 @@ export async function revokeArticleShareLink(id: string) {
   revalidatePath(`/knowledge-base/${id}`);
 }
 
+// Publique : c'est le point d'entrée d'un lien de partage, la restriction
+// PUBLIC/INTERNAL est appliquée par la page /kb/[identifier].
 export async function getArticleByShareToken(token: string) {
   return prisma.knowledgeArticle.findUnique({ where: { shareToken: token } });
 }

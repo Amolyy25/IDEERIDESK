@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import {
   saveAcknowledgementTemplate,
   deleteAcknowledgementTemplate,
@@ -79,6 +80,8 @@ export function AcknowledgementTemplateForm({
           minHeight="220px"
           logoUrl={logoUrl}
         />
+
+        <HtmlPolicyHint profile="email" />
       </div>
 
       <div className="flex gap-2">

@@ -9,18 +9,22 @@ import { getEmailAccountStatus } from "@/lib/actions/email-account";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
 
-  // `session.user.id` is only set when the agent record still exists and is
-  // active (see the `session` callback in `@/auth`) — this is the real,
-  // DB-backed authorization gate, re-checked on every protected navigation.
-  // Middleware only does a cheap edge-side "is there a session at all" check.
-  if (!session?.user?.id) {
-    redirect("/login");
+  // Compte créé à la première connexion mais pas encore tranché par un admin :
+  // aucune page de l'espace agent ne doit s'ouvrir. Testé avant `id`, qui n'est
+  // justement pas posé pour un compte non approuvé — sans cet ordre, l'agent en
+  // attente atterrirait sur /login sans comprendre pourquoi.
+  if (session?.user?.approvalStatus && session.user.approvalStatus !== "APPROVED") {
+    redirect("/en-attente");
   }
 
-  // Compte créé à la première connexion mais pas encore tranché par un admin :
-  // aucune page de l'espace agent ne doit s'ouvrir.
-  if (session.user.approvalStatus !== "APPROVED") {
-    redirect("/en-attente");
+  // `session.user.id` is only set when the agent record still exists, is active
+  // AND has been approved (see the `session` callback in `@/auth`) — this is the
+  // real, DB-backed authorization gate, re-checked on every protected
+  // navigation. Middleware only does a cheap edge-side "is there a session at
+  // all" check, et les Server Actions ont leurs propres gardes : cette
+  // redirection protège l'affichage, pas les données.
+  if (!session?.user?.id) {
+    redirect("/login");
   }
 
   const [unreadCount, emailStatus, pendingAgentCount] = await Promise.all([

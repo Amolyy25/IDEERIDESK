@@ -14,6 +14,7 @@ export type AutomationRuleWithStatuses = Prisma.AutomationRuleGetPayload<{
 }>;
 
 export async function getAutomationRules() {
+  await requireAdmin();
   return prisma.automationRule.findMany({ include: ruleInclude, orderBy: { createdAt: "asc" } });
 }
 

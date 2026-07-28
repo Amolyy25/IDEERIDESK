@@ -5,8 +5,22 @@ import { getTicketById } from "@/lib/actions/tickets";
 import { searchPublishedArticles } from "@/lib/actions/knowledge-base";
 import { getAiConfig } from "@/lib/ai-settings";
 import { generateAiSuggestion, AiProviderError } from "@/lib/ai-provider";
+import { rateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({ ticketId: z.string().min(1) });
+
+// Quantité de texte transmise au fournisseur d'IA, bornée volontairement.
+const MAX_MESSAGE_CHARS = 2000;
+const MAX_DESCRIPTION_CHARS = 4000;
+const MAX_ARTICLE_CHARS = 4000;
+
+// Suggestions plafonnées par agent : chaque appel est facturé au jeton chez le
+// fournisseur, une boucle côté client viderait le budget sans limite.
+const SUGGESTIONS_PER_HOUR = 60;
+
+function truncate(value: string, max: number) {
+  return value.length <= max ? value : `${value.slice(0, max)}…`;
+}
 
 const SYSTEM_PROMPT = `Tu es l'assistant d'un agent du support client d'Ideeri, éditeur de logiciels immobiliers.
 Rédige un brouillon de réponse professionnelle, concise et en français, destinée directement au client.
@@ -17,6 +31,14 @@ export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id || !session.user.canRespond) {
     return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
+  }
+
+  const limit = rateLimit(`ai-suggest:${session.user.id}`, SUGGESTIONS_PER_HOUR, 60 * 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Trop de suggestions demandées. Réessayez dans quelques minutes." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
+    );
   }
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
@@ -39,18 +61,28 @@ export async function POST(request: NextRequest) {
 
   const articles = await searchPublishedArticles(`${ticket.subject} ${ticket.description}`);
 
+  // Minimisation avant transmission à un sous-traitant tiers : les notes
+  // internes (`isPrivate`) ne quittent jamais l'application, et chaque message
+  // est tronqué. Le fil contient les coordonnées et la situation de personnes
+  // physiques — n'en sortir que ce qui sert à rédiger la réponse.
   const threadText = ticket.messages
-    .map((m) => `${m.authorType === "CLIENT" ? "Client" : "Agent"}: ${m.content}`)
+    .filter((m) => !m.isPrivate)
+    .map(
+      (m) =>
+        `${m.authorType === "CLIENT" ? "Client" : "Agent"}: ${truncate(m.content, MAX_MESSAGE_CHARS)}`
+    )
     .join("\n\n");
 
   const kbText = articles.length
-    ? articles.map((a) => `Article « ${a.title} » : ${a.content}`).join("\n\n")
+    ? articles
+        .map((a) => `Article « ${a.title} » : ${truncate(a.content, MAX_ARTICLE_CHARS)}`)
+        .join("\n\n")
     : "Aucun article pertinent trouvé.";
 
   const userPrompt = `Sujet du ticket : ${ticket.subject}
 
 Description initiale du client :
-${ticket.description}
+${truncate(ticket.description, MAX_DESCRIPTION_CHARS)}
 
 Fil de discussion :
 ${threadText || "(aucun message pour le moment)"}

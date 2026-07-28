@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "prisma migrate deploy && next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "check:action-guards": "node scripts/check-action-guards.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",
@@ -24,12 +25,14 @@
     "cmdk": "^1.1.1",
     "dotenv": "^17.4.2",
     "googleapis": "^173.0.0",
+    "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.26.0",
     "next": "16.2.11",
     "next-auth": "^5.0.0-beta.32",
     "next-themes": "^0.4.6",
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
+    "postcss": "^8.5.23",
     "prisma": "^7.9.0",
     "radix-ui": "^1.6.5",
     "react": "19.2.4",

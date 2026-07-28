@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { saveClosureTemplate, deleteClosureTemplate } from "@/lib/actions/closure-settings";
 import type { TicketClosureTemplate } from "@/generated/prisma/client";
 
@@ -66,6 +67,8 @@ export function ClosureTemplateForm({
           minHeight="220px"
           logoUrl={logoUrl}
         />
+
+        <HtmlPolicyHint profile="email" />
       </div>
 
       <div className="flex gap-2">

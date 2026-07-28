@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
 
 export async function getGroups() {
+  await requireApprovedAgent();
   return prisma.group.findMany({
     include: {
       members: { select: { id: true, name: true, email: true } },
@@ -17,6 +18,7 @@ export async function getGroups() {
 
 /** Product (ticket category) ids covered by any group the agent belongs to — used to pre-filter the ticket list. */
 export async function getAgentDefaultCategoryIds(agentId: string) {
+  await requireApprovedAgent();
   const groups = await prisma.group.findMany({
     where: { members: { some: { id: agentId } } },
     select: { products: { select: { id: true } } },

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireCanRespond } from "@/lib/require-permission";
 
 const categorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(60),
@@ -11,11 +12,16 @@ const categorySchema = z.object({
   isDefault: z.boolean(),
 });
 
+// Lecture volontairement ouverte : ces valeurs alimentent les listes déroulantes
+// des formulaires publics (/widget, /nouveau-ticket), donc elles sont par nature
+// visibles de leurs visiteurs. Toutes les écritures ci-dessous exigent en
+// revanche un agent habilité.
 export async function getTicketCategories() {
   return prisma.ticketCategory.findMany({ orderBy: { order: "asc" } });
 }
 
 export async function createTicketCategory(input: z.infer<typeof categorySchema>) {
+  await requireCanRespond();
   const data = categorySchema.parse(input);
   const count = await prisma.ticketCategory.count();
 
@@ -28,6 +34,7 @@ export async function createTicketCategory(input: z.infer<typeof categorySchema>
 }
 
 export async function updateTicketCategory(id: string, input: z.infer<typeof categorySchema>) {
+  await requireCanRespond();
   const data = categorySchema.parse(input);
 
   if (data.isDefault) {
@@ -42,6 +49,7 @@ export async function updateTicketCategory(id: string, input: z.infer<typeof cat
 }
 
 export async function deleteTicketCategory(id: string) {
+  await requireCanRespond();
   const inUse = await prisma.ticket.count({ where: { categoryId: id } });
   if (inUse > 0) {
     throw new Error("Ce produit concerné est utilisé par des tickets et ne peut pas être supprimé.");
@@ -51,6 +59,7 @@ export async function deleteTicketCategory(id: string) {
 }
 
 export async function reorderTicketCategories(orderedIds: string[]) {
+  await requireCanRespond();
   await prisma.$transaction(
     orderedIds.map((id, order) =>
       prisma.ticketCategory.update({ where: { id }, data: { order } })

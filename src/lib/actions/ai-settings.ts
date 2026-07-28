@@ -18,6 +18,7 @@ export type AiSettingsStatus = {
 };
 
 export async function getAiSettingsStatus(): Promise<AiSettingsStatus> {
+  await requireAdmin();
   const rows = await prisma.globalSetting.findMany({
     where: { key: { in: Object.values(AI_SETTING_KEYS) } },
   });

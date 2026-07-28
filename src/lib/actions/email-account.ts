@@ -4,23 +4,22 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createOAuthClient } from "@/lib/google-oauth";
-import { requireAdmin } from "@/lib/require-permission";
+import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
+import {
+  SENDER_NAME_KEY,
+  readEmailAccountStatus,
+  type EmailAccountStatus,
+} from "@/lib/email-account";
 
-const SENDER_NAME_KEY = "email_sender_name";
-const DEFAULT_SENDER_NAME = "Ideeri Support";
-
-export async function getEmailAccountStatus() {
-  const [account, senderNameSetting] = await Promise.all([
-    prisma.emailAccount.findFirst(),
-    prisma.globalSetting.findUnique({ where: { key: SENDER_NAME_KEY } }),
-  ]);
-
-  return {
-    connected: Boolean(account),
-    email: account?.email ?? null,
-    connectedAt: account?.connectedAt ?? null,
-    senderName: senderNameSetting?.value ?? DEFAULT_SENDER_NAME,
-  };
+/**
+ * État de la boîte support, pour la barre latérale et /settings/email. Réservé
+ * aux agents approuvés : l'adresse de la boîte connectée est une information
+ * interne, et cette fonction est appelable en HTTP par n'importe qui sinon.
+ * Les chemins serveur internes utilisent `readEmailAccountStatus`.
+ */
+export async function getEmailAccountStatus(): Promise<EmailAccountStatus> {
+  await requireApprovedAgent();
+  return readEmailAccountStatus();
 }
 
 export async function updateSenderName(name: string) {

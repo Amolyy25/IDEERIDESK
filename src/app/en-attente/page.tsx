@@ -15,8 +15,11 @@ export const metadata = { title: "Demande en attente · Ideeri Desk" };
 export default async function PendingApprovalPage() {
   const session = await auth();
 
-  if (!session?.user?.id) redirect("/login");
-  if (session.user.approvalStatus === "APPROVED") redirect("/tickets");
+  // Un compte approuvé a un `id` et n'a rien à faire ici ; un compte reconnu
+  // mais non tranché n'a que `approvalStatus` ; sans même ça, personne n'est
+  // connecté.
+  if (session?.user?.id) redirect("/tickets");
+  if (!session?.user?.approvalStatus) redirect("/login");
 
   const isRejected = session.user.approvalStatus === "REJECTED";
 

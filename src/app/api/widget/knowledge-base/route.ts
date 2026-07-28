@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { searchPublishedArticles } from "@/lib/actions/knowledge-base";
 import { getPortalSettings } from "@/lib/actions/portal-settings";
 import { htmlToPlainText } from "@/lib/article-html";
+import { sanitizeRichHtml } from "@/lib/sanitize-html";
 
 const PREVIEW_LENGTH = 180;
 
@@ -26,7 +27,9 @@ export async function GET(request: NextRequest) {
       // La page publique de l'article n'existe que si la FAQ du portail est
       // activée. Sinon on renvoie le contenu, affiché formaté sur place.
       url: portal.faqEnabled ? `/faq/${article.slug}` : null,
-      html: portal.faqEnabled ? null : article.content,
+      // Assaini avant de sortir : ce HTML est injecté par le widget dans une
+      // iframe hébergée chez le client, sans repasser par le rendu serveur.
+      html: portal.faqEnabled ? null : sanitizeRichHtml(article.content),
     })),
   });
 }

@@ -16,11 +16,15 @@ export default async function Home({
   searchParams: Promise<{ error?: string }>;
 }) {
   const [session, params] = await Promise.all([auth(), searchParams]);
-  // `user.id` n'est posé que si l'agent existe et est actif : sans lui, on
-  // reste sur l'écran de connexion plutôt que de rebondir sur une page
-  // protégée qui renverrait ici (boucle de redirection).
+  // `user.id` n'est posé que si l'agent existe, est actif et a été approuvé :
+  // sans lui, on reste sur l'écran de connexion plutôt que de rebondir sur une
+  // page protégée qui renverrait ici (boucle de redirection). Un compte
+  // reconnu mais pas encore tranché n'a que `approvalStatus`.
   if (session?.user?.id) {
-    redirect(session.user.approvalStatus === "APPROVED" ? "/tickets" : "/en-attente");
+    redirect("/tickets");
+  }
+  if (session?.user?.approvalStatus) {
+    redirect("/en-attente");
   }
 
   const errorMessage = params.error

@@ -5,9 +5,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sendTicketReplyEmail, sendTicketClosureEmail } from "@/lib/gmail-send";
-import { getEmailAccountStatus } from "@/lib/actions/email-account";
-import { auth } from "@/auth";
-import { requireCanApprove } from "@/lib/require-permission";
+import { readEmailAccountStatus } from "@/lib/email-account";
+import {
+  requireAdmin,
+  requireApprovedAgent,
+  requireCanApprove,
+  requireCanRespond,
+} from "@/lib/require-permission";
 import type { EmailHistoryEntry } from "@/lib/email-template";
 
 const ticketInclude = {
@@ -42,10 +46,12 @@ export type TicketListFilters = {
 };
 
 export async function getUnreadTicketCount() {
+  await requireApprovedAgent();
   return prisma.ticket.count({ where: { hasUnreadActivity: true } });
 }
 
 export async function getTickets(filters: TicketListFilters = {}) {
+  await requireApprovedAgent();
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const sortBy = filters.sortBy ?? "createdAt";
@@ -84,6 +90,7 @@ export async function getTickets(filters: TicketListFilters = {}) {
 }
 
 export async function getTicketById(id: string) {
+  await requireApprovedAgent();
   return prisma.ticket.findUnique({
     where: { id },
     include: {
@@ -101,6 +108,7 @@ export async function getTicketById(id: string) {
 }
 
 export async function markTicketAsRead(id: string) {
+  await requireApprovedAgent();
   await prisma.ticket.updateMany({
     where: { id, hasUnreadActivity: true },
     data: { hasUnreadActivity: false },
@@ -119,6 +127,7 @@ const createTicketSchema = z.object({
 });
 
 export async function createTicket(input: z.infer<typeof createTicketSchema>) {
+  await requireCanRespond();
   const data = createTicketSchema.parse(input);
   const ticket = await prisma.ticket.create({
     data: {
@@ -147,6 +156,7 @@ export async function updateTicketAttributes(
   id: string,
   input: z.infer<typeof updateTicketAttributesSchema>
 ) {
+  await requireCanRespond();
   const data = updateTicketAttributesSchema.parse(input);
 
   let closedAt: Date | null | undefined = undefined;
@@ -171,14 +181,10 @@ export async function updateTicketAttributes(
 }
 
 export async function claimTicket(id: string) {
-  const session = await auth();
-  const agentId = session?.user?.id;
-  if (!agentId) {
-    throw new Error("Vous devez être connecté pour prendre en charge un ticket.");
-  }
-  if (!session.user.canRespond) {
-    throw new Error("Vous n'avez pas la permission de prendre en charge un ticket (lecture seule).");
-  }
+  // Garde partagée plutôt qu'un contrôle réécrit sur place : un contrôle
+  // dupliqué à la main est un contrôle qu'on oublie de mettre à jour.
+  const session = await requireCanRespond();
+  const agentId = session.user.id;
 
   // Statut cible optionnel (configuré depuis /settings/statuses) — si aucun
   // n'est marqué, seule l'assignation change, sans erreur.
@@ -198,14 +204,7 @@ export async function claimTicket(id: string) {
 }
 
 export async function closeTicket(id: string) {
-  const session = await auth();
-  const agentId = session?.user?.id;
-  if (!agentId) {
-    throw new Error("Vous devez être connecté pour clore un ticket.");
-  }
-  if (!session.user.canRespond) {
-    throw new Error("Vous n'avez pas la permission de clore un ticket (lecture seule).");
-  }
+  await requireCanRespond();
 
   const closeStatus = await prisma.ticketStatus.findFirst({ where: { isCloseDefault: true } });
   if (!closeStatus) {
@@ -232,7 +231,7 @@ export async function closeTicket(id: string) {
   let emailSkippedReason: string | null = null;
 
   if (template?.bodyHtml && ticket.client?.email) {
-    const { senderName } = await getEmailAccountStatus();
+    const { senderName } = await readEmailAccountStatus();
     const result = await sendTicketClosureEmail({
       ticket,
       clientEmail: ticket.client.email,
@@ -260,6 +259,9 @@ export async function closeTicket(id: string) {
 }
 
 export async function deleteTicket(id: string) {
+  // Suppression définitive et non réversible d'un dossier client : réservée aux
+  // admins, pas à tout agent capable de répondre.
+  await requireAdmin();
   // Messages et pièces jointes suivent en cascade (onDelete: Cascade côté
   // schéma) — pas de nettoyage manuel à faire ici.
   await prisma.ticket.delete({ where: { id } });
@@ -285,7 +287,7 @@ async function sendApprovedTicketReply(ticketId: string, messageId: string, cont
     return { emailSent: false as const, emailSkippedReason: "Aucun client associé à ce ticket." };
   }
 
-  const { senderName } = await getEmailAccountStatus();
+  const { senderName } = await readEmailAccountStatus();
 
   const previousMessages = await prisma.message.findMany({
     where: { ticketId, isPrivate: false, id: { not: messageId } },
@@ -331,14 +333,8 @@ export async function addTicketMessage(
 
   // L'auteur vient toujours de la session, jamais d'une valeur transmise par
   // le client : sinon un agent pourrait faire répondre un collègue à sa place.
-  const session = await auth();
-  const agentId = session?.user?.id;
-  if (!agentId) {
-    throw new Error("Vous devez être connecté pour répondre à un ticket.");
-  }
-  if (!session.user.canRespond) {
-    throw new Error("Vous n'avez pas la permission de répondre aux tickets (lecture seule).");
-  }
+  const session = await requireCanRespond();
+  const agentId = session.user.id;
 
   const isPublicAgentReply = !data.isPrivate;
   const needsApproval = isPublicAgentReply && session.user.requiresApproval;
@@ -375,6 +371,11 @@ export async function approveMessage(messageId: string) {
   const message = await prisma.message.findUnique({ where: { id: messageId } });
   if (!message || message.approvalStatus !== "PENDING") {
     throw new Error("Ce message n'est plus en attente de validation.");
+  }
+  // Un agent portant à la fois `requiresApproval` et `canApprove` pourrait
+  // sinon relâcher ses propres réponses, ce qui vide le workflow de son sens.
+  if (message.agentId === session.user.id) {
+    throw new Error("Un autre agent habilité doit valider votre propre réponse.");
   }
 
   await prisma.message.update({

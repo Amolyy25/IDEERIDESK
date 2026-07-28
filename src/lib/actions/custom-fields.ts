@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireCanRespond } from "@/lib/require-permission";
 
 const customFieldSchema = z.object({
   label: z.string().trim().min(1, "Libellé requis").max(60),
@@ -24,11 +25,16 @@ function slugifyKey(label: string) {
     .replace(/^_+|_+$/g, "");
 }
 
+// Lecture volontairement ouverte : ces valeurs alimentent les listes déroulantes
+// des formulaires publics (/widget, /nouveau-ticket), donc elles sont par nature
+// visibles de leurs visiteurs. Toutes les écritures ci-dessous exigent en
+// revanche un agent habilité.
 export async function getCustomFields() {
   return prisma.customField.findMany({ orderBy: { order: "asc" } });
 }
 
 export async function createCustomField(input: z.infer<typeof customFieldSchema>) {
+  await requireCanRespond();
   const data = customFieldSchema.parse(input);
   const key = slugifyKey(data.label);
 
@@ -60,6 +66,7 @@ export async function createCustomField(input: z.infer<typeof customFieldSchema>
 }
 
 export async function updateCustomField(id: string, input: z.infer<typeof customFieldSchema>) {
+  await requireCanRespond();
   const data = customFieldSchema.parse(input);
 
   await prisma.customField.update({
@@ -78,6 +85,7 @@ export async function updateCustomField(id: string, input: z.infer<typeof custom
 }
 
 export async function deleteCustomField(id: string) {
+  await requireCanRespond();
   await prisma.customField.delete({ where: { id } });
   revalidatePath("/settings/custom-fields");
 }

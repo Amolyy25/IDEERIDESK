@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
 import {
   fieldKeyFromLabel,
   isDecorativeField,
@@ -60,6 +60,7 @@ function toConfig(source: SourceWithFields): SourceConfig {
 // ---------------------------------------------------------------------------
 
 export async function getSources(): Promise<SourceListItem[]> {
+  await requireAdmin();
   return prisma.source.findMany({
     orderBy: { createdAt: "asc" },
     include: { _count: { select: { fields: true, tickets: true } } },
@@ -67,6 +68,7 @@ export async function getSources(): Promise<SourceListItem[]> {
 }
 
 export async function getSourceConfig(id: string): Promise<SourceConfig | null> {
+  await requireAdmin();
   const source = await prisma.source.findUnique({
     where: { id },
     include: { fields: { orderBy: { order: "asc" } } },
@@ -111,6 +113,7 @@ export async function getSourceForm(slug: string): Promise<SourceFormPayload | n
 
 /** Champs d'une source, pour afficher les réponses sur la fiche d'un ticket. */
 export async function getSourceFields(sourceId: string): Promise<SourceField[]> {
+  await requireApprovedAgent();
   return prisma.sourceField.findMany({
     where: { sourceId },
     orderBy: { order: "asc" },
