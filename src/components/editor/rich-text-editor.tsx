@@ -19,6 +19,7 @@ import {
   Video,
   Image as ImageIcon,
   Code2,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,22 @@ import { VideoEmbed } from "@/components/editor/video-embed-extension";
 import { StyleBlock } from "@/components/editor/style-block-extension";
 
 export type InternalLinkTarget = { id: string; title: string; slug: string };
+
+// Le schéma Tiptap ne connaît ni `div`, ni `table`, ni l'attribut `style` : un
+// gabarit d'email collé dans l'éditeur visuel en ressort dépouillé (structure
+// aplatie, styles inline perdus, sélecteurs du bloc `<style>` sans cible). Ce
+// n'est pas rattrapable en ajoutant des extensions — ProseMirror normalise le
+// document, il ne restitue pas un balisage arbitraire.
+//
+// La sortie est donc un mode « source HTML » qui ne passe jamais par
+// ProseMirror : la chaîne saisie est celle transmise au parent, à l'octet près.
+// Ce test décide quand ce mode est nécessaire — présence d'une balise de mise en
+// page ou d'un document complet.
+const LAYOUT_MARKUP = /<\s*(?:style|div|table|center|font|html|body)\b|<!doctype/i;
+
+export function needsHtmlSource(html: string) {
+  return LAYOUT_MARKUP.test(html);
+}
 
 function ToolbarButton({
   onClick,
@@ -95,6 +112,15 @@ export function RichTextEditor({
   const [rawHtml, setRawHtml] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Un gabarit déjà enregistré qui contient de la mise en page s'ouvre en mode
+  // source : sans ça, le simple fait d'ouvrir la page puis d'enregistrer le
+  // détruirait, l'éditeur visuel ayant rendu une version aplatie.
+  const [mode, setMode] = useState<"visual" | "html">(() =>
+    needsHtmlSource(value) ? "html" : "visual"
+  );
+  const [htmlSource, setHtmlSource] = useState(value);
+  const [showPreview, setShowPreview] = useState(true);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -174,21 +200,61 @@ export function RichTextEditor({
     setVideoPopoverOpen(false);
   }
 
+  function updateHtmlSource(next: string) {
+    setHtmlSource(next);
+    onChange(next);
+  }
+
+  // L'éditeur visuel rend un document ProseMirror : y repasser une mise en page
+  // (div, table, style inline) la perd définitivement. Le sens du basculement
+  // décide donc du traitement — vers la source, on part du HTML de l'éditeur ;
+  // vers le visuel, on prévient avant de laisser Tiptap réanalyser.
+  function switchToHtml() {
+    setHtmlSource(editor!.getHTML());
+    setMode("html");
+  }
+
+  function switchToVisual() {
+    if (
+      needsHtmlSource(htmlSource) &&
+      !window.confirm(
+        "L'éditeur visuel ne sait pas représenter la mise en page HTML (div, tableaux, styles inline) : elle sera simplifiée et perdue. Continuer ?"
+      )
+    ) {
+      return;
+    }
+    editor!.commands.setContent(htmlSource);
+    setMode("visual");
+    onChange(editor!.getHTML());
+  }
+
   // Coller du HTML "rendu" (copié depuis une page web) est déjà géré nativement
   // par Tiptap — le presse-papier fournit alors du `text/html`. Ce bouton
   // couvre le cas différent où l'utilisateur colle le CODE SOURCE HTML en tant
-  // que texte brut (ex: un email exporté) : `insertContent` avec une chaîne
-  // la fait analyser comme balisage, pas comme texte littéral.
+  // que texte brut (ex: un email exporté).
   //
-  // Le CSS (balise `<style>`, attributs `style=`) est conservé : un article
-  // doit pouvoir embarquer sa mise en forme. Le JS est retiré ici par confort
-  // d'édition, mais la vraie barrière est `sanitizeRichHtml`, appliquée à
-  // l'enregistrement ET au rendu — un filtrage fait uniquement ici se
-  // contournerait en appelant l'action directement.
+  // Un balisage de mise en page ne peut pas être inséré dans le document
+  // ProseMirror sans être détruit : il bascule le champ en mode source, où la
+  // chaîne est conservée telle quelle. Un fragment simple (titres, paragraphes,
+  // liens) reste inséré à la position du curseur, comportement le plus utile.
+  //
+  // Le JS est retiré ici par confort d'édition, mais la vraie barrière est
+  // `sanitizeRichHtml` / `sanitizeEmailHtml`, appliquée à l'enregistrement ET au
+  // rendu — un filtrage fait uniquement ici se contournerait en appelant
+  // l'action directement.
   function applyHtml() {
     const safeHtml = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "");
     if (safeHtml.trim()) {
-      editor!.chain().focus().insertContent(safeHtml).run();
+      if (needsHtmlSource(safeHtml)) {
+        const base = mode === "html" ? htmlSource : editor!.getHTML();
+        // Un document complet remplace le contenu : le concaténer produirait du
+        // balisage imbriqué invalide.
+        const isDocument = /<!doctype|<\s*html\b/i.test(safeHtml);
+        updateHtmlSource(isDocument || !base.trim() ? safeHtml : `${base}\n${safeHtml}`);
+        setMode("html");
+      } else {
+        editor!.chain().focus().insertContent(safeHtml).run();
+      }
     }
     setRawHtml("");
     setHtmlPopoverOpen(false);
@@ -210,140 +276,142 @@ export function RichTextEditor({
   return (
     <div className="rounded-md border">
       <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 p-1.5">
-        <ToolbarButton
-          title="Gras"
-          active={editor.isActive("bold")}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          <Bold className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Italique"
-          active={editor.isActive("italic")}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <Italic className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Titre 1"
-          active={editor.isActive("heading", { level: 1 })}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        >
-          <Heading1 className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Titre 2"
-          active={editor.isActive("heading", { level: 2 })}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        >
-          <Heading2 className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Liste à puces"
-          active={editor.isActive("bulletList")}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          <List className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Liste numérotée"
-          active={editor.isActive("orderedList")}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          <ListOrdered className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Citation"
-          active={editor.isActive("blockquote")}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        >
-          <Quote className="h-3.5 w-3.5" />
-        </ToolbarButton>
-
-        <div className="mx-1 h-4 w-px bg-border" />
-
-        <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
-          <PopoverTrigger asChild>
-            <span>
-              <ToolbarButton
-                title="Lien"
-                active={editor.isActive("link")}
-                onClick={() => {
-                  const { from, to, empty } = editor.state.selection;
-                  setLinkLabel(empty ? "" : editor.state.doc.textBetween(from, to, " "));
-                  setLinkUrl(editor.getAttributes("link").href ?? "");
-                  setLinkPopoverOpen(true);
-                }}
-              >
-                <Link2 className="h-3.5 w-3.5" />
-              </ToolbarButton>
-            </span>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 space-y-3" align="start">
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Texte affiché</p>
-              <Input
-                value={linkLabel}
-                onChange={(e) => setLinkLabel(e.target.value)}
-                placeholder="Cliquez ici"
-                className="h-8 text-sm"
-                onKeyDown={(e) => e.key === "Enter" && applyLink()}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Lien externe</p>
-              <Input
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://…"
-                className="h-8 text-sm"
-                onKeyDown={(e) => e.key === "Enter" && applyLink()}
-              />
-            </div>
-            {internalLinkTargets && internalLinkTargets.length > 0 && (
-              <div className="space-y-1.5 border-t pt-2.5">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Ou choisir un article
-                </p>
-                <div className="max-h-32 space-y-0.5 overflow-y-auto">
-                  {internalLinkTargets.map((target) => (
-                    <button
-                      key={target.id}
-                      type="button"
-                      onClick={() => selectInternalTarget(target)}
-                      className={cn(
-                        "block w-full truncate rounded px-1.5 py-1 text-left text-xs hover:bg-muted",
-                        linkUrl === `/kb/${target.slug}` && "bg-muted"
-                      )}
-                    >
-                      {target.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <Button type="button" size="sm" className="w-full" onClick={applyLink}>
-              {linkUrl.trim() ? "Insérer le lien" : "Retirer le lien"}
-            </Button>
-          </PopoverContent>
-        </Popover>
-
-        {onUploadImage && (
+        {mode === "visual" && (
           <>
-            <ToolbarButton
-              title="Insérer une image"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-            >
-              <ImagePlus className="h-3.5 w-3.5" />
-            </ToolbarButton>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              hidden
-              onChange={handleFileSelected}
-            />
+          <ToolbarButton
+            title="Gras"
+            active={editor.isActive("bold")}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+          >
+            <Bold className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Italique"
+            active={editor.isActive("italic")}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Titre 1"
+            active={editor.isActive("heading", { level: 1 })}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          >
+            <Heading1 className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Titre 2"
+            active={editor.isActive("heading", { level: 2 })}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          >
+            <Heading2 className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Liste à puces"
+            active={editor.isActive("bulletList")}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+          >
+            <List className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Liste numérotée"
+            active={editor.isActive("orderedList")}
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Citation"
+            active={editor.isActive("blockquote")}
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          >
+            <Quote className="h-3.5 w-3.5" />
+          </ToolbarButton>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+            <PopoverTrigger asChild>
+              <span>
+                <ToolbarButton
+                  title="Lien"
+                  active={editor.isActive("link")}
+                  onClick={() => {
+                    const { from, to, empty } = editor.state.selection;
+                    setLinkLabel(empty ? "" : editor.state.doc.textBetween(from, to, " "));
+                    setLinkUrl(editor.getAttributes("link").href ?? "");
+                    setLinkPopoverOpen(true);
+                  }}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </ToolbarButton>
+              </span>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 space-y-3" align="start">
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Texte affiché</p>
+                <Input
+                  value={linkLabel}
+                  onChange={(e) => setLinkLabel(e.target.value)}
+                  placeholder="Cliquez ici"
+                  className="h-8 text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && applyLink()}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Lien externe</p>
+                <Input
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="h-8 text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && applyLink()}
+                />
+              </div>
+              {internalLinkTargets && internalLinkTargets.length > 0 && (
+                <div className="space-y-1.5 border-t pt-2.5">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Ou choisir un article
+                  </p>
+                  <div className="max-h-32 space-y-0.5 overflow-y-auto">
+                    {internalLinkTargets.map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => selectInternalTarget(target)}
+                        className={cn(
+                          "block w-full truncate rounded px-1.5 py-1 text-left text-xs hover:bg-muted",
+                          linkUrl === `/kb/${target.slug}` && "bg-muted"
+                        )}
+                      >
+                        {target.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Button type="button" size="sm" className="w-full" onClick={applyLink}>
+                {linkUrl.trim() ? "Insérer le lien" : "Retirer le lien"}
+              </Button>
+            </PopoverContent>
+          </Popover>
+
+          {onUploadImage && (
+            <>
+              <ToolbarButton
+                title="Insérer une image"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+              </ToolbarButton>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                hidden
+                onChange={handleFileSelected}
+              />
           </>
         )}
 
@@ -405,11 +473,80 @@ export function RichTextEditor({
             <ImageIcon className="h-3.5 w-3.5" />
           </ToolbarButton>
         )}
+          </>
+        )}
+
+        {mode === "html" && (
+          <ToolbarButton
+            title={showPreview ? "Masquer l'aperçu" : "Afficher l'aperçu"}
+            active={showPreview}
+            onClick={() => setShowPreview((previous) => !previous)}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </ToolbarButton>
+        )}
+
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => mode === "html" && switchToVisual()}
+            className={cn(
+              "rounded px-2 py-0.5 text-xs transition-colors",
+              mode === "visual"
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Visuel
+          </button>
+          <button
+            type="button"
+            onClick={() => mode === "visual" && switchToHtml()}
+            className={cn(
+              "rounded px-2 py-0.5 text-xs transition-colors",
+              mode === "html"
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Source HTML
+          </button>
+        </div>
       </div>
 
-      <div className="px-3 py-2" style={{ minHeight }}>
-        <EditorContent editor={editor} />
-      </div>
+      {mode === "visual" ? (
+        <div className="px-3 py-2" style={{ minHeight }}>
+          <EditorContent editor={editor} />
+        </div>
+      ) : (
+        <div>
+          <Textarea
+            value={htmlSource}
+            onChange={(e) => updateHtmlSource(e.target.value)}
+            placeholder="<table><tr><td style=&quot;padding:24px&quot;>…</td></tr></table>"
+            className="resize-y rounded-none border-0 font-mono text-xs focus-visible:ring-0"
+            style={{ minHeight }}
+            spellCheck={false}
+          />
+          {showPreview && (
+            <div className="border-t">
+              <p className="border-b bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
+                Aperçu — rendu isolé : le CSS du gabarit ne peut pas déborder sur
+                l&apos;application.
+              </p>
+              {/* `sandbox` vide : ni script, ni accès au document parent. Le
+                  contenu affiché ici n'est pas encore assaini (ça se fait à
+                  l'enregistrement), l'isolation n'est donc pas cosmétique. */}
+              <iframe
+                title="Aperçu du contenu"
+                sandbox=""
+                srcDoc={htmlSource}
+                className="h-96 w-full bg-white"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

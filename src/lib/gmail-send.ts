@@ -8,6 +8,8 @@ import {
   renderTicketClosureEmailText,
   renderAgentApprovalEmailHtml,
   renderAgentApprovalEmailText,
+  renderAgentMentionEmailHtml,
+  renderAgentMentionEmailText,
   renderTicketAcknowledgementEmailHtml,
   renderTicketAcknowledgementEmailText,
   type EmailHistoryEntry,
@@ -218,6 +220,61 @@ export async function sendAgentApprovalEmail({
       subject: "Votre accès à Ideeri Desk est validé",
       text,
       html,
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/**
+ * Prévient un agent qu'un collègue l'a mentionné en @ dans une note interne.
+ * Hors fil de discussion du client : pas de threadId ni d'In-Reply-To, la note
+ * ne doit jamais atterrir dans la conversation visible du client.
+ */
+export async function sendAgentMentionEmail({
+  to,
+  recipientName,
+  actorName,
+  ticket,
+  noteContent,
+}: {
+  to: string;
+  recipientName: string;
+  actorName: string;
+  ticket: { id: string; number: number; subject: string };
+  noteContent: string;
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const ticketUrl = process.env.APP_URL ? `${process.env.APP_URL}/tickets/${ticket.id}` : null;
+  const payload = {
+    recipientName,
+    actorName,
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    noteContent,
+    ticketUrl,
+  };
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      // Le nom vient du profil Google de l'agent : aplati sur une ligne avant
+      // d'entrer dans un en-tête, pour ne pas dépendre du nettoyage de la
+      // librairie d'encodage (injection d'en-tête).
+      subject: `${actorName.replace(/[\r\n]+/g, " ")} vous a mentionné · Ticket #${ticket.number}`,
+      text: renderAgentMentionEmailText(payload),
+      html: renderAgentMentionEmailHtml({ ...payload, logoUrl: getLogoUrl() }),
     });
 
     const raw = toBase64Url(await mail.compile().build());

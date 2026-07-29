@@ -8,17 +8,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn } from "@/lib/utils";
+import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-textarea";
+import type { MentionableAgent } from "@/lib/mentions";
 
 export function ReplyBox({
   ticketId,
   currentAgentName,
   canRespond,
   requiresApproval,
+  agents,
 }: {
   ticketId: string;
   currentAgentName: string;
   canRespond: boolean;
   requiresApproval: boolean;
+  /** Agents mentionnables en @ dans une note interne. */
+  agents: MentionableAgent[];
 }) {
   const router = useRouter();
   const [content, setContent] = useState("");
@@ -53,6 +58,14 @@ export function ReplyBox({
     try {
       const result = await addTicketMessage(ticketId, { content, isPrivate });
       setContent("");
+
+      if (isPrivate && result.mentionedNames.length > 0) {
+        toast.success(
+          `Note ajoutée · ${result.mentionedNames.join(", ")} notifié${
+            result.mentionedNames.length > 1 ? "s" : ""
+          } par email`
+        );
+      }
 
       if (!isPrivate) {
         if (result.pendingApproval) {
@@ -120,18 +133,32 @@ export function ReplyBox({
         </button>
       </div>
 
-      <Textarea
-        placeholder={isPrivate ? "Écrire une note interne…" : "Répondre au client…"}
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        rows={4}
-      />
+      {/* L'autocomplétion des mentions n'est montée que sur la note interne :
+          un @ dans une réponse publique ne notifie personne, proposer la liste
+          de l'équipe y serait un piège. */}
+      {isPrivate ? (
+        <MentionTextarea
+          value={content}
+          onChange={setContent}
+          agents={agents}
+          placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
+          rows={4}
+        />
+      ) : (
+        <Textarea
+          placeholder="Répondre au client…"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={4}
+        />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           {isPrivate ? "Note visible par l'équipe" : "Répond en tant que"}{" "}
           <span className="font-medium text-foreground">{currentAgentName}</span>
           {!isPrivate && requiresApproval && " · nécessite une validation"}
+          {isPrivate && " · tapez @ pour notifier un collègue"}
         </p>
 
         <div className="flex items-center gap-2">

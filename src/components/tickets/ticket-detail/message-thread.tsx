@@ -10,13 +10,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
 import type { TicketWithMessages } from "@/lib/actions/tickets";
+import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
+import type { MentionableAgent } from "@/lib/mentions";
 
 export function MessageThread({
   messages,
   canApprove,
+  agents,
+  currentAgentId,
 }: {
   messages: TicketWithMessages["messages"];
   canApprove: boolean;
+  /** Équipe utilisée pour surligner les mentions des notes internes. */
+  agents: MentionableAgent[];
+  currentAgentId: string | null;
 }) {
   const router = useRouter();
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
@@ -92,7 +99,17 @@ export function MessageThread({
             </span>
             <span>{formatDateTime(message.createdAt)}</span>
           </div>
-          <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+          {/* Seules les notes internes portent des mentions : une réponse
+              publique ne notifie personne, rien à surligner. */}
+          {message.isPrivate ? (
+            <MentionText
+              content={message.content}
+              agents={agents}
+              currentAgentId={currentAgentId}
+            />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+          )}
 
           {message.approvalStatus === "PENDING" && canApprove && (
             <div className="mt-3 flex gap-2 border-t pt-3">

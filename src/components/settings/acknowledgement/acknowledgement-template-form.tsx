@@ -27,6 +27,10 @@ export function AcknowledgementTemplateForm({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  // L'éditeur ne lit `value` qu'au montage (Tiptap possède ensuite son propre
+  // document, et le mode source son propre tampon) : réinitialiser `bodyHtml` ne
+  // suffit pas à réinitialiser le champ. Cette clé le remonte.
+  const [editorKey, setEditorKey] = useState(0);
 
   async function handleSave() {
     setIsSaving(true);
@@ -52,6 +56,7 @@ export function AcknowledgementTemplateForm({
     try {
       await deleteAcknowledgementTemplate();
       setBodyHtml(DEFAULT_ACKNOWLEDGEMENT_BODY_HTML);
+      setEditorKey((key) => key + 1);
       toast.success("Modèle supprimé");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Suppression impossible");
@@ -74,6 +79,7 @@ export function AcknowledgementTemplateForm({
       <div className="space-y-2">
         <Label>Contenu de l&apos;email</Label>
         <RichTextEditor
+          key={editorKey}
           value={bodyHtml}
           onChange={setBodyHtml}
           placeholder="Bonjour, nous avons bien reçu votre demande…"

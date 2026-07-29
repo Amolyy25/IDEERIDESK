@@ -37,6 +37,13 @@ export default async function TicketDetailPage({
   }
 
   const activeCustomFields = customFields.filter((field) => field.isActive);
+  // Agents mentionnables en @ dans une note interne : même liste que
+  // l'assignation, réduite à ce dont le parseur de mentions a besoin.
+  const mentionableAgents = agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    email: agent.email,
+  }));
   // Champs du formulaire par lequel le ticket est arrivé : sert à afficher les
   // réponses collectées, stockées dans `metadata` sous la clé de chaque champ.
   const sourceFields = ticket.formSourceId ? await getSourceFields(ticket.formSourceId) : [];
@@ -74,6 +81,8 @@ export default async function TicketDetailPage({
             <MessageThread
               messages={ticket.messages}
               canApprove={session?.user?.canApprove ?? false}
+              agents={mentionableAgents}
+              currentAgentId={session?.user?.id ?? null}
             />
           </section>
 
@@ -82,6 +91,7 @@ export default async function TicketDetailPage({
             currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
             canRespond={session?.user?.canRespond ?? false}
             requiresApproval={session?.user?.requiresApproval ?? false}
+            agents={mentionableAgents}
           />
         </div>
       </div>

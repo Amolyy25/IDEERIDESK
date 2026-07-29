@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getUnreadTicketCount } from "@/lib/actions/tickets";
 import { countPendingAgents } from "@/lib/actions/agents";
+import { getMyNotifications } from "@/lib/actions/notifications";
 import { Sidebar } from "@/components/layout/sidebar";
-import { GmailAutoSync } from "@/components/layout/gmail-auto-sync";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,19 +27,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  const [unreadCount, emailStatus, pendingAgentCount] = await Promise.all([
+  const [unreadCount, emailStatus, pendingAgentCount, notifications] = await Promise.all([
     getUnreadTicketCount(),
     getEmailAccountStatus(),
     session.user.role === "ADMIN" ? countPendingAgents() : Promise.resolve(0),
+    getMyNotifications(),
   ]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      {emailStatus.connected && <GmailAutoSync />}
       <Sidebar
         currentAgent={{ name: session.user.name, email: session.user.email }}
         unreadCount={unreadCount}
         pendingAgentCount={pendingAgentCount}
+        notifications={notifications.items}
+        unreadNotificationCount={notifications.unreadCount}
+        gmailConnected={emailStatus.connected}
       />
       {/* `min-w-0` : sans ça, un contenu large (tableau, texte long) élargit
           `main` au-delà du viewport et le parent `overflow-hidden` le rogne. */}

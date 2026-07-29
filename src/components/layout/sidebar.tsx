@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { BookOpen, Settings, Ticket, Users, UsersRound, type LucideIcon } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
+import { NotificationBell } from "@/components/layout/notification-bell";
+import { useBackgroundSync } from "@/components/layout/use-background-sync";
+import type { NotificationItem } from "@/lib/actions/notifications";
 
 type NavItem = { label: string; href: string; icon: LucideIcon };
 
@@ -79,13 +82,30 @@ export function Sidebar({
   currentAgent,
   unreadCount,
   pendingAgentCount,
+  notifications,
+  unreadNotificationCount,
+  gmailConnected,
 }: {
   currentAgent: CurrentAgent;
   unreadCount: number;
   /** Demandes d'accès en attente — toujours 0 pour un non-admin. */
   pendingAgentCount: number;
+  /** Mentions @ reçues par l'agent connecté. */
+  notifications: NotificationItem[];
+  unreadNotificationCount: number;
+  /** Boîte support connectée : conditionne le volet « emails » de la relève de fond. */
+  gmailConnected: boolean;
 }) {
   const pathname = usePathname();
+
+  // La barre latérale est le seul composant monté sur toutes les pages de
+  // l'espace agent : c'est ici que vit l'unique horloge d'arrière-plan
+  // (réception des emails + des mentions), pas dans deux composants séparés.
+  const notificationState = useBackgroundSync({
+    gmailConnected,
+    initialItems: notifications,
+    initialUnreadCount: unreadNotificationCount,
+  });
 
   // Une fiche ou une sous-page garde sa section parente active, sans qu'un
   // préfixe de route en attrape une autre (`/agents` vs `/agents-archive`).
@@ -112,7 +132,14 @@ export function Sidebar({
           priority
           className="h-7 w-7 shrink-0 rounded-full object-cover"
         />
-        <span className="text-sm font-semibold tracking-tight">Ideeri Desk</span>
+        <span className="flex-1 truncate text-sm font-semibold tracking-tight">Ideeri Desk</span>
+        <NotificationBell
+          items={notificationState.items}
+          unreadCount={notificationState.unreadCount}
+          onOpen={notificationState.refreshOnDemand}
+          onRead={notificationState.markRead}
+          onReadAll={notificationState.markAllRead}
+        />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation principale">

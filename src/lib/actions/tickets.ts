@@ -13,6 +13,7 @@ import {
   requireCanRespond,
 } from "@/lib/require-permission";
 import type { EmailHistoryEntry } from "@/lib/email-template";
+import { notifyMentionedAgents } from "@/lib/mention-notifications";
 
 const ticketInclude = {
   status: true,
@@ -354,15 +355,33 @@ export async function addTicketMessage(
   revalidatePath("/tickets");
 
   if (!isPublicAgentReply) {
-    return { emailSent: false as const, emailSkippedReason: null, pendingApproval: false };
+    // Les pings « @Prénom Nom » ne valent que pour une note interne : une
+    // réponse publique part au client, y citer un collègue n'a pas de sens.
+    const { mentionedNames } = await notifyMentionedAgents({
+      ticketId,
+      messageId: message.id,
+      actorId: agentId,
+      content: data.content,
+    });
+    return {
+      emailSent: false as const,
+      emailSkippedReason: null,
+      pendingApproval: false,
+      mentionedNames,
+    };
   }
 
   if (needsApproval) {
-    return { emailSent: false as const, emailSkippedReason: null, pendingApproval: true };
+    return {
+      emailSent: false as const,
+      emailSkippedReason: null,
+      pendingApproval: true,
+      mentionedNames: [] as string[],
+    };
   }
 
   const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content);
-  return { ...sendResult, pendingApproval: false };
+  return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[] };
 }
 
 export async function approveMessage(messageId: string) {

@@ -339,6 +339,114 @@ export function renderAgentApprovalEmailHtml({
 </html>`;
 }
 
+// Email interne également : prévient un agent qu'un collègue l'a mentionné en
+// @ dans une note interne. Le corps reprend la note telle quelle — une note
+// interne ne quitte jamais l'équipe, `to` est toujours une adresse Ideeri.
+export function renderAgentMentionEmailHtml({
+  recipientName,
+  actorName,
+  ticketNumber,
+  ticketSubject,
+  noteContent,
+  ticketUrl,
+  logoUrl,
+}: {
+  recipientName: string;
+  actorName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  noteContent: string;
+  ticketUrl: string | null;
+  logoUrl?: string | null;
+}) {
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 4px;">
+                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
+                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">Ideeri Desk</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Vous avez été mentionné · Ticket #${ticketNumber}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
+                <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+                <p style="margin:0 0 16px;">
+                  <strong>${escapeHtml(actorName)}</strong> vous a mentionné dans une note interne
+                  du ticket #${ticketNumber} — ${escapeHtml(ticketSubject)}.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:4px 32px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
+                        Note interne
+                      </p>
+                      <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${escapeHtml(noteContent)}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ${
+              ticketUrl
+                ? `<tr>
+              <td style="padding:12px 32px 8px;">
+                <a href="${escapeHtml(ticketUrl)}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">Ouvrir le ticket</a>
+              </td>
+            </tr>`
+                : ""
+            }
+            <tr>
+              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
+                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
+                  Email automatique — répondez depuis le ticket, pas par email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+export function renderAgentMentionEmailText({
+  recipientName,
+  actorName,
+  ticketNumber,
+  ticketSubject,
+  noteContent,
+  ticketUrl,
+}: {
+  recipientName: string;
+  actorName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  noteContent: string;
+  ticketUrl: string | null;
+}) {
+  const cta = ticketUrl ? `\n\nOuvrir le ticket : ${ticketUrl}` : "";
+  return `Bonjour ${recipientName},
+
+${actorName} vous a mentionné dans une note interne du ticket #${ticketNumber} — ${ticketSubject}.
+
+Note interne
+${noteContent}${cta}
+
+—
+Email automatique — répondez depuis le ticket, pas par email.`;
+}
+
 export function renderAgentApprovalEmailText({
   agentName,
   appUrl,

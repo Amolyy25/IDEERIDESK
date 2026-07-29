@@ -19,6 +19,10 @@ export function ClosureTemplateForm({
   const [bodyHtml, setBodyHtml] = useState(template?.bodyHtml ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  // L'éditeur ne lit `value` qu'au montage (Tiptap possède ensuite son propre
+  // document, et le mode source son propre tampon) : vider `bodyHtml` ne suffit
+  // pas à vider le champ. Cette clé le remonte.
+  const [editorKey, setEditorKey] = useState(0);
 
   async function handleSave() {
     setIsSaving(true);
@@ -40,6 +44,7 @@ export function ClosureTemplateForm({
     try {
       await deleteClosureTemplate();
       setBodyHtml("");
+      setEditorKey((key) => key + 1);
       toast.success("Modèle supprimé");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Suppression impossible");
@@ -61,6 +66,7 @@ export function ClosureTemplateForm({
       <div className="space-y-2">
         <Label>Contenu de l&apos;email</Label>
         <RichTextEditor
+          key={editorKey}
           value={bodyHtml}
           onChange={setBodyHtml}
           placeholder="Bonjour, votre demande a bien été traitée…"

@@ -53,6 +53,9 @@ model Agent {
   approvedMessages Message[] @relation("MessageApprovedBy")
   groups           Group[]
 
+  notifications     Notification[] @relation("NotificationRecipient")
+  sentNotifications Notification[] @relation("NotificationActor")
+
   // Admin ayant approuvé/refusé ce compte (null pour les comptes créés avant
   // le workflow d'approbation).
   approvalDecidedBy   Agent?  @relation("AgentApprovalDecidedBy", fields: [approvalDecidedById], references: [id])
@@ -310,8 +313,9 @@ model Ticket {
   formSource   Source? @relation(fields: [formSourceId], references: [id])
   formSourceId String?
 
-  messages    Message[]
-  attachments Attachment[]
+  messages      Message[]
+  attachments   Attachment[]
+  notifications Notification[]
 
   @@index([formSourceId])
   @@index([statusId])
@@ -377,9 +381,48 @@ model Message {
   approvedBy   Agent?  @relation("MessageApprovedBy", fields: [approvedById], references: [id])
   approvedById String?
 
+  notifications Notification[]
+
   @@index([ticketId])
   @@index([approvalStatus])
   @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications internes (mentions @agent dans les notes internes)
+// ---------------------------------------------------------------------------
+
+enum NotificationType {
+  MENTION
+}
+
+// Un agent mentionné en @ dans une note interne reçoit à la fois un email et
+// une ligne ici, lue par la cloche du dashboard. `excerpt` fige un extrait de
+// la note au moment du ping : la cloche reste lisible même si la note est
+// réécrite ensuite.
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType @default(MENTION)
+  excerpt   String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  recipient   Agent  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId String
+
+  // Auteur du ping. Optionnel pour survivre à la suppression de son compte —
+  // la notification reste consultable, sans nom d'auteur.
+  actor   Agent?  @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId String?
+
+  ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String?
+
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String?
+
+  @@index([recipientId, readAt])
+  @@map("notifications")
 }
 
 // ---------------------------------------------------------------------------
