@@ -65,9 +65,15 @@ export function StatusesTable({ statuses }: { statuses: TicketStatus[] }) {
                   </span>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-1.5">
+                  {/* Les cibles des boutons d'action sont des réglages
+                      singleton : sans badge, impossible de savoir lequel des
+                      statuts les porte sans ouvrir chaque fiche. */}
+                  <div className="flex flex-wrap gap-1.5">
                     {status.isDefault && <Badge variant="secondary">Par défaut</Badge>}
                     {status.isClosed && <Badge variant="outline">Fermé</Badge>}
+                    {status.isInProgressDefault && <Badge variant="outline">Prise en charge</Badge>}
+                    {status.isCloseDefault && <Badge variant="outline">Clôture</Badge>}
+                    {status.isReopenDefault && <Badge variant="outline">Réouverture</Badge>}
                   </div>
                 </TableCell>
                 <TableCell className="text-right">

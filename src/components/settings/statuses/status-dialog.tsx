@@ -40,6 +40,7 @@ export function StatusDialog({
         isDefault: formData.get("isDefault") === "on",
         isInProgressDefault: formData.get("isInProgressDefault") === "on",
         isCloseDefault: formData.get("isCloseDefault") === "on",
+        isReopenDefault: formData.get("isReopenDefault") === "on",
       };
       if (status) {
         await updateTicketStatus(status.id, input);
@@ -120,6 +121,20 @@ export function StatusDialog({
               className="text-sm font-normal text-muted-foreground"
             >
               Statut appliqué par le bouton « Clore ce ticket »
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="isReopenDefault"
+              name="isReopenDefault"
+              defaultChecked={status?.isReopenDefault}
+            />
+            <Label
+              htmlFor="isReopenDefault"
+              className="text-sm font-normal text-muted-foreground"
+            >
+              Statut appliqué quand un client répond à un ticket clos
             </Label>
           </div>
 

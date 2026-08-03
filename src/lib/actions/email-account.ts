@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { createOAuthClient } from "@/lib/google-oauth";
 import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
 import {
+  INBOUND_CREATE_TICKETS_KEY,
   SENDER_NAME_KEY,
   readEmailAccountStatus,
   type EmailAccountStatus,
@@ -37,6 +38,30 @@ export async function updateSenderName(name: string) {
     },
   });
   revalidatePath("/settings/email");
+}
+
+/**
+ * Active ou coupe la création de tickets depuis les emails entrants. Réservé aux
+ * administrateurs : le réglage décide de ce qui entre dans la file de tous les
+ * agents, et une boîte Gmail ordinaire reçoit aussi du courrier hors support.
+ */
+export async function updateInboundTicketCreation(enabled: boolean) {
+  await requireAdmin();
+  const value = z.boolean().parse(enabled) ? "1" : "0";
+
+  await prisma.globalSetting.upsert({
+    where: { key: INBOUND_CREATE_TICKETS_KEY },
+    update: { value },
+    create: {
+      key: INBOUND_CREATE_TICKETS_KEY,
+      value,
+      label: "Créer des tickets depuis les emails entrants",
+      description:
+        "« 1 » : un email reçu sur la boîte support et rattaché à aucun ticket ouvre un nouveau ticket. « 0 » : il est ignoré.",
+    },
+  });
+  revalidatePath("/settings/email");
+  revalidatePath("/tickets");
 }
 
 export async function disconnectEmailAccount() {

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +22,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { disconnectEmailAccount, updateSenderName } from "@/lib/actions/email-account";
+import {
+  disconnectEmailAccount,
+  updateInboundTicketCreation,
+  updateSenderName,
+} from "@/lib/actions/email-account";
 import { formatDateTime } from "@/lib/format-date";
 
 type EmailAccountStatus = {
@@ -29,6 +34,7 @@ type EmailAccountStatus = {
   email: string | null;
   connectedAt: Date | null;
   senderName: string;
+  inboundCreatesTickets: boolean;
 };
 
 export function EmailSettingsPanel({
@@ -46,6 +52,8 @@ export function EmailSettingsPanel({
   const [senderName, setSenderName] = useState(status.senderName);
   const [isSavingName, setIsSavingName] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [createsTickets, setCreatesTickets] = useState(status.inboundCreatesTickets);
+  const [isSavingCreation, setIsSavingCreation] = useState(false);
 
   useEffect(() => {
     if (justConnected) {
@@ -65,6 +73,31 @@ export function EmailSettingsPanel({
       setSenderName(status.senderName);
     } finally {
       setIsSavingName(false);
+    }
+  }
+
+  async function handleTicketCreationChange(enabled: boolean) {
+    // Bascule optimiste : l'interrupteur suit le doigt tout de suite, et revient
+    // à son état précédent si le serveur refuse.
+    setCreatesTickets(enabled);
+    setIsSavingCreation(true);
+    try {
+      await updateInboundTicketCreation(enabled);
+      if (enabled) {
+        toast.success("Les emails entrants créent désormais des tickets");
+      } else {
+        toast.success("Les emails sans ticket correspondant seront ignorés");
+      }
+      router.refresh();
+    } catch (error) {
+      setCreatesTickets(!enabled);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Impossible d'enregistrer ce réglage");
+      }
+    } finally {
+      setIsSavingCreation(false);
     }
   }
 
@@ -175,10 +208,80 @@ export function EmailSettingsPanel({
             <h2 className="text-sm font-medium">Synchronisation</h2>
             <p className="text-xs text-muted-foreground">
               Automatique, en arrière-plan pendant qu&apos;un agent a le tableau de bord
-              ouvert. Seules les réponses à un ticket déjà créé (depuis le tableau de bord
-              ou le widget) sont prises en compte — un email sans rapport avec un ticket
-              existant est ignoré, pas transformé en nouveau ticket.
+              ouvert. Une réponse à un ticket existant est toujours rattachée à son fil,
+              qu&apos;elle arrive du tableau de bord, du widget ou du portail.
             </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="inboundCreatesTickets">
+                  Créer un ticket depuis un email entrant
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Un email reçu sur {status.email} qui ne répond à aucun ticket ouvre un
+                  nouveau ticket. Désactivé, il est ignoré.
+                </p>
+              </div>
+              <Switch
+                id="inboundCreatesTickets"
+                checked={createsTickets}
+                onCheckedChange={handleTicketCreationChange}
+                disabled={isSavingCreation || !isAdmin}
+              />
+            </div>
+
+            {createsTickets ? (
+              <ul className="space-y-1 rounded-md border bg-muted/30 px-3.5 py-3 text-xs text-muted-foreground">
+                <li>
+                  <span className="font-medium text-foreground">Objet</span> de l&apos;email
+                  → sujet du ticket ; <span className="font-medium text-foreground">corps</span>{" "}
+                  → demande initiale, pièces jointes comprises.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Expéditeur</span> → client
+                  rattaché au ticket (fiche créée s&apos;il est inconnu).
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Destinataire, copie,
+                  répondre à, date et objet d&apos;origine</span>{" "}
+                  sont conservés sur la fiche du ticket, sous « Email d&apos;origine ».
+                </li>
+                <li>
+                  Statut et priorité par défaut, aucun agent assigné. Le ticket remonte
+                  comme activité non lue.
+                </li>
+                <li>
+                  L&apos;
+                  <Link href="/settings/acknowledgement" className="underline">
+                    accusé de réception
+                  </Link>{" "}
+                  part en réponse à l&apos;email du client, dans son fil, avec le numéro du
+                  ticket. Aucun modèle configuré = aucun envoi.
+                </li>
+                <li>
+                  Réponses automatiques (« absent du bureau »), newsletters et listes de
+                  diffusion restent ignorées, comme les emails envoyés depuis la boîte
+                  elle-même.
+                </li>
+              </ul>
+            ) : (
+              <p className="rounded-md border bg-muted/30 px-3.5 py-3 text-xs text-muted-foreground">
+                Seules les réponses à un ticket déjà créé sont prises en compte. Un email
+                d&apos;un client connu sans ticket correspondant est signalé aux agents,
+                mais reste à traiter dans la boîte support.
+              </p>
+            )}
+
+            {!isAdmin && (
+              <p className="text-xs text-muted-foreground">
+                Réglage partagé par toute l&apos;équipe — modifiable uniquement par un
+                administrateur.
+              </p>
+            )}
           </div>
         </>
       )}

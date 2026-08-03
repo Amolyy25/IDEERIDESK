@@ -50,6 +50,13 @@ export function AutomationRulesTable({
     try {
       const result = await runAutomationsNow();
       toast.success(`${result.ticketsProcessed} ticket(s) traité(s)`);
+      // Une règle écartée est un réglage à corriger, pas un détail de log : sans
+      // ce signal, l'admin voit « 0 ticket traité » et croit sa règle inutile.
+      if (result.rulesSkipped > 0) {
+        toast.warning(
+          `${result.rulesSkipped} règle(s) ignorée(s) : statut d'arrivée identique au statut déclencheur.`
+        );
+      }
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Exécution impossible");

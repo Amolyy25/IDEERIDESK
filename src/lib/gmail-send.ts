@@ -12,8 +12,11 @@ import {
   renderAgentMentionEmailText,
   renderTicketAcknowledgementEmailHtml,
   renderTicketAcknowledgementEmailText,
+  renderTicketAssignedEmailHtml,
+  renderTicketAssignedEmailText,
   type EmailHistoryEntry,
 } from "@/lib/email-template";
+import { getEmailLayoutHtml } from "@/lib/email-layout-store";
 import { prisma } from "@/lib/prisma";
 
 function toBase64Url(buffer: Buffer) {
@@ -69,6 +72,7 @@ export async function sendTicketReplyEmail({
 
   const subject = `Re: [#${ticket.number}] ${ticket.subject}`;
   const html = renderTicketReplyEmailHtml({
+    layoutHtml: await getEmailLayoutHtml(),
     ticketNumber: ticket.number,
     senderName,
     bodyText,
@@ -119,10 +123,21 @@ export async function sendTicketReplyEmail({
 }
 
 /**
- * Accusé de réception envoyé au client dès la création de son ticket depuis un
- * formulaire public. Premier message du fil : pas de threadId ni d'In-Reply-To,
- * mais on enregistre le fil et le Message-ID créés sur le ticket pour que les
- * réponses suivantes de l'équipe (et celles du client) restent dans ce fil.
+ * Accusé de réception envoyé au client dès la création de son ticket.
+ *
+ * Deux cas, distingués par le fil déjà porté par le ticket :
+ *
+ * - ticket déposé depuis un formulaire public (widget, portail) : aucun fil
+ *   n'existe, l'accusé ouvre la conversation ;
+ * - ticket né d'un email entrant : l'accusé part **dans le fil du client**
+ *   (threadId + In-Reply-To), pour qu'il le reçoive comme une réponse à son
+ *   propre message. Indispensable, pas cosmétique : envoyé hors fil, Gmail
+ *   créerait une seconde conversation, `Ticket.gmailThreadId` basculerait
+ *   dessus, et la prochaine réponse du client — écrite dans son fil d'origine,
+ *   sans le tag [#N] dans le sujet — ne serait plus rattachée à son ticket.
+ *
+ * Dans les deux cas, le fil et le Message-ID retenus sont enregistrés sur le
+ * ticket pour que les tours suivants y restent.
  */
 export async function sendTicketAcknowledgementEmail({
   ticket,
@@ -134,6 +149,8 @@ export async function sendTicketAcknowledgementEmail({
     id: string;
     number: number;
     subject: string;
+    gmailThreadId?: string | null;
+    emailMessageId?: string | null;
   };
   clientEmail: string;
   senderName: string;
@@ -146,8 +163,16 @@ export async function sendTicketAcknowledgementEmail({
   const { gmail, account } = authenticated;
 
   const logoUrl = getLogoUrl();
-  const subject = `[#${ticket.number}] ${ticket.subject}`;
+
+  // « Re: » seulement quand l'accusé prolonge une conversation existante : en
+  // tête de fil, ce préfixe répondrait à un message que le client n'a pas écrit.
+  let subject = `[#${ticket.number}] ${ticket.subject}`;
+  if (ticket.gmailThreadId) {
+    subject = `Re: ${subject}`;
+  }
+
   const html = renderTicketAcknowledgementEmailHtml({
+    layoutHtml: await getEmailLayoutHtml(),
     ticketNumber: ticket.number,
     ticketSubject: ticket.subject,
     senderName,
@@ -168,12 +193,14 @@ export async function sendTicketAcknowledgementEmail({
       subject,
       text,
       html,
+      inReplyTo: ticket.emailMessageId ?? undefined,
+      references: ticket.emailMessageId ?? undefined,
     });
 
     const raw = toBase64Url(await mail.compile().build());
     const { data: sent } = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw },
+      requestBody: { raw, threadId: ticket.gmailThreadId ?? undefined },
     });
 
     const messageIdHeader = sent.id ? await fetchSentMessageIdHeader(gmail, sent.id) : undefined;
@@ -181,8 +208,8 @@ export async function sendTicketAcknowledgementEmail({
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
-        gmailThreadId: sent.threadId ?? undefined,
-        emailMessageId: messageIdHeader ?? undefined,
+        gmailThreadId: sent.threadId ?? ticket.gmailThreadId ?? undefined,
+        emailMessageId: messageIdHeader ?? ticket.emailMessageId ?? undefined,
       },
     });
 
@@ -210,7 +237,12 @@ export async function sendAgentApprovalEmail({
   const { gmail, account } = authenticated;
 
   const appUrl = process.env.APP_URL ?? null;
-  const html = renderAgentApprovalEmailHtml({ agentName, appUrl, logoUrl: getLogoUrl() });
+  const html = renderAgentApprovalEmailHtml({
+    layoutHtml: await getEmailLayoutHtml(),
+    agentName,
+    appUrl,
+    logoUrl: getLogoUrl(),
+  });
   const text = renderAgentApprovalEmailText({ agentName, appUrl });
 
   try {
@@ -264,6 +296,7 @@ export async function sendAgentMentionEmail({
     noteContent,
     ticketUrl,
   };
+  const layoutHtml = await getEmailLayoutHtml();
 
   try {
     const mail = new MailComposer({
@@ -274,7 +307,67 @@ export async function sendAgentMentionEmail({
       // librairie d'encodage (injection d'en-tête).
       subject: `${actorName.replace(/[\r\n]+/g, " ")} vous a mentionné · Ticket #${ticket.number}`,
       text: renderAgentMentionEmailText(payload),
-      html: renderAgentMentionEmailHtml({ ...payload, logoUrl: getLogoUrl() }),
+      html: renderAgentMentionEmailHtml({ ...payload, layoutHtml, logoUrl: getLogoUrl() }),
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/**
+ * Prévient un agent qu'un ticket vient de lui être confié. Email interne, pas
+ * de fil client : ni `threadId` ni `In-Reply-To`, comme l'email de mention.
+ */
+export async function sendTicketAssignedEmail({
+  to,
+  recipientName,
+  actorName,
+  ticket,
+}: {
+  to: string;
+  recipientName: string;
+  actorName: string;
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+    statusName: string;
+    priorityName: string;
+  };
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const ticketUrl = process.env.APP_URL ? `${process.env.APP_URL}/tickets/${ticket.id}` : null;
+  const payload = {
+    recipientName,
+    actorName,
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    statusName: ticket.statusName,
+    priorityName: ticket.priorityName,
+    ticketUrl,
+  };
+  const layoutHtml = await getEmailLayoutHtml();
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      // Nom aplati sur une ligne avant d'entrer dans un en-tête : il vient du
+      // profil Google de l'agent (injection d'en-tête), même précaution que
+      // l'email de mention.
+      subject: `Ticket #${ticket.number} vous a été assigné par ${actorName.replace(/[\r\n]+/g, " ")}`,
+      text: renderTicketAssignedEmailText(payload),
+      html: renderTicketAssignedEmailHtml({ ...payload, layoutHtml, logoUrl: getLogoUrl() }),
     });
 
     const raw = toBase64Url(await mail.compile().build());
@@ -311,7 +404,13 @@ export async function sendTicketClosureEmail({
 
   const logoUrl = getLogoUrl();
   const subject = `Re: [#${ticket.number}] ${ticket.subject} — Ticket clôturé`;
-  const html = renderTicketClosureEmailHtml({ ticketNumber: ticket.number, senderName, bodyHtml, logoUrl });
+  const html = renderTicketClosureEmailHtml({
+    layoutHtml: await getEmailLayoutHtml(),
+    ticketNumber: ticket.number,
+    senderName,
+    bodyHtml,
+    logoUrl,
+  });
   const text = renderTicketClosureEmailText({ ticketNumber: ticket.number, senderName, bodyHtml });
 
   try {

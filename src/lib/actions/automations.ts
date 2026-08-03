@@ -18,17 +18,28 @@ export async function getAutomationRules() {
   return prisma.automationRule.findMany({ include: ruleInclude, orderBy: { createdAt: "asc" } });
 }
 
-const ruleSchema = z.object({
-  name: z.string().trim().min(1, "Nom requis").max(120),
-  isActive: z.boolean(),
-  delayDays: z.number().int().min(1).max(365),
-  triggerStatusId: z.string().min(1),
-  actionStatusId: z.string().min(1),
-  addNote: z.boolean(),
-  noteContent: z.string().trim().max(2000),
-  sendEmail: z.boolean(),
-  emailContent: z.string().trim().max(5000).optional().nullable(),
-});
+const ruleSchema = z
+  .object({
+    name: z.string().trim().min(1, "Nom requis").max(120),
+    isActive: z.boolean(),
+    delayDays: z.number().int().min(1).max(365),
+    triggerStatusId: z.string().min(1),
+    actionStatusId: z.string().min(1),
+    addNote: z.boolean(),
+    noteContent: z.string().trim().max(2000),
+    sendEmail: z.boolean(),
+    emailContent: z.string().trim().max(5000).optional().nullable(),
+  })
+  // Sans cette contrainte, une règle dont le statut d'arrivée est aussi son
+  // statut déclencheur ne sort jamais ses tickets de son propre filtre : chaque
+  // passage du cron les re-traite, donc renvoie la note et l'email au client,
+  // indéfiniment. Le formulaire proposait les deux mêmes valeurs par défaut,
+  // il suffisait de ne pas y toucher pour créer la boucle.
+  .refine((data) => data.actionStatusId !== data.triggerStatusId, {
+    message:
+      "Le statut d'arrivée doit être différent du statut déclencheur, sinon la règle se rejoue sans fin sur les mêmes tickets.",
+    path: ["actionStatusId"],
+  });
 
 export async function createAutomationRule(input: z.infer<typeof ruleSchema>) {
   await requireAdmin();

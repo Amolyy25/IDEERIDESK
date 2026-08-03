@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AtSign, Bell } from "lucide-react";
+import { AtSign, Bell, UserPlus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format-date";
 import type { NotificationItem } from "@/lib/actions/notifications";
 
 /**
- * Cloche des mentions @. Purement présentationnelle : l'état et la relève
- * viennent de `useBackgroundSync`, appelé une seule fois par la barre latérale
- * — c'est ce qui garantit un seul intervalle de polling par onglet.
+ * Cloche des notifications internes — mentions @ et tickets confiés. Purement
+ * présentationnelle : l'état et la relève viennent de `useBackgroundSync`,
+ * appelé une seule fois par la barre latérale — c'est ce qui garantit un seul
+ * intervalle de polling par onglet.
  */
 export function NotificationBell({
   items,
@@ -68,11 +69,15 @@ export function NotificationBell({
 
         {items.length === 0 ? (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            Aucune mention pour l&apos;instant.
+            Aucune notification pour l&apos;instant.
           </p>
         ) : (
           <ul className="max-h-96 overflow-y-auto py-1">
-            {items.map((item) => (
+            {items.map((item) => {
+              const isAssignment = item.type === "ASSIGNMENT";
+              const Icon = isAssignment ? UserPlus : AtSign;
+
+              return (
               <li key={item.id}>
                 <Link
                   href={item.ticket ? `/tickets/${item.ticket.id}` : "/tickets"}
@@ -85,7 +90,7 @@ export function NotificationBell({
                     !item.readAt && "bg-primary/5"
                   )}
                 >
-                  <AtSign
+                  <Icon
                     className={cn(
                       "mt-0.5 h-4 w-4 shrink-0",
                       item.readAt ? "text-muted-foreground" : "text-primary"
@@ -93,8 +98,8 @@ export function NotificationBell({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm">
-                      <span className="font-medium">{item.actor?.name ?? "Un agent"}</span> vous a
-                      mentionné
+                      <span className="font-medium">{item.actor?.name ?? "Un agent"}</span>{" "}
+                      {isAssignment ? "vous a assigné un ticket" : "vous a mentionné"}
                       {item.ticket && (
                         <span className="text-muted-foreground">
                           {" "}
@@ -111,7 +116,8 @@ export function NotificationBell({
                   </span>
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </PopoverContent>

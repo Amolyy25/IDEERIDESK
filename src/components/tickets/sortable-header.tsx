@@ -29,7 +29,7 @@ export function SortableHeader({ sortKey, label }: { sortKey: string; label: str
       type="button"
       onClick={handleClick}
       className={cn(
-        "flex items-center gap-1 text-xs font-medium uppercase tracking-wide",
+        "flex items-center gap-1 text-xs font-medium whitespace-nowrap",
         isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
       )}
     >

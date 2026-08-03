@@ -13,6 +13,7 @@ import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
 import { MessageThread } from "@/components/tickets/ticket-detail/message-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
+import { EmailOrigin } from "@/components/tickets/ticket-detail/email-origin";
 import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
 
 export default async function TicketDetailPage({
@@ -68,6 +69,10 @@ export default async function TicketDetailPage({
             <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
             <AttachmentsList attachments={ticket.attachments} />
           </article>
+
+          {/* Uniquement pour les tickets nés d'un email entrant : en-têtes du mail
+              d'origine, juste sous la demande qu'ils décrivent. */}
+          <EmailOrigin metadata={ticket.metadata} />
 
           <section className="space-y-3">
             <h2 className="text-sm font-medium">

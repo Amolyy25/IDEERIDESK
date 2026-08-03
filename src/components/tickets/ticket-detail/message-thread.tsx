@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
 import type { TicketWithMessages } from "@/lib/actions/tickets";
 import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
+import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 import type { MentionableAgent } from "@/lib/mentions";
 
 export function MessageThread({
@@ -110,6 +111,11 @@ export function MessageThread({
           ) : (
             <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
           )}
+
+          {/* Les fichiers du tour de conversation, sous le message dont ils
+              proviennent : regroupés au niveau du ticket, on ne savait plus
+              lequel accompagnait quelle réponse. */}
+          <AttachmentsList attachments={message.attachments} />
 
           {message.approvalStatus === "PENDING" && canApprove && (
             <div className="mt-3 flex gap-2 border-t pt-3">

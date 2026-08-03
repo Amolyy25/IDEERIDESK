@@ -88,13 +88,21 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       {
         href: "/settings/email",
         label: "Boîte de support",
-        description: "Compte Gmail relié au support et synchronisation des réponses.",
+        description:
+          "Compte Gmail relié au support, réception des réponses et création de tickets depuis les emails entrants.",
+      },
+      {
+        href: "/settings/email-layout",
+        label: "Habillage des emails",
+        description:
+          "Le HTML et le CSS de l'enveloppe commune à tous les emails sortants : en-tête, carte, pied de page.",
+        adminOnly: true,
       },
       {
         href: "/settings/acknowledgement",
         label: "Accusé de réception",
         description:
-          "L'email envoyé au client dès qu'il dépose un ticket depuis un formulaire public.",
+          "L'email envoyé au client dès qu'un ticket est ouvert à son nom, depuis un formulaire public comme depuis un email entrant.",
         adminOnly: true,
       },
       {

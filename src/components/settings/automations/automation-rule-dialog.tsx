@@ -40,10 +40,27 @@ export function AutomationRuleDialog({
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [triggerStatusId, setTriggerStatusId] = useState(rule?.triggerStatusId ?? statuses[0]?.id ?? "");
-  const [actionStatusId, setActionStatusId] = useState(rule?.actionStatusId ?? statuses[0]?.id ?? "");
+  // Deux valeurs par défaut identiques créaient une règle en boucle infinie dès
+  // qu'on validait le formulaire sans y toucher : le statut d'arrivée démarre
+  // donc sur le premier statut *différent* du déclencheur.
+  const [actionStatusId, setActionStatusId] = useState(
+    rule?.actionStatusId ?? statuses.find((s) => s.id !== statuses[0]?.id)?.id ?? ""
+  );
   const [addNote, setAddNote] = useState(rule?.addNote ?? true);
   const [sendEmail, setSendEmail] = useState(rule?.sendEmail ?? false);
   const isEditing = Boolean(rule);
+
+  /**
+   * Le statut d'arrivée suit le déclencheur : choisir comme déclencheur le
+   * statut déjà sélectionné en arrivée décalerait l'arrivée sur une autre
+   * valeur, plutôt que de laisser le formulaire dans un état refusé au submit.
+   */
+  function handleTriggerChange(nextTriggerId: string) {
+    setTriggerStatusId(nextTriggerId);
+    if (nextTriggerId === actionStatusId) {
+      setActionStatusId(statuses.find((s) => s.id !== nextTriggerId)?.id ?? "");
+    }
+  }
 
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true);
@@ -99,7 +116,7 @@ export function AutomationRuleDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Si en statut</Label>
-              <Select value={triggerStatusId} onValueChange={setTriggerStatusId}>
+              <Select value={triggerStatusId} onValueChange={handleTriggerChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -133,11 +150,15 @@ export function AutomationRuleDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {statuses.map((status) => (
-                  <SelectItem key={status.id} value={status.id}>
-                    {status.name}
-                  </SelectItem>
-                ))}
+                {/* Le statut déclencheur est retiré de la liste : le proposer
+                    revenait à offrir la règle en boucle comme option. */}
+                {statuses
+                  .filter((status) => status.id !== triggerStatusId)
+                  .map((status) => (
+                    <SelectItem key={status.id} value={status.id}>
+                      {status.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

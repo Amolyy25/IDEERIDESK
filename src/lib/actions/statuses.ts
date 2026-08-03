@@ -12,6 +12,7 @@ const statusSchema = z.object({
   isDefault: z.boolean(),
   isInProgressDefault: z.boolean(),
   isCloseDefault: z.boolean(),
+  isReopenDefault: z.boolean(),
 });
 
 export async function getTicketStatuses() {
@@ -32,6 +33,9 @@ export async function createTicketStatus(input: z.infer<typeof statusSchema>) {
   }
   if (data.isCloseDefault) {
     await prisma.ticketStatus.updateMany({ data: { isCloseDefault: false } });
+  }
+  if (data.isReopenDefault) {
+    await prisma.ticketStatus.updateMany({ data: { isReopenDefault: false } });
   }
 
   await prisma.ticketStatus.create({ data: { ...data, order: count } });
@@ -57,6 +61,12 @@ export async function updateTicketStatus(id: string, input: z.infer<typeof statu
   if (data.isCloseDefault) {
     await prisma.ticketStatus.updateMany({
       data: { isCloseDefault: false },
+      where: { id: { not: id } },
+    });
+  }
+  if (data.isReopenDefault) {
+    await prisma.ticketStatus.updateMany({
+      data: { isReopenDefault: false },
       where: { id: { not: id } },
     });
   }

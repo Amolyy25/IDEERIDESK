@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -10,6 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
+import { cn } from "@/lib/utils";
 import type { TicketStatus, TicketPriority, TicketCategory, Agent } from "@/generated/prisma/client";
 
 const ALL = "__all__";
@@ -19,11 +23,14 @@ export function TicketsToolbar({
   priorities,
   categories,
   agents,
+  currentAgentId,
 }: {
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   categories: TicketCategory[];
   agents: Agent[];
+  /** Agent connecté, pour l'entrée « Mes tickets » du filtre d'assignation. */
+  currentAgentId: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -59,20 +66,43 @@ export function TicketsToolbar({
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  function resetFilters() {
+    setSearch("");
+    router.push(pathname);
+  }
+
+  // Ce que l'agent a posé lui-même, et qu'il doit pouvoir retirer d'un geste.
+  const filterKeys = ["search", "statusId", "priorityId", "categoryId", "assigneeId"];
+  const hasActiveFilters = filterKeys.some((key) => searchParams.get(key));
+
+  /** Un filtre posé se voit sur son propre contrôle, pas seulement dans la liste. */
+  function triggerClass(key: string, width: string) {
+    if (searchParams.get(key)) {
+      return cn("h-9 bg-card border-primary/50 text-foreground", width);
+    }
+    return cn("h-9 bg-card", width);
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Input
-        placeholder="Rechercher un ticket…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="h-9 w-64"
-      />
+    // Barre de filtres : deuxième bandeau de la carte, même gouttière `px-4`
+    // et même fond que les onglets — la zone blanche en dessous est réservée
+    // aux données.
+    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Rechercher un ticket…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 w-64 bg-card pl-8"
+        />
+      </div>
 
       <Select
         value={searchParams.get("statusId") ?? ALL}
         onValueChange={(v) => setFilter("statusId", v)}
       >
-        <SelectTrigger className="h-9 w-40">
+        <SelectTrigger className={triggerClass("statusId", "w-40")}>
           <SelectValue placeholder="Statut" />
         </SelectTrigger>
         <SelectContent>
@@ -89,7 +119,7 @@ export function TicketsToolbar({
         value={searchParams.get("priorityId") ?? ALL}
         onValueChange={(v) => setFilter("priorityId", v)}
       >
-        <SelectTrigger className="h-9 w-40">
+        <SelectTrigger className={triggerClass("priorityId", "w-40")}>
           <SelectValue placeholder="Priorité" />
         </SelectTrigger>
         <SelectContent>
@@ -106,7 +136,7 @@ export function TicketsToolbar({
         value={searchParams.get("categoryId") ?? ALL}
         onValueChange={(v) => setFilter("categoryId", v)}
       >
-        <SelectTrigger className="h-9 w-44">
+        <SelectTrigger className={triggerClass("categoryId", "w-44")}>
           <SelectValue placeholder="Produit concerné" />
         </SelectTrigger>
         <SelectContent>
@@ -123,18 +153,38 @@ export function TicketsToolbar({
         value={searchParams.get("assigneeId") ?? ALL}
         onValueChange={(v) => setFilter("assigneeId", v)}
       >
-        <SelectTrigger className="h-9 w-44">
+        <SelectTrigger className={triggerClass("assigneeId", "w-44")}>
           <SelectValue placeholder="Assigné à" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>Tous les agents</SelectItem>
-          {agents.map((agent) => (
-            <SelectItem key={agent.id} value={agent.id}>
-              {agent.name}
-            </SelectItem>
-          ))}
+          {/* Les deux vues quotidiennes d'un support, qu'il fallait jusqu'ici
+              reconstituer à la main : ce qui n'a pris personne, et ce qui est à
+              moi. « Non assigné » est une valeur réservée, aucun agent ne peut
+              porter cet identifiant. */}
+          <SelectItem value={UNASSIGNED_FILTER}>Non assigné</SelectItem>
+          {currentAgentId && <SelectItem value={currentAgentId}>Mes tickets</SelectItem>}
+          {agents
+            .filter((agent) => agent.id !== currentAgentId)
+            .map((agent) => (
+              <SelectItem key={agent.id} value={agent.id}>
+                {agent.name}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
+
+      {hasActiveFilters && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={resetFilters}
+          className="h-9 text-muted-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+          Réinitialiser
+        </Button>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { getUnreadTicketCount } from "@/lib/actions/tickets";
+import { getUnreadTicketCount, countPendingApprovalMessages } from "@/lib/actions/tickets";
 import { countPendingAgents } from "@/lib/actions/agents";
 import { getMyNotifications } from "@/lib/actions/notifications";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -27,12 +27,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  const [unreadCount, emailStatus, pendingAgentCount, notifications] = await Promise.all([
-    getUnreadTicketCount(),
-    getEmailAccountStatus(),
-    session.user.role === "ADMIN" ? countPendingAgents() : Promise.resolve(0),
-    getMyNotifications(),
-  ]);
+  const [unreadCount, emailStatus, pendingAgentCount, notifications, pendingApprovalCount] =
+    await Promise.all([
+      getUnreadTicketCount(),
+      getEmailAccountStatus(),
+      session.user.role === "ADMIN" ? countPendingAgents() : Promise.resolve(0),
+      getMyNotifications(),
+      // Le compteur n'est relevé que pour un agent habilité : l'action refuse
+      // les autres, l'appeler pour eux ferait échouer tout le rendu.
+      session.user.canApprove ? countPendingApprovalMessages() : Promise.resolve(0),
+    ]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -40,6 +44,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         currentAgent={{ name: session.user.name, email: session.user.email }}
         unreadCount={unreadCount}
         pendingAgentCount={pendingAgentCount}
+        canApprove={session.user.canApprove ?? false}
+        pendingApprovalCount={pendingApprovalCount}
         notifications={notifications.items}
         unreadNotificationCount={notifications.unreadCount}
         gmailConnected={emailStatus.connected}

@@ -1,16 +1,21 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { sendTicketReplyEmail } from "@/lib/gmail-send";
-import { getEmailAccountStatus } from "@/lib/actions/email-account";
+import { readEmailAccountStatus } from "@/lib/email-account";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Applies every active automation rule once. Meant to be called on a
- * schedule (see `/api/cron/automations`) — idempotent by construction:
- * once a rule moves a ticket out of its trigger status, that ticket no
- * longer matches the rule on the next run, so there's no separate
- * "already processed" bookkeeping to maintain.
+ * schedule (see `/api/cron/automations`) — idempotent because a rule always
+ * moves its tickets *out* of its own trigger status, so they no longer match
+ * on the next run and there's no "already processed" bookkeeping to maintain.
+ *
+ * Cette idempotence tient à une seule condition : `actionStatusId` doit
+ * différer de `triggerStatusId`. Sinon le ticket reste dans le filtre de la
+ * règle et chaque passage lui renvoie note et email. La création est désormais
+ * refusée dans ce cas (voir `ruleSchema`), mais les règles déjà en base n'ont
+ * jamais été validées : elles sont écartées ici plutôt qu'appliquées.
  */
 export async function runAutomations() {
   const rules = await prisma.automationRule.findMany({
@@ -19,8 +24,18 @@ export async function runAutomations() {
   });
 
   let processed = 0;
+  let skipped = 0;
 
   for (const rule of rules) {
+    if (rule.actionStatusId === rule.triggerStatusId) {
+      skipped += 1;
+      console.error(
+        `[automations] règle « ${rule.name} » ignorée : statut d'arrivée identique au statut ` +
+          `déclencheur, elle se rejouerait sans fin. Corrigez-la dans Paramètres > Règles automatiques.`
+      );
+      continue;
+    }
+
     const cutoff = new Date(Date.now() - rule.delayDays * DAY_MS);
     const tickets = await prisma.ticket.findMany({
       where: { statusId: rule.triggerStatusId, updatedAt: { lte: cutoff } },
@@ -48,7 +63,11 @@ export async function runAutomations() {
       }
 
       if (rule.sendEmail && rule.emailContent && ticket.client?.email) {
-        const { senderName } = await getEmailAccountStatus();
+        // Lecture sans garde d'accès : `runAutomations` tourne aussi depuis
+        // /api/cron/automations, authentifié par un secret et non par une
+        // session d'agent. L'action `getEmailAccountStatus` exige un agent
+        // approuvé et faisait donc échouer tout le passage du cron.
+        const { senderName } = await readEmailAccountStatus();
         const result = await sendTicketReplyEmail({
           ticket,
           clientEmail: ticket.client.email,
@@ -76,5 +95,5 @@ export async function runAutomations() {
 
   if (processed > 0) revalidatePath("/tickets");
 
-  return { rulesEvaluated: rules.length, ticketsProcessed: processed };
+  return { rulesEvaluated: rules.length - skipped, rulesSkipped: skipped, ticketsProcessed: processed };
 }

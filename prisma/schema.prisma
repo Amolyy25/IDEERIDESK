@@ -116,6 +116,11 @@ model TicketStatus {
   isInProgressDefault Boolean @default(false)
   // Idem pour le bouton "Clore ce ticket" — singleton, cible du statut de clôture.
   isCloseDefault Boolean @default(false)
+  // Statut appliqué quand un client répond par email à un ticket déjà clos —
+  // singleton comme les précédents. Sans flag posé, la réouverture retombe sur
+  // le statut `isDefault` : un client qui relance ne doit jamais rester bloqué
+  // derrière un ticket fermé que personne ne rouvre.
+  isReopenDefault Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -338,7 +343,15 @@ model Attachment {
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   ticketId String
 
+  // Tour de conversation auquel le fichier était joint. Null = pièce jointe de
+  // la demande initiale (formulaire public), affichée sous la description.
+  // `SetNull` et pas `Cascade` : supprimer un message ne doit pas faire
+  // disparaître une pièce jointe du dossier client.
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  messageId String?
+
   @@index([ticketId])
+  @@index([messageId])
   @@map("attachments")
 }
 
@@ -381,6 +394,7 @@ model Message {
   approvedBy   Agent?  @relation("MessageApprovedBy", fields: [approvedById], references: [id])
   approvedById String?
 
+  attachments   Attachment[]
   notifications Notification[]
 
   @@index([ticketId])
@@ -394,6 +408,10 @@ model Message {
 
 enum NotificationType {
   MENTION
+  // Ticket confié à un agent (bouton d'assignation du panneau d'attributs).
+  // Sans cette notification, une réassignation était totalement silencieuse :
+  // le ticket changeait de main sans que personne ne l'apprenne.
+  ASSIGNMENT
 }
 
 // Un agent mentionné en @ dans une note interne reçoit à la fois un email et
@@ -465,6 +483,18 @@ model TicketAcknowledgementTemplate {
   updatedAt DateTime @updatedAt
 
   @@map("ticket_acknowledgement_template")
+}
+
+// Habillage HTML commun à TOUS les emails sortants (en-tête, carte, pied de
+// page) — singleton comme les deux modèles ci-dessus. Le contenu propre à
+// chaque email s'insère dedans par emplacements ({{content}}, {{headline}}…),
+// voir src/lib/email-layout.ts. Pas de ligne = gabarit par défaut du code.
+model EmailLayoutTemplate {
+  id        String   @id @default(cuid())
+  html      String
+  updatedAt DateTime @updatedAt
+
+  @@map("email_layout_template")
 }
 
 enum PortalColorMode {

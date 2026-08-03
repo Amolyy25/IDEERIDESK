@@ -55,7 +55,16 @@ async function main() {
 
   const statuses = [
     { name: "Nouveau", color: "#a1a1aa", order: 0, isDefault: true, isClosed: false },
-    { name: "En cours", color: "#eab308", order: 1, isDefault: false, isClosed: false },
+    // Cible de la réouverture : un client qui relance après clôture rend son
+    // ticket à l'équipe, pas au tas des demandes jamais lues.
+    {
+      name: "En cours",
+      color: "#eab308",
+      order: 1,
+      isDefault: false,
+      isClosed: false,
+      isReopenDefault: true,
+    },
     { name: "En attente client", color: "#71717a", order: 2, isDefault: false, isClosed: false },
     { name: "Résolu", color: "#3f3f46", order: 3, isDefault: false, isClosed: true },
   ];

@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Settings, Ticket, Users, UsersRound, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  ShieldCheck,
+  Settings,
+  Ticket,
+  Users,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -14,6 +22,8 @@ type NavItem = { label: string; href: string; icon: LucideIcon };
 
 // Le travail quotidien en haut, groupé par nature ; la configuration en bas,
 // près de la fiche agent — elle ne se consulte pas au même rythme.
+const APPROVALS_ITEM: NavItem = { label: "Validations", href: "/approvals", icon: ShieldCheck };
+
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Support",
@@ -35,6 +45,14 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 const SETTINGS_ITEM: NavItem = { label: "Paramètres", href: "/settings", icon: Settings };
 
 type CurrentAgent = { name: string | null | undefined; email: string | null | undefined };
+
+/** Ce que compte la pastille, pour un lecteur d'écran : un nombre nu ne dit rien. */
+function badgeLabel(href: string, count: number) {
+  const plural = count > 1 ? "s" : "";
+  if (href === "/agents") return `${count} demande${plural} d'accès en attente`;
+  if (href === APPROVALS_ITEM.href) return `${count} réponse${plural} en attente de validation`;
+  return `${count} ticket${plural} avec de l'activité non lue`;
+}
 
 function NavLink({
   item,
@@ -64,11 +82,7 @@ function NavLink({
       <span className="flex-1 truncate">{item.label}</span>
       {badge !== null && (
         <span
-          aria-label={
-            item.href === "/agents"
-              ? `${badge} demande${badge > 1 ? "s" : ""} d'accès en attente`
-              : `${badge} ticket${badge > 1 ? "s" : ""} avec de l'activité non lue`
-          }
+          aria-label={badgeLabel(item.href, badge)}
           className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sidebar-primary px-1 text-[10px] font-semibold tabular-nums text-sidebar-primary-foreground"
         >
           {badge}
@@ -82,6 +96,8 @@ export function Sidebar({
   currentAgent,
   unreadCount,
   pendingAgentCount,
+  canApprove,
+  pendingApprovalCount,
   notifications,
   unreadNotificationCount,
   gmailConnected,
@@ -90,6 +106,10 @@ export function Sidebar({
   unreadCount: number;
   /** Demandes d'accès en attente — toujours 0 pour un non-admin. */
   pendingAgentCount: number;
+  /** Agent habilité à valider les réponses : conditionne l'entrée « Validations ». */
+  canApprove: boolean;
+  /** Réponses retenues en attente de validation — toujours 0 sans `canApprove`. */
+  pendingApprovalCount: number;
   /** Mentions @ reçues par l'agent connecté. */
   notifications: NotificationItem[];
   unreadNotificationCount: number;
@@ -111,13 +131,24 @@ export function Sidebar({
   // préfixe de route en attrape une autre (`/agents` vs `/agents-archive`).
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  // Deux pastilles seulement : activité non lue sur les tickets, demandes
-  // d'accès en attente sur l'équipe (visible des seuls admins).
+  // Trois pastilles : activité non lue sur les tickets, demandes d'accès en
+  // attente sur l'équipe (admins seuls), réponses à valider (agents habilités).
   const badgeFor = (href: string) => {
     if (href === "/tickets") return unreadCount > 0 ? unreadCount : null;
     if (href === "/agents") return pendingAgentCount > 0 ? pendingAgentCount : null;
+    if (href === APPROVALS_ITEM.href) {
+      return pendingApprovalCount > 0 ? pendingApprovalCount : null;
+    }
     return null;
   };
+
+  // L'entrée n'apparaît que pour qui peut s'en servir : ailleurs, la page
+  // renvoie vers les tickets.
+  const navGroups = canApprove
+    ? NAV_GROUPS.map((group) =>
+        group.label === "Support" ? { ...group, items: [...group.items, APPROVALS_ITEM] } : group
+      )
+    : NAV_GROUPS;
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -143,7 +174,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation principale">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
             <p className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/40">
               {group.label}

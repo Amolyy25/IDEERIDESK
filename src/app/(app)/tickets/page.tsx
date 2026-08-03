@@ -1,14 +1,13 @@
-import Link from "next/link";
 import { auth } from "@/auth";
-import { getTickets } from "@/lib/actions/tickets";
+import { getTickets, getTicketQueueStats } from "@/lib/actions/tickets";
 import { getTicketStatuses } from "@/lib/actions/statuses";
 import { getTicketPriorities } from "@/lib/actions/priorities";
 import { getTicketCategories } from "@/lib/actions/categories";
 import { getAgents } from "@/lib/actions/agents";
 import { getClients } from "@/lib/actions/clients";
 import { getAgentDefaultCategoryIds } from "@/lib/actions/groups";
-import { DataTable } from "@/components/ui/data-table";
-import { ticketColumns } from "@/components/tickets/columns";
+import { QueueTabs } from "@/components/tickets/queue-tabs";
+import { TicketsTable } from "@/components/tickets/tickets-table";
 import { TicketsToolbar } from "@/components/tickets/tickets-toolbar";
 import { TablePagination } from "@/components/tickets/table-pagination";
 import { NewTicketDialog } from "@/components/tickets/new-ticket-dialog";
@@ -38,12 +37,21 @@ export default async function TicketsPage({
   );
   const wantsAllScope = params.scope === "all";
 
-  let autoCategoryIds: string[] = [];
-  if (!hasManualFilter && !wantsAllScope && session?.user?.id) {
-    autoCategoryIds = await getAgentDefaultCategoryIds(session.user.id);
+  // Produits couverts par les groupes de l'agent. La bande de vues s'y tient
+  // toujours — c'est « sa » journée, elle ne doit pas changer de périmètre parce
+  // qu'il tape une recherche. La liste, elle, s'ouvre à tout dès qu'un filtre
+  // manuel est posé : un filtre explicite prime sur le périmètre implicite.
+  let agentCategoryIds: string[] = [];
+  if (!wantsAllScope && session?.user?.id) {
+    agentCategoryIds = await getAgentDefaultCategoryIds(session.user.id);
   }
 
-  const [{ tickets, total, pageSize }, statuses, priorities, categories, agents, clients] =
+  let autoCategoryIds: string[] = [];
+  if (!hasManualFilter) {
+    autoCategoryIds = agentCategoryIds;
+  }
+
+  const [{ tickets, total, pageSize }, stats, statuses, priorities, categories, agents, clients] =
     await Promise.all([
       getTickets({
         page,
@@ -56,6 +64,10 @@ export default async function TicketsPage({
         sortBy: params.sortBy as never,
         sortDir: params.sortDir as never,
       }),
+      getTicketQueueStats({
+        agentId: session?.user?.id ?? null,
+        categoryIds: agentCategoryIds,
+      }),
       getTicketStatuses(),
       getTicketPriorities(),
       getTicketCategories(),
@@ -64,20 +76,16 @@ export default async function TicketsPage({
     ]);
 
   const pageCount = Math.max(Math.ceil(total / pageSize), 1);
-  const autoFilterActive = autoCategoryIds.length > 0;
-  const autoFilterNames = categories
-    .filter((c) => autoCategoryIds.includes(c.id))
-    .map((c) => c.name)
-    .join(", ");
+  const groupNames = categories
+    .filter((category) => autoCategoryIds.includes(category.id))
+    .map((category) => category.name);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Tickets</h1>
-          <p className="text-sm text-muted-foreground">
-            Suivez et traitez les demandes entrantes.
-          </p>
+    <div className="flex h-full min-h-0 flex-col gap-4 bg-muted/20 p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-0.5">
+          <h1 className="text-lg font-semibold tracking-tight">Tickets</h1>
+          <p className="text-sm text-muted-foreground">Suivez et traitez les demandes entrantes.</p>
         </div>
         <NewTicketDialog
           statuses={statuses}
@@ -87,27 +95,37 @@ export default async function TicketsPage({
         />
       </div>
 
-      {autoFilterActive && (
-        <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-3.5 py-2 text-sm">
-          <span className="text-muted-foreground">
-            Filtré sur vos groupes : <span className="text-foreground">{autoFilterNames}</span>
-          </span>
-          <Link href="/tickets?scope=all" className="font-medium text-primary hover:underline">
-            Voir tous les tickets
-          </Link>
+      {/* Un seul objet plutôt que trois blocs flottants : vues, filtres, file et
+          pagination partagent le même cadre et la même gouttière `px-4`. La
+          carte prend la hauteur restante et défile sur elle-même, ce qui garde
+          la pagination visible et évite la grande zone vide en bas de page
+          quand la file est courte. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card shadow-xs">
+        <QueueTabs
+          stats={stats}
+          currentAgentId={session?.user?.id ?? null}
+          activeAssigneeId={params.assigneeId ?? null}
+          groupNames={groupNames}
+        />
+
+        <TicketsToolbar
+          statuses={statuses}
+          priorities={priorities}
+          categories={categories}
+          agents={agents}
+          currentAgentId={session?.user?.id ?? null}
+        />
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          <TicketsTable
+            tickets={tickets}
+            priorities={priorities}
+            hasActiveFilters={hasManualFilter}
+          />
         </div>
-      )}
 
-      <TicketsToolbar
-        statuses={statuses}
-        priorities={priorities}
-        categories={categories}
-        agents={agents}
-      />
-
-      <DataTable columns={ticketColumns} data={tickets} emptyMessage="Aucun ticket pour le moment." />
-
-      <TablePagination page={page} pageCount={pageCount} total={total} />
+        <TablePagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} />
+      </div>
     </div>
   );
 }

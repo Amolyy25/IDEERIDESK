@@ -1,16 +1,12 @@
 import { Paperclip } from "lucide-react";
-import type { TicketWithMessages } from "@/lib/actions/tickets";
+import type { TicketAttachment } from "@/lib/actions/tickets";
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} o`;
   return `${Math.round(bytes / 1024)} Ko`;
 }
 
-export function AttachmentsList({
-  attachments,
-}: {
-  attachments: TicketWithMessages["attachments"];
-}) {
+export function AttachmentsList({ attachments }: { attachments: TicketAttachment[] }) {
   if (attachments.length === 0) return null;
 
   return (

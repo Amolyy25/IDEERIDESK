@@ -62,12 +62,14 @@ export function useBackgroundSync({
     if (!announce || fresh.length === 0) return false;
 
     const [first] = fresh;
+    const actorName = first.actor?.name ?? "Un agent";
+    const onTicket = first.ticket ? ` · ticket #${first.ticket.number}` : "";
     toast.info(
       fresh.length === 1
-        ? `${first.actor?.name ?? "Un agent"} vous a mentionné${
-            first.ticket ? ` sur le ticket #${first.ticket.number}` : ""
-          }`
-        : `${fresh.length} nouvelles mentions`
+        ? first.type === "ASSIGNMENT"
+          ? `${actorName} vous a assigné un ticket${onTicket}`
+          : `${actorName} vous a mentionné${onTicket}`
+        : `${fresh.length} nouvelles notifications`
     );
     return true;
   }, []);
@@ -87,8 +89,27 @@ export function useBackgroundSync({
         if (gmailConnected) {
           const result = await triggerManualGmailSync();
           if (result.connected && result.appended > 0) {
-            toast.info(`${result.appended} nouveau(x) message(s) reçu(s)`);
+            let message = `${result.appended} nouveau(x) message(s) reçu(s)`;
+            if (result.reopened > 0) {
+              message += ` · ${result.reopened} ticket(s) réouvert(s)`;
+            }
+            toast.info(message);
             shouldRefresh = true;
+          }
+          // Emails entrants transformés en tickets (réglage activable dans
+          // /settings/email) : signalés à part des réponses, c'est du travail
+          // qui entre dans la file, pas un fil qui avance.
+          if (result.connected && result.created > 0) {
+            toast.info(`${result.created} nouveau(x) ticket(s) créé(s) par email`);
+            shouldRefresh = true;
+          }
+          // Relance d'un client connu qui ne s'est rattachée à aucun ticket :
+          // le message existe côté Gmail mais n'entrera jamais dans un fil,
+          // quelqu'un doit aller le chercher dans la boîte.
+          if (result.connected && result.orphaned > 0) {
+            toast.warning(
+              `${result.orphaned} email(s) de client(s) sans ticket correspondant — à traiter dans la boîte support.`
+            );
           }
         }
       } catch {

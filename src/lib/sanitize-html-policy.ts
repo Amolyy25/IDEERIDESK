@@ -101,6 +101,10 @@ export const EMAIL_TAGS = [
 
 export const EMAIL_ATTR = [
   ...ARTICLE_ATTR.filter((attr) => !VIDEO_ONLY_ATTR.includes(attr)),
+  // `role="presentation"` sur les tableaux de mise en page : sans lui, un
+  // lecteur d'écran annonce la structure de l'habillage comme un tableau de
+  // données. Ne décrit que la sémantique, n'exécute rien.
+  "role",
   // Attributs de présentation historiques, encore les plus fiables en email.
   "align",
   "valign",

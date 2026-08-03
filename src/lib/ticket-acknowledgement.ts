@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendTicketAcknowledgementEmail } from "@/lib/gmail-send";
-import { getEmailAccountStatus } from "@/lib/actions/email-account";
+import { readEmailAccountStatus } from "@/lib/email-account";
 
 export type AcknowledgementResult = {
   sent: boolean;
@@ -9,9 +9,10 @@ export type AcknowledgementResult = {
 };
 
 /**
- * Envoie l'accusé de réception au client d'un ticket fraîchement créé depuis un
- * formulaire public. Best-effort : ne lève jamais, pour qu'un souci d'email ne
- * fasse pas échouer la création du ticket côté client.
+ * Envoie l'accusé de réception au client d'un ticket fraîchement créé, quel
+ * qu'en soit le canal : formulaire public (widget, portail) ou email entrant.
+ * Best-effort : ne lève jamais, pour qu'un souci d'email ne fasse pas échouer la
+ * création du ticket côté client.
  */
 export async function sendTicketAcknowledgement(ticketId: string): Promise<AcknowledgementResult> {
   try {
@@ -30,7 +31,13 @@ export async function sendTicketAcknowledgement(ticketId: string): Promise<Ackno
       return { sent: false, skippedReason: "Aucune adresse email connue pour ce client." };
     }
 
-    const { senderName } = await getEmailAccountStatus();
+    // `readEmailAccountStatus`, PAS l'action `getEmailAccountStatus` : cette
+    // fonction tourne aussi sans appelant connecté (dépôt d'un ticket depuis le
+    // widget ou le portail, email entrant). L'action exige un agent approuvé et
+    // levait donc « Non autorisé. » à chaque dépôt public — erreur avalée par le
+    // catch plus bas, si bien qu'aucun accusé de réception ne partait jamais
+    // d'un formulaire public.
+    const { senderName } = await readEmailAccountStatus();
     const result = await sendTicketAcknowledgementEmail({
       ticket,
       clientEmail: ticket.client.email,

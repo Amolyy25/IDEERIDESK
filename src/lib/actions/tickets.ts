@@ -14,6 +14,8 @@ import {
 } from "@/lib/require-permission";
 import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
+import { notifyTicketAssigned } from "@/lib/assignment-notifications";
+import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
 
 const ticketInclude = {
   status: true,
@@ -25,12 +27,26 @@ const ticketInclude = {
 
 export type TicketListItem = Prisma.TicketGetPayload<{ include: typeof ticketInclude }>;
 
+// Détail d'un ticket : `data` (le contenu binaire) est systématiquement écarté —
+// une fiche avec quelques pièces jointes ferait sinon transiter plusieurs Mo par
+// rendu, alors que le téléchargement passe par /api/attachments/[id].
+const ticketDetailInclude = {
+  ...ticketInclude,
+  messages: {
+    include: {
+      agent: true,
+      attachments: { omit: { data: true } },
+    },
+  },
+  attachments: { omit: { data: true } },
+} satisfies Prisma.TicketInclude;
+
 export type TicketWithMessages = Prisma.TicketGetPayload<{
-  include: typeof ticketInclude & {
-    messages: { include: { agent: true } };
-    attachments: { omit: { data: true } };
-  };
+  include: typeof ticketDetailInclude;
 }>;
+
+/** Pièce jointe telle qu'affichée dans la fiche ticket, sans son contenu binaire. */
+export type TicketAttachment = TicketWithMessages["attachments"][number];
 
 export type TicketListFilters = {
   page?: number;
@@ -39,6 +55,7 @@ export type TicketListFilters = {
   statusId?: string;
   priorityId?: string;
   categoryId?: string;
+  /** Identifiant d'agent, ou `UNASSIGNED_FILTER` pour les tickets sans assigné. */
   assigneeId?: string;
   sortBy?: "number" | "subject" | "createdAt" | "updatedAt";
   sortDir?: "asc" | "desc";
@@ -51,6 +68,50 @@ export async function getUnreadTicketCount() {
   return prisma.ticket.count({ where: { hasUnreadActivity: true } });
 }
 
+/** Compteurs de la bande de vues, en haut de la liste de tickets. */
+export type TicketQueueStats = {
+  /** Tickets dont le statut n'est pas un statut de clôture. */
+  open: number;
+  unassigned: number;
+  mine: number;
+  unread: number;
+};
+
+/**
+ * Les quelques nombres qu'un agent regarde avant de choisir sur quoi travailler.
+ *
+ * Même périmètre que la liste affichée en dessous (`categoryIds` = produits
+ * couverts par ses groupes) : deux périmètres différents donneraient une bande
+ * qui annonce 12 tickets au-dessus d'une liste qui en montre 4.
+ */
+export async function getTicketQueueStats({
+  agentId,
+  categoryIds = [],
+}: {
+  agentId: string | null;
+  categoryIds?: string[];
+}): Promise<TicketQueueStats> {
+  await requireApprovedAgent();
+
+  const scope: Prisma.TicketWhereInput = { status: { isClosed: false } };
+  if (categoryIds.length > 0) {
+    scope.categoryId = { in: categoryIds };
+  }
+
+  const [open, unassigned, unread] = await Promise.all([
+    prisma.ticket.count({ where: scope }),
+    prisma.ticket.count({ where: { ...scope, assigneeId: null } }),
+    prisma.ticket.count({ where: { ...scope, hasUnreadActivity: true } }),
+  ]);
+
+  let mine = 0;
+  if (agentId) {
+    mine = await prisma.ticket.count({ where: { ...scope, assigneeId: agentId } });
+  }
+
+  return { open, unassigned, mine, unread };
+}
+
 export async function getTickets(filters: TicketListFilters = {}) {
   await requireApprovedAgent();
   const page = filters.page ?? 1;
@@ -58,19 +119,43 @@ export async function getTickets(filters: TicketListFilters = {}) {
   const sortBy = filters.sortBy ?? "createdAt";
   const sortDir = filters.sortDir ?? "desc";
 
+  const search = filters.search?.trim();
+  // « 128 » comme « #128 » : le numéro affiché partout dans l'application et
+  // repris dans l'objet des emails est la première chose qu'un agent tape, et
+  // c'était justement le seul terme qui ne trouvait rien.
+  const searchedNumber = search ? Number(search.replace(/^#/, "")) : Number.NaN;
+  const numberMatch: Prisma.TicketWhereInput[] =
+    Number.isInteger(searchedNumber) && searchedNumber > 0 ? [{ number: searchedNumber }] : [];
+
   const where: Prisma.TicketWhereInput = {
     statusId: filters.statusId || undefined,
     priorityId: filters.priorityId || undefined,
     categoryId: filters.categoryId || undefined,
-    assigneeId: filters.assigneeId || undefined,
+    // `null` (et non `undefined`) pour « non assigné » : c'est une condition à
+    // part entière, pas l'absence de filtre.
+    assigneeId:
+      filters.assigneeId === UNASSIGNED_FILTER ? null : filters.assigneeId || undefined,
     ...(!filters.categoryId && filters.categoryIds?.length
       ? { categoryId: { in: filters.categoryIds } }
       : {}),
-    ...(filters.search
+    ...(search
       ? {
           OR: [
-            { subject: { contains: filters.search, mode: "insensitive" } },
-            { description: { contains: filters.search, mode: "insensitive" } },
+            ...numberMatch,
+            { subject: { contains: search, mode: "insensitive" } },
+            { description: { contains: search, mode: "insensitive" } },
+            // Le corps du fil : une information donnée en cours de conversation
+            // (référence de dossier, message d'erreur) n'est nulle part dans le
+            // sujet ni dans la demande initiale.
+            { messages: { some: { content: { contains: search, mode: "insensitive" } } } },
+            {
+              client: {
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { email: { contains: search, mode: "insensitive" } },
+                ],
+              },
+            },
           ],
         }
       : {}),
@@ -95,13 +180,24 @@ export async function getTicketById(id: string) {
   return prisma.ticket.findUnique({
     where: { id },
     include: {
-      ...ticketInclude,
+      ...ticketDetailInclude,
       messages: {
-        include: { agent: true },
+        ...ticketDetailInclude.messages,
+        include: {
+          ...ticketDetailInclude.messages.include,
+          attachments: {
+            ...ticketDetailInclude.messages.include.attachments,
+            orderBy: { createdAt: "asc" },
+          },
+        },
         orderBy: { createdAt: "asc" },
       },
       attachments: {
-        omit: { data: true },
+        ...ticketDetailInclude.attachments,
+        // Seules les pièces jointes de la demande initiale : celles arrivées
+        // dans une réponse s'affichent sous leur message, les lister deux fois
+        // laisserait croire à des doublons.
+        where: { messageId: null },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -157,7 +253,7 @@ export async function updateTicketAttributes(
   id: string,
   input: z.infer<typeof updateTicketAttributesSchema>
 ) {
-  await requireCanRespond();
+  const session = await requireCanRespond();
   const data = updateTicketAttributesSchema.parse(input);
 
   let closedAt: Date | null | undefined = undefined;
@@ -166,17 +262,36 @@ export async function updateTicketAttributes(
     closedAt = status?.isClosed ? new Date() : null;
   }
 
+  // Assignation relue avant l'écriture : sans elle, impossible de distinguer
+  // « ce ticket vient de changer de main » d'un simple renvoi de la même valeur
+  // par le panneau d'attributs — et l'agent recevrait une notification à chaque
+  // modification de priorité.
+  const nextAssigneeId = data.assigneeId === undefined ? undefined : data.assigneeId || null;
+  const previous =
+    nextAssigneeId === undefined
+      ? null
+      : await prisma.ticket.findUnique({ where: { id }, select: { assigneeId: true } });
+
   await prisma.ticket.update({
     where: { id },
     data: {
       statusId: data.statusId,
       priorityId: data.priorityId,
       categoryId: data.categoryId === undefined ? undefined : data.categoryId || null,
-      assigneeId: data.assigneeId === undefined ? undefined : data.assigneeId || null,
+      assigneeId: nextAssigneeId,
       metadata: data.metadata as Prisma.InputJsonValue | undefined,
       closedAt,
     },
   });
+
+  if (nextAssigneeId && previous && nextAssigneeId !== previous.assigneeId) {
+    await notifyTicketAssigned({
+      ticketId: id,
+      assigneeId: nextAssigneeId,
+      actorId: session.user.id,
+    });
+  }
+
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
 }
@@ -382,6 +497,48 @@ export async function addTicketMessage(
 
   const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content);
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[] };
+}
+
+const pendingApprovalSelect = {
+  id: true,
+  content: true,
+  createdAt: true,
+  agent: { select: { id: true, name: true } },
+  ticket: {
+    select: {
+      id: true,
+      number: true,
+      subject: true,
+      client: { select: { name: true } },
+    },
+  },
+} satisfies Prisma.MessageSelect;
+
+export type PendingApprovalMessage = Prisma.MessageGetPayload<{
+  select: typeof pendingApprovalSelect;
+}>;
+
+/**
+ * Réponses retenues en attente de validation, tous tickets confondus.
+ *
+ * Le workflow existait sans point d'entrée : un agent habilité devait tomber
+ * par hasard sur le bon ticket pour découvrir qu'une réponse y attendait son
+ * feu vert, pendant que le client, lui, n'avait rien reçu.
+ *
+ * Les plus anciennes d'abord : c'est l'ordre d'attente du client.
+ */
+export async function getPendingApprovalMessages() {
+  await requireCanApprove();
+  return prisma.message.findMany({
+    where: { approvalStatus: "PENDING" },
+    select: pendingApprovalSelect,
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function countPendingApprovalMessages() {
+  await requireCanApprove();
+  return prisma.message.count({ where: { approvalStatus: "PENDING" } });
 }
 
 export async function approveMessage(messageId: string) {

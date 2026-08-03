@@ -1,11 +1,18 @@
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { escapeHtml } from "@/lib/escape-html";
+import { renderEmailLayout } from "@/lib/email-layout";
+
+/**
+ * Contenu de chaque email sortant.
+ *
+ * Ici on ne construit que le corps : l'habillage (fond, carte, en-tête, pied de
+ * page) vient du gabarit administrable, voir `email-layout.ts`. Chaque fonction
+ * `render…EmailHtml` reçoit donc `layoutHtml`, lu en base par l'appelant
+ * (`getEmailLayoutHtml`).
+ *
+ * Les fragments produits ici sont autonomes : ils ne supposent pas d'être posés
+ * dans un tableau précis, pour qu'un gabarit réécrit de zéro continue de les
+ * accueillir.
+ */
 
 function textToHtmlParagraphs(text: string) {
   return escapeHtml(text)
@@ -14,8 +21,10 @@ function textToHtmlParagraphs(text: string) {
     .join("");
 }
 
-const FONT_STACK =
-  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+function optionalText(value: string | null | undefined) {
+  if (value) return value;
+  return "";
+}
 
 export type EmailHistoryEntry = {
   authorLabel: string;
@@ -33,29 +42,49 @@ function renderHistoryHtml(history: EmailHistoryEntry[]) {
   const rows = history
     .map(
       (entry) => `
-              <tr>
-                <td style="padding:14px 0;border-top:1px solid #e4e4e7;">
-                  <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#52525b;">
-                    ${escapeHtml(entry.authorLabel)}
-                    <span style="font-weight:400;color:#a1a1aa;"> · ${formatHistoryDate(entry.createdAt)}</span>
-                  </p>
-                  <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${escapeHtml(entry.content)}</p>
-                </td>
-              </tr>`
+      <tr>
+        <td style="padding:14px 0;border-top:1px solid #e4e4e7;">
+          <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#52525b;">
+            ${escapeHtml(entry.authorLabel)}
+            <span style="font-weight:400;color:#a1a1aa;"> · ${formatHistoryDate(entry.createdAt)}</span>
+          </p>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${escapeHtml(entry.content)}</p>
+        </td>
+      </tr>`
     )
     .join("");
 
   return `
-            <tr>
-              <td style="padding:4px 32px 24px;">
-                <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
-                  Historique de la conversation
-                </p>
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                  ${rows}
-                </table>
-              </td>
-            </tr>`;
+    <p style="margin:20px 0 0;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
+      Historique de la conversation
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      ${rows}
+    </table>`;
+}
+
+/** Encadré gris clair : rappel de la demande, note interne, état du ticket… */
+function renderInfoBox({ label, body }: { label: string; body: string }) {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 0;background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;">
+      <tr>
+        <td style="padding:14px 16px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
+            ${escapeHtml(label)}
+          </p>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${body}</p>
+        </td>
+      </tr>
+    </table>`;
+}
+
+function renderButton({ url, label }: { url: string | null; label: string }) {
+  if (!url) return "";
+
+  return `
+    <p style="margin:20px 0 4px;">
+      <a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">${escapeHtml(label)}</a>
+    </p>`;
 }
 
 function renderHistoryText(history: EmailHistoryEntry[]) {
@@ -69,92 +98,52 @@ function renderHistoryText(history: EmailHistoryEntry[]) {
 }
 
 export function renderTicketReplyEmailHtml({
+  layoutHtml,
   ticketNumber,
   senderName,
   bodyText,
   history = [],
   logoUrl,
 }: {
+  layoutHtml: string;
   ticketNumber: number;
   senderName: string;
   bodyText: string;
   history?: EmailHistoryEntry[];
   logoUrl?: string | null;
 }) {
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 4px;">
-                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
-                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
-                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
-                ${textToHtmlParagraphs(bodyText)}
-              </td>
-            </tr>
-            ${renderHistoryHtml(history)}
-            <tr>
-              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
-                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
-                  Vous pouvez répondre directement à cet email pour continuer la conversation.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName,
+    headline: `Ticket #${ticketNumber}`,
+    content: `${textToHtmlParagraphs(bodyText)}${renderHistoryHtml(history)}`,
+    footer: "Vous pouvez répondre directement à cet email pour continuer la conversation.",
+  });
 }
 
 // L'email de clôture est rédigé par un admin via un éditeur riche (HTML déjà
 // formé, pas du texte brut à échapper/paragraphes comme `bodyText` ailleurs
 // dans ce fichier) — il est inséré tel quel dans le gabarit.
 export function renderTicketClosureEmailHtml({
+  layoutHtml,
   ticketNumber,
   senderName,
   bodyHtml,
   logoUrl,
 }: {
+  layoutHtml: string;
   ticketNumber: number;
   senderName: string;
   bodyHtml: string;
   logoUrl?: string | null;
 }) {
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 4px;">
-                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
-                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
-                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber} · Clôturé</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 32px 28px;font-size:14px;line-height:1.6;color:#18181b;">
-                ${bodyHtml}
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName,
+    headline: `Ticket #${ticketNumber} · Clôturé`,
+    content: bodyHtml,
+    footer: "",
+  });
 }
 
 /**
@@ -167,66 +156,32 @@ export const DEFAULT_ACKNOWLEDGEMENT_BODY_HTML = `<p>Bonjour,</p><p>Nous avons b
 // public. Comme la clôture, le corps est rédigé par un admin dans un éditeur
 // riche : `bodyHtml` est déjà du HTML, inséré tel quel.
 export function renderTicketAcknowledgementEmailHtml({
+  layoutHtml,
   ticketNumber,
   ticketSubject,
   senderName,
   bodyHtml,
   logoUrl,
 }: {
+  layoutHtml: string;
   ticketNumber: number;
   ticketSubject: string;
   senderName: string;
   bodyHtml: string;
   logoUrl?: string | null;
 }) {
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 4px;">
-                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
-                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">${escapeHtml(senderName)}</p>
-                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Ticket #${ticketNumber} · Demande reçue</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
-                ${bodyHtml}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:4px 32px 8px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;">
-                  <tr>
-                    <td style="padding:14px 16px;">
-                      <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
-                        Votre demande
-                      </p>
-                      <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;">
-                        #${ticketNumber} — ${escapeHtml(ticketSubject)}
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
-                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
-                  Vous pouvez répondre directement à cet email pour compléter votre demande.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  const recap = renderInfoBox({
+    label: "Votre demande",
+    body: `#${ticketNumber} — ${escapeHtml(ticketSubject)}`,
+  });
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName,
+    headline: `Ticket #${ticketNumber} · Demande reçue`,
+    content: `${bodyHtml}${recap}`,
+    footer: "Vous pouvez répondre directement à cet email pour compléter votre demande.",
+  });
 }
 
 export function renderTicketAcknowledgementEmailText({
@@ -283,66 +238,44 @@ export function renderTicketClosureEmailText({
 // Email interne (destinataire = un agent Ideeri, pas un client) envoyé quand
 // un admin approuve une demande d'accès à l'espace agent.
 export function renderAgentApprovalEmailHtml({
+  layoutHtml,
   agentName,
   appUrl,
   logoUrl,
 }: {
+  layoutHtml: string;
   agentName: string;
   appUrl: string | null;
   logoUrl?: string | null;
 }) {
-  const ctaUrl = appUrl ? `${appUrl}/tickets` : null;
+  let ctaUrl = null;
+  if (appUrl) {
+    ctaUrl = `${appUrl}/tickets`;
+  }
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 4px;">
-                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
-                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">Ideeri Desk</p>
-                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Accès validé</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
-                <p style="margin:0 0 16px;">Bonjour ${escapeHtml(agentName)},</p>
-                <p style="margin:0 0 16px;">
-                  Votre demande d'accès à l'espace agent Ideeri Desk vient d'être validée
-                  par un administrateur. Vous pouvez dès maintenant vous connecter avec
-                  votre compte Google.
-                </p>
-                ${
-                  ctaUrl
-                    ? `<p style="margin:0 0 16px;">
-                  <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">Ouvrir Ideeri Desk</a>
-                </p>`
-                    : ""
-                }
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
-                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
-                  Email automatique — inutile d'y répondre.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(agentName)},</p>
+    <p style="margin:0 0 16px;">
+      Votre demande d'accès à l'espace agent Ideeri Desk vient d'être validée
+      par un administrateur. Vous pouvez dès maintenant vous connecter avec
+      votre compte Google.
+    </p>
+    ${renderButton({ url: ctaUrl, label: "Ouvrir Ideeri Desk" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: "Accès validé",
+    content,
+    footer: "Email automatique — inutile d'y répondre.",
+  });
 }
 
 // Email interne également : prévient un agent qu'un collègue l'a mentionné en
 // @ dans une note interne. Le corps reprend la note telle quelle — une note
 // interne ne quitte jamais l'équipe, `to` est toujours une adresse Ideeri.
 export function renderAgentMentionEmailHtml({
+  layoutHtml,
   recipientName,
   actorName,
   ticketNumber,
@@ -351,6 +284,7 @@ export function renderAgentMentionEmailHtml({
   ticketUrl,
   logoUrl,
 }: {
+  layoutHtml: string;
   recipientName: string;
   actorName: string;
   ticketNumber: number;
@@ -359,65 +293,98 @@ export function renderAgentMentionEmailHtml({
   ticketUrl: string | null;
   logoUrl?: string | null;
 }) {
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:${FONT_STACK};">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-top:3px solid #eab308;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 4px;">
-                ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Ideeri" height="24" style="display:block;margin-bottom:14px;border:0;" />` : ""}
-                <p style="margin:0;font-size:13px;font-weight:600;color:#18181b;">Ideeri Desk</p>
-                <p style="margin:4px 0 0;font-size:12px;color:#71717a;">Vous avez été mentionné · Ticket #${ticketNumber}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 32px 8px;font-size:14px;line-height:1.6;color:#18181b;">
-                <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
-                <p style="margin:0 0 16px;">
-                  <strong>${escapeHtml(actorName)}</strong> vous a mentionné dans une note interne
-                  du ticket #${ticketNumber} — ${escapeHtml(ticketSubject)}.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:4px 32px 8px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e4e4e7;border-radius:6px;">
-                  <tr>
-                    <td style="padding:14px 16px;">
-                      <p style="margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa;">
-                        Note interne
-                      </p>
-                      <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;white-space:pre-wrap;">${escapeHtml(noteContent)}</p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            ${
-              ticketUrl
-                ? `<tr>
-              <td style="padding:12px 32px 8px;">
-                <a href="${escapeHtml(ticketUrl)}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">Ouvrir le ticket</a>
-              </td>
-            </tr>`
-                : ""
-            }
-            <tr>
-              <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;">
-                <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">
-                  Email automatique — répondez depuis le ticket, pas par email.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+    <p style="margin:0 0 16px;">
+      <strong>${escapeHtml(actorName)}</strong> vous a mentionné dans une note interne
+      du ticket #${ticketNumber} — ${escapeHtml(ticketSubject)}.
+    </p>
+    ${renderInfoBox({ label: "Note interne", body: escapeHtml(noteContent) })}
+    ${renderButton({ url: ticketUrl, label: "Ouvrir le ticket" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: `Vous avez été mentionné · Ticket #${ticketNumber}`,
+    content,
+    footer: "Email automatique — répondez depuis le ticket, pas par email.",
+  });
+}
+
+/** Ticket confié à un agent. Même famille d'email interne que la mention. */
+export function renderTicketAssignedEmailHtml({
+  layoutHtml,
+  recipientName,
+  actorName,
+  ticketNumber,
+  ticketSubject,
+  statusName,
+  priorityName,
+  ticketUrl,
+  logoUrl,
+}: {
+  layoutHtml: string;
+  recipientName: string;
+  actorName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  statusName: string;
+  priorityName: string;
+  ticketUrl: string | null;
+  logoUrl?: string | null;
+}) {
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+    <p style="margin:0 0 16px;">
+      <strong>${escapeHtml(actorName)}</strong> vous a assigné le ticket
+      #${ticketNumber} — ${escapeHtml(ticketSubject)}.
+    </p>
+    ${renderInfoBox({
+      label: "État",
+      body: `${escapeHtml(statusName)} · priorité ${escapeHtml(priorityName)}`,
+    })}
+    ${renderButton({ url: ticketUrl, label: "Ouvrir le ticket" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: `Ticket qui vous est confié · #${ticketNumber}`,
+    content,
+    footer: "Email automatique — répondez depuis le ticket, pas par email.",
+  });
+}
+
+export function renderTicketAssignedEmailText({
+  recipientName,
+  actorName,
+  ticketNumber,
+  ticketSubject,
+  statusName,
+  priorityName,
+  ticketUrl,
+}: {
+  recipientName: string;
+  actorName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  statusName: string;
+  priorityName: string;
+  ticketUrl: string | null;
+}) {
+  let cta = "";
+  if (ticketUrl) {
+    cta = `\n\nOuvrir le ticket : ${ticketUrl}`;
+  }
+
+  return `Bonjour ${recipientName},
+
+${actorName} vous a assigné le ticket #${ticketNumber} — ${ticketSubject}.
+
+État
+${statusName} · priorité ${priorityName}${cta}
+
+—
+Email automatique — répondez depuis le ticket, pas par email.`;
 }
 
 export function renderAgentMentionEmailText({
@@ -435,7 +402,11 @@ export function renderAgentMentionEmailText({
   noteContent: string;
   ticketUrl: string | null;
 }) {
-  const cta = ticketUrl ? `\n\nOuvrir le ticket : ${ticketUrl}` : "";
+  let cta = "";
+  if (ticketUrl) {
+    cta = `\n\nOuvrir le ticket : ${ticketUrl}`;
+  }
+
   return `Bonjour ${recipientName},
 
 ${actorName} vous a mentionné dans une note interne du ticket #${ticketNumber} — ${ticketSubject}.
@@ -454,7 +425,11 @@ export function renderAgentApprovalEmailText({
   agentName: string;
   appUrl: string | null;
 }) {
-  const cta = appUrl ? `\n\nOuvrir Ideeri Desk : ${appUrl}/tickets` : "";
+  let cta = "";
+  if (appUrl) {
+    cta = `\n\nOuvrir Ideeri Desk : ${appUrl}/tickets`;
+  }
+
   return `Bonjour ${agentName},
 
 Votre demande d'accès à l'espace agent Ideeri Desk vient d'être validée par un administrateur. Vous pouvez dès maintenant vous connecter avec votre compte Google.${cta}
