@@ -77,14 +77,14 @@ export function CategoriesTable({ categories }: { categories: TicketCategory[] }
                       category={category}
                       trigger={
                         <Button size="icon" variant="ghost">
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="size-4" />
                         </Button>
                       }
                     />
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="icon" variant="ghost">
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>

@@ -16,7 +16,7 @@ export function SourceBadge({ source, className }: { source: TicketSource; class
 
   return (
     <Badge variant="outline" className={cn("gap-1 font-normal text-muted-foreground", className)}>
-      <Icon className="h-3 w-3" />
+      <Icon className="size-3.5" />
       {ticketSourceLabels[source]}
     </Badge>
   );

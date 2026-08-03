@@ -100,7 +100,7 @@ export function SourceFieldCard({
             onClick={() => onMove(-1)}
             title="Monter"
           >
-            <ChevronUp className="h-3.5 w-3.5" />
+            <ChevronUp className="size-4" />
           </Button>
           <Button
             type="button"
@@ -111,7 +111,7 @@ export function SourceFieldCard({
             onClick={() => onMove(1)}
             title="Descendre"
           >
-            <ChevronDown className="h-3.5 w-3.5" />
+            <ChevronDown className="size-4" />
           </Button>
           <Button
             type="button"
@@ -121,7 +121,7 @@ export function SourceFieldCard({
             onClick={onRemove}
             title="Supprimer ce champ"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="size-4" />
           </Button>
         </div>
       </div>
@@ -192,7 +192,7 @@ export function SourceFieldCard({
                       }
                       title="Retirer cette option"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-4" />
                     </Button>
                   </div>
                 ))}
@@ -204,7 +204,7 @@ export function SourceFieldCard({
                 disabled={field.options.length >= 40}
                 onClick={() => onChange({ options: [...field.options, ""] })}
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="size-4" />
                 Ajouter une option
               </Button>
             </div>

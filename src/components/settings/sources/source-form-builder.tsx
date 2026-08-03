@@ -180,7 +180,7 @@ export function SourceFormBuilder({
             href="/settings/sources"
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft className="size-4" />
             Sources
           </Link>
           <h2 className="mt-1 truncate text-sm font-medium">{config.name}</h2>
@@ -192,7 +192,7 @@ export function SourceFormBuilder({
           )}
           <Button asChild variant="outline" size="sm">
             <Link href={sourceFormPath(saved.slug)} target="_blank">
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="size-4" />
               Voir
             </Link>
           </Button>
@@ -236,7 +236,7 @@ export function SourceFormBuilder({
                     disabled={isUploading}
                     onClick={() => logoInputRef.current?.click()}
                   >
-                    <Upload className="h-3.5 w-3.5" />
+                    <Upload className="size-4" />
                     {isUploading ? "Envoi…" : config.logoUrl ? "Remplacer" : "Téléverser"}
                   </Button>
                   {config.logoUrl && (
@@ -246,7 +246,7 @@ export function SourceFormBuilder({
                       size="sm"
                       onClick={() => set("logoUrl", null)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-4" />
                       Retirer
                     </Button>
                   )}
@@ -328,7 +328,7 @@ export function SourceFormBuilder({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline">
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="size-4" />
                     Ajouter un champ
                   </Button>
                 </DropdownMenuTrigger>

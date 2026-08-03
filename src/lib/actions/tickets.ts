@@ -15,6 +15,7 @@ import {
 import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
+import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
 
 const ticketInclude = {
@@ -396,8 +397,17 @@ const EMAIL_HISTORY_LIMIT = 10;
  * marks the message as sent. Shared by the direct-send path (no approval
  * required) and `approveMessage` (an approver releasing a held reply) so the
  * send logic — including the conversation history — lives in one place.
+ *
+ * `agentId` est l'auteur de la réponse, pas l'expéditeur : c'est lui qui décide
+ * de la signature ajoutée en bas de l'email. Une réponse relâchée par un
+ * collègue habilité reste donc signée de celui qui l'a rédigée.
  */
-async function sendApprovedTicketReply(ticketId: string, messageId: string, content: string) {
+async function sendApprovedTicketReply(
+  ticketId: string,
+  messageId: string,
+  content: string,
+  agentId: string | null
+) {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
   if (!ticket?.client?.email) {
     return { emailSent: false as const, emailSkippedReason: "Aucun client associé à ce ticket." };
@@ -428,6 +438,7 @@ async function sendApprovedTicketReply(ticketId: string, messageId: string, cont
     senderName,
     bodyText: content,
     history,
+    signatureHtml: await resolveSignatureHtmlForAgent(agentId),
   });
 
   if (result.sent) {
@@ -495,7 +506,7 @@ export async function addTicketMessage(
     };
   }
 
-  const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content);
+  const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content, agentId);
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[] };
 }
 
@@ -563,7 +574,12 @@ export async function approveMessage(messageId: string) {
     },
   });
 
-  const result = await sendApprovedTicketReply(message.ticketId, message.id, message.content);
+  const result = await sendApprovedTicketReply(
+    message.ticketId,
+    message.id,
+    message.content,
+    message.agentId
+  );
   revalidatePath(`/tickets/${message.ticketId}`);
   return result;
 }

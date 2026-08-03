@@ -31,6 +31,11 @@ export const EMAIL_PREVIEW_SAMPLES = [
         senderName: "Ideeri Support",
         bodyText:
           "Bonjour Jean Dupont,\n\nVotre demande est bien prise en charge. Nous revenons vers vous dès que la correction est déployée.\n\nBonne journée.",
+        // Signature d'exemple, variables déjà remplies : sa place dans l'email
+        // (sous le message, avant l'historique) fait partie de ce que l'aperçu
+        // doit montrer. Le contenu réel se règle dans /settings/signatures.
+        signatureHtml:
+          "<p><strong>Camille Martin</strong><br>Support Ideeri<br>camille.martin@example.com</p>",
         history: [
           {
             authorLabel: "Jean Dupont",

@@ -42,7 +42,9 @@ export const EMAIL_LAYOUT_SLOTS: { name: keyof EmailLayoutSlots; description: st
   { name: "footer", description: "Phrase de pied de page. Vide sur certains emails." },
 ];
 
-const FONT_STACK =
+/** Police des emails sortants. Exportée pour que les aperçus des réglages
+ *  affichent exactement la même. */
+export const EMAIL_FONT_STACK =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 /**
@@ -165,7 +167,7 @@ export function renderEmailLayout(layoutHtml: string, slots: EmailLayoutSlots) {
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;font-family:${FONT_STACK};">
+  <body style="margin:0;padding:0;font-family:${EMAIL_FONT_STACK};">
 ${body}
   </body>
 </html>`;

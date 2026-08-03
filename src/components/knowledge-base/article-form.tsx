@@ -106,7 +106,7 @@ export function ArticleForm({
           href="/knowledge-base"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
+          <ArrowLeft className="size-4" />
           Articles
         </Link>
         <Button type="submit" disabled={isSubmitting} size="sm">

@@ -100,7 +100,7 @@ export function AiSettingsForm({ status }: { status: AiSettingsStatus }) {
                 )}
               >
                 {isSelected && (
-                  <Check className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-primary" />
+                  <Check className="absolute right-2.5 top-2.5 size-4 text-primary" />
                 )}
                 <span className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground/5 text-xs font-semibold">
                   {p.monogram}

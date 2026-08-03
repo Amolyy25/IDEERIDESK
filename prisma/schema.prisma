@@ -56,6 +56,9 @@ model Agent {
   notifications     Notification[] @relation("NotificationRecipient")
   sentNotifications Notification[] @relation("NotificationActor")
 
+  // Signatures qui lui sont nominativement assignées (voir EmailSignature).
+  signatures EmailSignature[]
+
   // Admin ayant approuvé/refusé ce compte (null pour les comptes créés avant
   // le workflow d'approbation).
   approvalDecidedBy   Agent?  @relation("AgentApprovalDecidedBy", fields: [approvalDecidedById], references: [id])
@@ -495,6 +498,40 @@ model EmailLayoutTemplate {
   updatedAt DateTime @updatedAt
 
   @@map("email_layout_template")
+}
+
+// À qui s'applique une signature.
+enum SignatureScope {
+  ALL_AGENTS // toute l'équipe, sauf les agents couverts par une signature nominative
+  SPECIFIC_AGENTS // uniquement les agents listés dans `agents`
+}
+
+// Signature ajoutée en bas des réponses envoyées au client par email, sous le
+// corps du message et avant l'historique de la conversation. Le contenu porte
+// des variables ({{prenom}}, {{nom}}…) remplies au moment de l'envoi avec
+// l'identité de l'agent auteur de la réponse — voir src/lib/signature.ts.
+//
+// Contrairement aux modèles d'email ci-dessus, ce n'est pas un singleton : une
+// signature peut valoir pour toute l'équipe ou pour quelques agents seulement.
+// Une signature nominative l'emporte sur celle de toute l'équipe, et un agent
+// n'est jamais couvert par deux signatures actives à la fois (garanti à
+// l'enregistrement, voir src/lib/actions/signatures.ts).
+model EmailSignature {
+  id       String         @id @default(cuid())
+  name     String         @unique
+  bodyHtml String
+  scope    SignatureScope @default(ALL_AGENTS)
+  isActive Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Agents concernés quand `scope` vaut SPECIFIC_AGENTS. Ignoré (et vidé à
+  // l'enregistrement) pour une signature de toute l'équipe.
+  agents Agent[]
+
+  @@index([isActive])
+  @@map("email_signatures")
 }
 
 enum PortalColorMode {

@@ -54,7 +54,7 @@ export function KnowledgeSuggestions({ articles }: { articles: SuggestedArticle[
                     </p>
                   )}
                 </div>
-                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                <ExternalLink className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
               </a>
             );
           }
@@ -79,9 +79,9 @@ export function KnowledgeSuggestions({ articles }: { articles: SuggestedArticle[
                   )}
                 </div>
                 {isOpen ? (
-                  <ChevronUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <ChevronUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 ) : (
-                  <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 )}
               </button>
 

@@ -70,7 +70,7 @@ function NavLink({
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+        "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
         "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary before:opacity-0 before:transition-opacity",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60",
         active
@@ -78,12 +78,12 @@ function NavLink({
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       )}
     >
-      <Icon className={cn("h-4 w-4 shrink-0", active ? "text-sidebar-primary" : "opacity-80")} />
+      <Icon className={cn("size-[18px] shrink-0", active ? "text-sidebar-primary" : "opacity-80")} />
       <span className="flex-1 truncate">{item.label}</span>
       {badge !== null && (
         <span
           aria-label={badgeLabel(item.href, badge)}
-          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sidebar-primary px-1 text-[10px] font-semibold tabular-nums text-sidebar-primary-foreground"
+          className="flex h-5 min-w-5 items-center justify-center rounded-full bg-sidebar-primary px-1.5 text-[11px] font-semibold tabular-nums text-sidebar-primary-foreground"
         >
           {badge}
         </span>
@@ -152,16 +152,16 @@ export function Sidebar({
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-5">
+      <div className="flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
         {/* Le logo est un JPEG sur fond blanc : le cadrage circulaire épouse le
             rond de la marque et fait disparaître les coins blancs. */}
         <Image
           src="/logoIdeeri.jpeg"
           alt="Ideeri"
-          width={28}
-          height={28}
+          width={32}
+          height={32}
           priority
-          className="h-7 w-7 shrink-0 rounded-full object-cover"
+          className="size-8 shrink-0 rounded-full object-cover"
         />
         <span className="flex-1 truncate text-sm font-semibold tracking-tight">Ideeri Desk</span>
         <NotificationBell
@@ -176,7 +176,7 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation principale">
         {navGroups.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
-            <p className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/40">
+            <p className="px-3 pb-2 text-[11px] font-medium tracking-wide text-sidebar-foreground/40 uppercase">
               {group.label}
             </p>
             <ul className="space-y-0.5">
@@ -203,7 +203,7 @@ export function Sidebar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2.5 border-t border-sidebar-border px-4 py-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-[11px] font-medium ring-1 ring-inset ring-white/10">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-[11px] font-medium ring-1 ring-inset ring-white/10">
           {initials(currentAgent.name || currentAgent.email || "?")}
         </span>
         <div className="min-w-0 flex-1">

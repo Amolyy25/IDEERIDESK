@@ -49,6 +49,7 @@ export async function sendTicketReplyEmail({
   senderName,
   bodyText,
   history = [],
+  signatureHtml,
 }: {
   ticket: {
     id: string;
@@ -61,6 +62,8 @@ export async function sendTicketReplyEmail({
   senderName: string;
   bodyText: string;
   history?: EmailHistoryEntry[];
+  /** Signature de l'agent auteur de la réponse, résolue par l'appelant. */
+  signatureHtml?: string | null;
 }): Promise<{ sent: boolean; gmailMessageId?: string; error?: string }> {
   const authenticated = await getAuthenticatedGmailClient();
   if (!authenticated) {
@@ -77,6 +80,7 @@ export async function sendTicketReplyEmail({
     senderName,
     bodyText,
     history,
+    signatureHtml,
     logoUrl,
   });
   const text = renderTicketReplyEmailText({
@@ -84,6 +88,7 @@ export async function sendTicketReplyEmail({
     senderName,
     bodyText,
     history,
+    signatureHtml,
   });
 
   try {

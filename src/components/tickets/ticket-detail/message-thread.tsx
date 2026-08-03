@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Mail } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { formatDateTime } from "@/lib/format-date";
+import { Check, Mail, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
@@ -13,14 +11,41 @@ import type { TicketWithMessages } from "@/lib/actions/tickets";
 import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 import type { MentionableAgent } from "@/lib/mentions";
+import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
+import type { AuthorKind } from "@/components/tickets/ticket-detail/author-avatar";
+import {
+  TimelineEvent,
+  TimelineItem,
+  type TimelineTone,
+} from "@/components/tickets/ticket-detail/timeline-item";
 
+type Message = TicketWithMessages["messages"][number];
+
+/** Ce que le message est, du point de vue de qui l'a écrit et de qui le reçoit. */
+function describe(message: Message): { author: string; kind: AuthorKind; tone: TimelineTone } {
+  if (message.authorType === "CLIENT") {
+    return { author: "Client", kind: "client", tone: "inbound" };
+  }
+
+  const author = message.agent?.name ?? "Agent";
+  if (message.isPrivate) {
+    return { author, kind: "agent", tone: "internal" };
+  }
+  return { author, kind: "agent", tone: "outbound" };
+}
+
+/**
+ * Le fil des réponses, rendu en entrées de la ligne de temps ouverte par la
+ * demande initiale (voir `Timeline` dans la page du ticket) : ce composant rend
+ * donc des `<li>`, pas sa propre liste.
+ */
 export function MessageThread({
   messages,
   canApprove,
   agents,
   currentAgentId,
 }: {
-  messages: TicketWithMessages["messages"];
+  messages: Message[];
   canApprove: boolean;
   /** Équipe utilisée pour surligner les mentions des notes internes. */
   agents: MentionableAgent[];
@@ -63,81 +88,105 @@ export function MessageThread({
     }
   }
 
-  if (messages.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-        Aucune réponse pour l&apos;instant. Écrivez au client ci-dessous, ou laissez une note
-        interne pour l&apos;équipe.
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={cn(
-            "rounded-lg border p-4",
-            message.isPrivate ? "border-primary/40 bg-primary/5" : "bg-card"
-          )}
+    <>
+      {messages.map((message) => {
+        // Les messages de service (accusé de réception, échec d'envoi) sont des
+        // repères, pas des tours de parole.
+        if (message.authorType === "SYSTEM") {
+          return (
+            <TimelineEvent key={message.id} date={message.createdAt}>
+              {message.content}
+            </TimelineEvent>
+          );
+        }
+
+        const { author, kind, tone } = describe(message);
+
+        return (
+          <TimelineItem
+            key={message.id}
+            avatar={<AuthorAvatar name={author} kind={kind} imageUrl={message.agent?.avatarUrl} />}
+            author={author}
+            date={message.createdAt}
+            tone={tone}
+            meta={<MessageBadges message={message} />}
+            footer={
+              message.approvalStatus === "PENDING" &&
+              canApprove && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleApprove(message.id)}
+                    disabled={pendingActionId === message.id}
+                  >
+                    <Check className="size-4" />
+                    Approuver et envoyer
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleReject(message.id)}
+                    disabled={pendingActionId === message.id}
+                  >
+                    <X className="size-4" />
+                    Rejeter
+                  </Button>
+                </div>
+              )
+            }
+          >
+            {/* Seules les notes internes portent des mentions : une réponse
+                publique ne notifie personne, rien à surligner. */}
+            {message.isPrivate ? (
+              <MentionText
+                content={message.content}
+                agents={agents}
+                currentAgentId={currentAgentId}
+              />
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            )}
+
+            {/* Les fichiers du tour de conversation, sous le message dont ils
+                proviennent : regroupés au niveau du ticket, on ne savait plus
+                lequel accompagnait quelle réponse. */}
+            <AttachmentsList attachments={message.attachments} />
+          </TimelineItem>
+        );
+      })}
+    </>
+  );
+}
+
+/** État d'un message : ce qui a été envoyé, ce qui attend, ce qui a été refusé. */
+function MessageBadges({ message }: { message: Message }) {
+  return (
+    <>
+      {message.isPrivate && (
+        <Badge variant="outline" className="border-primary/40 text-[11px] font-normal">
+          Note interne
+        </Badge>
+      )}
+      {message.emailSent && (
+        <span
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+          title="Envoyé au client par email"
         >
-          <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              {message.agent?.name ?? (message.authorType === "CLIENT" ? "Client" : "Système")}
-              {message.isPrivate && " · Note interne"}
-              {message.emailSent && (
-                <span className="ml-1 flex items-center gap-1 text-muted-foreground" title="Envoyé par email">
-                  <Mail className="h-3 w-3" />
-                </span>
-              )}
-              {message.approvalStatus === "PENDING" && (
-                <Badge variant="secondary">En attente de validation</Badge>
-              )}
-              {message.approvalStatus === "REJECTED" && (
-                <Badge variant="outline">Rejeté, non envoyé</Badge>
-              )}
-            </span>
-            <span>{formatDateTime(message.createdAt)}</span>
-          </div>
-          {/* Seules les notes internes portent des mentions : une réponse
-              publique ne notifie personne, rien à surligner. */}
-          {message.isPrivate ? (
-            <MentionText
-              content={message.content}
-              agents={agents}
-              currentAgentId={currentAgentId}
-            />
-          ) : (
-            <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
-          )}
-
-          {/* Les fichiers du tour de conversation, sous le message dont ils
-              proviennent : regroupés au niveau du ticket, on ne savait plus
-              lequel accompagnait quelle réponse. */}
-          <AttachmentsList attachments={message.attachments} />
-
-          {message.approvalStatus === "PENDING" && canApprove && (
-            <div className="mt-3 flex gap-2 border-t pt-3">
-              <Button
-                size="sm"
-                onClick={() => handleApprove(message.id)}
-                disabled={pendingActionId === message.id}
-              >
-                Approuver et envoyer
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleReject(message.id)}
-                disabled={pendingActionId === message.id}
-              >
-                Rejeter
-              </Button>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
+          <Mail className="size-3.5" />
+          Envoyé
+        </span>
+      )}
+      {message.approvalStatus === "PENDING" && (
+        <Badge variant="secondary" className="text-[11px] font-normal">
+          En attente de validation
+        </Badge>
+      )}
+      {message.approvalStatus === "REJECTED" && (
+        <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground">
+          Rejetée, non envoyée
+        </Badge>
+      )}
+    </>
   );
 }

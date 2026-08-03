@@ -7,7 +7,7 @@ import { getTicketCategories } from "@/lib/actions/categories";
 import { getAgents } from "@/lib/actions/agents";
 import { getCustomFields } from "@/lib/actions/custom-fields";
 import { getSourceFields } from "@/lib/actions/sources";
-import { formatDateTime } from "@/lib/format-date";
+import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { AttributesPanel } from "@/components/tickets/ticket-detail/attributes-panel";
 import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
 import { MessageThread } from "@/components/tickets/ticket-detail/message-thread";
@@ -15,6 +15,9 @@ import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 import { EmailOrigin } from "@/components/tickets/ticket-detail/email-origin";
 import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
+import { SignatureBlock } from "@/components/tickets/ticket-detail/signature-block";
+import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
+import { Timeline, TimelineItem } from "@/components/tickets/ticket-detail/timeline-item";
 
 export default async function TicketDetailPage({
   params,
@@ -48,6 +51,11 @@ export default async function TicketDetailPage({
   // Champs du formulaire par lequel le ticket est arrivé : sert à afficher les
   // réponses collectées, stockées dans `metadata` sous la clé de chaque champ.
   const sourceFields = ticket.formSourceId ? await getSourceFields(ticket.formSourceId) : [];
+  // Signature qui sera ajoutée aux réponses de cet agent (voir
+  // /settings/signatures), affichée telle quelle sous la zone de réponse : la
+  // même fonction qu'à l'envoi, donc ce qui est montré est exactement ce qui
+  // partira.
+  const signatureHtml = await resolveSignatureHtmlForAgent(session?.user?.id ?? null);
 
   return (
     <div className="flex h-full">
@@ -56,48 +64,45 @@ export default async function TicketDetailPage({
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <TicketHeader ticket={ticket} currentAgentId={session?.user?.id ?? null} />
 
-        <div className="mx-auto w-full max-w-3xl space-y-6 px-6 py-6">
-          {/* La demande d'origine ouvre le fil : même forme qu'un message, avec
-              son auteur et sa date, plutôt qu'un encadré anonyme détaché. */}
-          <article className="rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {ticket.client?.name ?? "Demande initiale"}
-              </span>
-              <span>{formatDateTime(ticket.createdAt)}</span>
-            </div>
-            <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
-            <AttachmentsList attachments={ticket.attachments} />
-          </article>
+        <div className="mx-auto w-full max-w-3xl px-6 py-6">
+          {/* Un seul fil, ouvert par la demande d'origine : celle-ci est le
+              premier tour de la conversation, la détacher dans un encadré à part
+              obligeait à comparer deux mises en forme pour suivre l'échange. */}
+          <Timeline>
+            <TimelineItem
+              avatar={<AuthorAvatar name={ticket.client?.name ?? "Client"} kind="client" />}
+              author={ticket.client?.name ?? "Demande initiale"}
+              date={ticket.createdAt}
+              tone="inbound"
+            >
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
+              <AttachmentsList attachments={ticket.attachments} />
+              {/* Les en-têtes du mail d'origine appartiennent à cette demande :
+                  repliés ici, et non en bloc autonome au-dessus du fil. */}
+              <EmailOrigin metadata={ticket.metadata} />
+            </TimelineItem>
 
-          {/* Uniquement pour les tickets nés d'un email entrant : en-têtes du mail
-              d'origine, juste sous la demande qu'ils décrivent. */}
-          <EmailOrigin metadata={ticket.metadata} />
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-medium">
-              Conversation
-              {ticket.messages.length > 0 && (
-                <span className="ml-1.5 font-normal text-muted-foreground">
-                  {ticket.messages.length}
-                </span>
-              )}
-            </h2>
             <MessageThread
               messages={ticket.messages}
               canApprove={session?.user?.canApprove ?? false}
               agents={mentionableAgents}
               currentAgentId={session?.user?.id ?? null}
             />
-          </section>
+          </Timeline>
 
-          <ReplyBox
-            ticketId={ticket.id}
-            currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
-            canRespond={session?.user?.canRespond ?? false}
-            requiresApproval={session?.user?.requiresApproval ?? false}
-            agents={mentionableAgents}
-          />
+          {/* Aligné sur les cartes du fil (largeur de la pastille + son écart) :
+              la zone de rédaction est le prochain tour de la conversation. */}
+          <div className="mt-4 pl-11">
+            <ReplyBox
+              ticketId={ticket.id}
+              currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
+              clientEmail={ticket.client?.email ?? null}
+              canRespond={session?.user?.canRespond ?? false}
+              requiresApproval={session?.user?.requiresApproval ?? false}
+              signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
+              agents={mentionableAgents}
+            />
+          </div>
         </div>
       </div>
 

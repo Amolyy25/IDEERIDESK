@@ -12,12 +12,18 @@ function getServerSnapshot() {
   return null;
 }
 
-export function RelativeTime({ date }: { date: Date | string }) {
+export function RelativeTime({
+  date,
+  className = "text-sm text-muted-foreground",
+}: {
+  date: Date | string;
+  className?: string;
+}) {
   const label = useSyncExternalStore(
     subscribe,
     () => formatRelativeDate(date),
     getServerSnapshot
   );
 
-  return <span className="text-sm text-muted-foreground">{label ?? " "}</span>;
+  return <span className={className}>{label ?? " "}</span>;
 }

@@ -87,6 +87,31 @@ function renderButton({ url, label }: { url: string | null; label: string }) {
     </p>`;
 }
 
+/**
+ * Signature de l'agent, entre le corps de la réponse et l'historique.
+ *
+ * Le HTML arrive déjà assaini et ses variables déjà remplies (voir
+ * `signature.ts` et `signature-store.ts`) : il est inséré tel quel. Aucune
+ * signature configurée = aucun bloc, pas même un séparateur vide.
+ *
+ * Exportée pour l'aperçu de /settings/signatures, qui doit montrer la signature
+ * avec la même typographie qu'à l'envoi.
+ */
+export function renderSignatureBlockHtml(signatureHtml: string | null | undefined) {
+  if (!signatureHtml) return "";
+
+  return `
+    <div style="margin:20px 0 0;font-size:13px;line-height:1.6;color:#52525b;">
+      ${signatureHtml}
+    </div>`;
+}
+
+function renderSignatureBlockText(signatureHtml: string | null | undefined) {
+  if (!signatureHtml) return "";
+
+  return `\n\n${stripHtmlForText(signatureHtml)}`;
+}
+
 function renderHistoryText(history: EmailHistoryEntry[]) {
   if (history.length === 0) return "";
 
@@ -103,6 +128,7 @@ export function renderTicketReplyEmailHtml({
   senderName,
   bodyText,
   history = [],
+  signatureHtml,
   logoUrl,
 }: {
   layoutHtml: string;
@@ -110,13 +136,15 @@ export function renderTicketReplyEmailHtml({
   senderName: string;
   bodyText: string;
   history?: EmailHistoryEntry[];
+  /** Signature de l'agent auteur de la réponse, variables déjà remplies. */
+  signatureHtml?: string | null;
   logoUrl?: string | null;
 }) {
   return renderEmailLayout(layoutHtml, {
     logoUrl: optionalText(logoUrl),
     senderName,
     headline: `Ticket #${ticketNumber}`,
-    content: `${textToHtmlParagraphs(bodyText)}${renderHistoryHtml(history)}`,
+    content: `${textToHtmlParagraphs(bodyText)}${renderSignatureBlockHtml(signatureHtml)}${renderHistoryHtml(history)}`,
     footer: "Vous pouvez répondre directement à cet email pour continuer la conversation.",
   });
 }
@@ -443,11 +471,13 @@ export function renderTicketReplyEmailText({
   senderName,
   bodyText,
   history = [],
+  signatureHtml,
 }: {
   ticketNumber: number;
   senderName: string;
   bodyText: string;
   history?: EmailHistoryEntry[];
+  signatureHtml?: string | null;
 }) {
-  return `${bodyText}${renderHistoryText(history)}\n\n—\n${senderName} · Ticket #${ticketNumber}\nVous pouvez répondre directement à cet email pour continuer la conversation.`;
+  return `${bodyText}${renderSignatureBlockText(signatureHtml)}${renderHistoryText(history)}\n\n—\n${senderName} · Ticket #${ticketNumber}\nVous pouvez répondre directement à cet email pour continuer la conversation.`;
 }

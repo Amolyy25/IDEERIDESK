@@ -116,7 +116,7 @@ export function SourcesList({
               <div className="mt-4 flex items-center gap-1.5 border-t pt-3">
                 <Button asChild size="sm" variant="secondary">
                   <Link href={`/settings/sources/${source.id}`}>
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    <SlidersHorizontal className="size-4" />
                     Éditer le formulaire
                   </Link>
                 </Button>
@@ -125,14 +125,14 @@ export function SourcesList({
                   origin={origin}
                   trigger={
                     <Button size="sm" variant="ghost">
-                      <Code2 className="h-3.5 w-3.5" />
+                      <Code2 className="size-4" />
                       Intégration
                     </Button>
                   }
                 />
                 <Button asChild size="icon" variant="ghost" title="Ouvrir le formulaire">
                   <Link href={sourceFormPath(source.slug)} target="_blank">
-                    <ExternalLink className="h-3.5 w-3.5" />
+                    <ExternalLink className="size-4" />
                   </Link>
                 </Button>
 
@@ -145,7 +145,7 @@ export function SourcesList({
                       disabled={busyId === source.id}
                       title="Supprimer cette source"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-4" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>

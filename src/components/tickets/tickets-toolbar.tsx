@@ -89,7 +89,7 @@ export function TicketsToolbar({
     // aux données.
     <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Rechercher un ticket…"
           value={search}
@@ -181,7 +181,7 @@ export function TicketsToolbar({
           onClick={resetFilters}
           className="h-9 text-muted-foreground"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="size-4" />
           Réinitialiser
         </Button>
       )}

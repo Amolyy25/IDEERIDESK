@@ -42,7 +42,7 @@ const NONE = "__none__";
 function PanelBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="border-b px-5 py-4 last:border-b-0">
-      <p className="pb-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+      <p className="pb-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         {title}
       </p>
       <div className="space-y-3">{children}</div>
@@ -127,7 +127,9 @@ export function AttributesPanel({
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l">
-      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-5">
+      {/* Même hauteur minimale que l'en-tête du fil : les deux barres portent une
+          bordure basse, un écart de quelques pixels se voit immédiatement. */}
+      <div className="flex min-h-[4.5rem] shrink-0 items-center justify-between gap-2 border-b px-5">
         <h2 className="text-sm font-medium">Attributs</h2>
         {isPending && <span className="text-xs text-muted-foreground">Enregistrement…</span>}
       </div>
@@ -229,7 +231,7 @@ export function AttributesPanel({
               className="flex items-start gap-1.5 text-sm text-primary hover:underline"
               title={ticket.sourceUrl}
             >
-              <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <ExternalLink className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0 break-all">{ticket.sourceUrl}</span>
             </a>
           </PanelBlock>
@@ -270,7 +272,7 @@ export function AttributesPanel({
               disabled={isDeleting}
               className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-4" />
               Supprimer le ticket
             </Button>
           </AlertDialogTrigger>

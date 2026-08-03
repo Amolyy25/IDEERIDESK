@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { readInboundEmailMetadata } from "@/lib/inbound-email-metadata";
 
 /**
@@ -8,6 +9,10 @@ import { readInboundEmailMetadata } from "@/lib/inbound-email-metadata";
  * Sert à deux choses concrètes : savoir à quelle adresse le client a écrit
  * (utile quand plusieurs adresses arrivent dans la même boîte), et retrouver le
  * mail exact dans Gmail quand il faut voir la mise en forme d'origine.
+ *
+ * Replié par défaut, et rattaché à la demande qu'il décrit : déployé en
+ * permanence, ce tableau de six lignes occupait plus de place que le message du
+ * client, alors qu'on ne le consulte qu'en cas de doute.
  */
 export function EmailOrigin({ metadata }: { metadata: unknown }) {
   const email = readInboundEmailMetadata(metadata);
@@ -31,20 +36,22 @@ export function EmailOrigin({ metadata }: { metadata: unknown }) {
   if (rows.length === 0) return null;
 
   return (
-    <section className="rounded-lg border bg-muted/30 p-4">
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Email d&apos;origine
-      </h2>
-      <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+    <details className="group mt-3 border-t pt-2.5">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+        En-têtes de l&apos;email reçu
+      </summary>
+
+      <dl className="mt-2 grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
         {rows.map((row) => (
           <div key={row.label} className="col-span-2 grid grid-cols-subgrid">
             <dt className="text-muted-foreground">{row.label}</dt>
             {/* `break-words` : une liste de destinataires ou un objet très long
                 ne doit pas élargir la colonne du fil de discussion. */}
-            <dd className="break-words text-foreground">{row.value}</dd>
+            <dd className="break-words">{row.value}</dd>
           </div>
         ))}
       </dl>
-    </section>
+    </details>
   );
 }

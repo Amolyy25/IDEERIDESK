@@ -73,7 +73,12 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.5rem;
+  /* Rayon de référence de toute l'interface : `--radius-sm/md/lg/xl…` en
+     découlent (voir `@theme inline`). À 0.5rem, les boutons et les champs de
+     32 px de haut paraissaient taillés à l'équerre ; 0.625rem les adoucit sans
+     les transformer en gélules. Les pages du portail public ne suivent pas cette
+     valeur : elles imposent la leur, réglée dans /settings/portal. */
+  --radius: 0.625rem;
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.795 0.173 87.5);
@@ -116,6 +121,93 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.795 0.173 87.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Envoi d'une réponse : l'avion emporte le message.
+   ---------------------------------------------------------------------------
+   Deux éléments partent dans la même direction — l'avion du bouton, et une
+   copie du message posée sur le champ — ce qui se lit comme « le message est
+   emporté » plutôt que comme deux effets sans rapport.
+
+   Uniquement `transform` et `opacity` : ces deux propriétés sont composées par
+   le GPU, sans recalcul de mise en page ni repeinture, donc l'animation tient
+   les 60 images par seconde même pendant l'aller-retour serveur. Aucune
+   propriété géométrique (top, width, margin) n'est animée, c'est ce qui rend le
+   mouvement fluide. `will-change` n'est posé que sur les classes appliquées
+   pendant le vol, jamais à demeure.
+
+   Les fonctions de temps sont déclarées image par image : l'avion prend son
+   élan (léger recul), puis accélère et sort du cadre — c'est cette rupture de
+   rythme qui donne l'impression d'un décollage plutôt que d'un glissement. */
+
+@keyframes send-plane-takeoff {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+  }
+  20% {
+    transform: translate3d(-3px, 2px, 0) rotate(8deg);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.35, 1);
+  }
+  100% {
+    transform: translate3d(38px, -32px, 0) rotate(-26deg);
+    opacity: 0;
+  }
+}
+
+@keyframes send-plane-return {
+  0% {
+    transform: translate3d(-14px, 12px, 0) rotate(10deg);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes send-message-liftoff {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.9;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.6, 1);
+  }
+  100% {
+    transform: translate3d(24px, -52px, 0) scale(0.96);
+    opacity: 0;
+  }
+}
+
+.send-plane-takeoff {
+  animation: send-plane-takeoff 560ms both;
+  will-change: transform, opacity;
+}
+
+.send-plane-return {
+  animation: send-plane-return 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.send-message-liftoff {
+  animation: send-message-liftoff 520ms both;
+  will-change: transform, opacity;
+}
+
+/* Mouvement désactivé quand le système le demande. La copie du message doit
+   rester invisible : elle est retirée par un minuteur, pas par la fin de
+   l'animation — sans animation, `animationend` ne se déclencherait jamais. */
+@media (prefers-reduced-motion: reduce) {
+  .send-plane-takeoff,
+  .send-plane-return,
+  .send-message-liftoff {
+    animation: none;
+  }
+  .send-message-liftoff {
+    opacity: 0;
+  }
 }
 
 @layer base {

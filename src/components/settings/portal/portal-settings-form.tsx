@@ -529,7 +529,7 @@ export function PortalSettingsForm({ settings }: { settings: PortalConfig }) {
             {isSaving ? "Enregistrement…" : "Enregistrer"}
           </Button>
           <Button variant="ghost" onClick={handleReset} disabled={isSaving}>
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="size-4" />
             Valeurs par défaut
           </Button>
         </div>

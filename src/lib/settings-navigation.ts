@@ -99,6 +99,14 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         adminOnly: true,
       },
       {
+        href: "/settings/signatures",
+        label: "Signatures",
+        title: "Signatures des agents",
+        description:
+          "Le bloc ajouté en bas des réponses envoyées au client, avec le nom de l'agent qui répond. Une signature vaut pour toute l'équipe ou pour quelques agents seulement.",
+        adminOnly: true,
+      },
+      {
         href: "/settings/acknowledgement",
         label: "Accusé de réception",
         description:

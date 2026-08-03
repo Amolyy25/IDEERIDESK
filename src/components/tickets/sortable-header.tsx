@@ -34,7 +34,7 @@ export function SortableHeader({ sortKey, label }: { sortKey: string; label: str
       )}
     >
       {label}
-      <Icon className="h-3 w-3" />
+      <Icon className="size-3.5" />
     </button>
   );
 }

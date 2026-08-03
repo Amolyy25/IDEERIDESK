@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   Bold,
@@ -35,6 +35,8 @@ import {
 import { cn } from "@/lib/utils";
 import { VideoEmbed } from "@/components/editor/video-embed-extension";
 import { StyleBlock } from "@/components/editor/style-block-extension";
+import { ResizableImage } from "@/components/editor/resizable-image-extension";
+import { ImageSizeControls } from "@/components/editor/image-size-controls";
 
 export type InternalLinkTarget = { id: string; title: string; slug: string };
 
@@ -74,7 +76,7 @@ function ToolbarButton({
       disabled={disabled}
       title={title}
       className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40",
+        "inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40",
         active && "bg-muted text-foreground"
       )}
     >
@@ -127,7 +129,7 @@ export function RichTextEditor({
     extensions: [
       StarterKit,
       Link.configure({ openOnClick: false, autolink: true }),
-      Image,
+      ResizableImage,
       VideoEmbed,
       StyleBlock,
       Placeholder.configure({ placeholder: placeholder ?? "Écrivez…" }),
@@ -268,6 +270,11 @@ export function RichTextEditor({
     try {
       const url = await onUploadImage(file);
       editor!.chain().focus().setImage({ src: url }).run();
+    } catch (error) {
+      // Sans ce rattrapage, un refus du serveur (format, taille, droits) ne se
+      // voyait nulle part : le bouton reprenait son état normal et rien ne
+      // s'insérait, sans un mot d'explication.
+      toast.error(error instanceof Error ? error.message : "Envoi de l'image impossible");
     } finally {
       setIsUploading(false);
     }
@@ -283,49 +290,49 @@ export function RichTextEditor({
             active={editor.isActive("bold")}
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
-            <Bold className="h-3.5 w-3.5" />
+            <Bold className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Italique"
             active={editor.isActive("italic")}
             onClick={() => editor.chain().focus().toggleItalic().run()}
           >
-            <Italic className="h-3.5 w-3.5" />
+            <Italic className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Titre 1"
             active={editor.isActive("heading", { level: 1 })}
             onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           >
-            <Heading1 className="h-3.5 w-3.5" />
+            <Heading1 className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Titre 2"
             active={editor.isActive("heading", { level: 2 })}
             onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
           >
-            <Heading2 className="h-3.5 w-3.5" />
+            <Heading2 className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Liste à puces"
             active={editor.isActive("bulletList")}
             onClick={() => editor.chain().focus().toggleBulletList().run()}
           >
-            <List className="h-3.5 w-3.5" />
+            <List className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Liste numérotée"
             active={editor.isActive("orderedList")}
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
           >
-            <ListOrdered className="h-3.5 w-3.5" />
+            <ListOrdered className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             title="Citation"
             active={editor.isActive("blockquote")}
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
           >
-            <Quote className="h-3.5 w-3.5" />
+            <Quote className="size-4" />
           </ToolbarButton>
 
           <div className="mx-1 h-4 w-px bg-border" />
@@ -343,7 +350,7 @@ export function RichTextEditor({
                     setLinkPopoverOpen(true);
                   }}
                 >
-                  <Link2 className="h-3.5 w-3.5" />
+                  <Link2 className="size-4" />
                 </ToolbarButton>
               </span>
             </PopoverTrigger>
@@ -403,7 +410,7 @@ export function RichTextEditor({
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
               >
-                <ImagePlus className="h-3.5 w-3.5" />
+                <ImagePlus className="size-4" />
               </ToolbarButton>
               <input
                 ref={fileInputRef}
@@ -419,7 +426,7 @@ export function RichTextEditor({
           <PopoverTrigger asChild>
             <span>
               <ToolbarButton title="Insérer une vidéo (YouTube / Vimeo)" onClick={() => setVideoPopoverOpen(true)}>
-                <Video className="h-3.5 w-3.5" />
+                <Video className="size-4" />
               </ToolbarButton>
             </span>
           </PopoverTrigger>
@@ -443,7 +450,7 @@ export function RichTextEditor({
         </Popover>
 
         <ToolbarButton title="Coller du code HTML" onClick={() => setHtmlPopoverOpen(true)}>
-          <Code2 className="h-3.5 w-3.5" />
+          <Code2 className="size-4" />
         </ToolbarButton>
         <Dialog open={htmlPopoverOpen} onOpenChange={setHtmlPopoverOpen}>
           <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-2xl">
@@ -470,7 +477,7 @@ export function RichTextEditor({
             title="Insérer le logo"
             onClick={() => editor.chain().focus().setImage({ src: logoUrl }).run()}
           >
-            <ImageIcon className="h-3.5 w-3.5" />
+            <ImageIcon className="size-4" />
           </ToolbarButton>
         )}
           </>
@@ -482,7 +489,7 @@ export function RichTextEditor({
             active={showPreview}
             onClick={() => setShowPreview((previous) => !previous)}
           >
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="size-4" />
           </ToolbarButton>
         )}
 
@@ -513,6 +520,11 @@ export function RichTextEditor({
           </button>
         </div>
       </div>
+
+      {/* Réglages de taille sur une ligne à part, apparue seulement quand une
+          image est sélectionnée : les glisser dans la barre d'outils la ferait
+          se replier sur deux lignes à chaque clic sur une image. */}
+      {mode === "visual" && editor.isActive("image") && <ImageSizeControls editor={editor} />}
 
       {mode === "visual" ? (
         <div className="px-3 py-2" style={{ minHeight }}>

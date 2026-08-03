@@ -124,7 +124,7 @@ export function SharePanel({
             disabled={!articleId}
             title={!articleId ? "Enregistrez d'abord l'article" : undefined}
           >
-            <Share2 className="h-3.5 w-3.5" />
+            <Share2 className="size-4" />
             {isShared ? "Lien de partage actif" : "Partager cet article"}
           </Button>
         </PopoverTrigger>
@@ -187,7 +187,7 @@ export function SharePanel({
                   onClick={handleCopy}
                   title="Copier le lien"
                 >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
                 <Button
                   type="button"
@@ -198,7 +198,7 @@ export function SharePanel({
                   asChild
                 >
                   <a href={shareUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-3.5 w-3.5" />
+                    <ExternalLink className="size-4" />
                   </a>
                 </Button>
                 <div className="flex flex-1 rounded-md border p-0.5 text-xs">
@@ -238,7 +238,7 @@ export function SharePanel({
                   disabled={isPending}
                   title="Désactiver le partage"
                 >
-                  <Link2Off className="h-3.5 w-3.5" />
+                  <Link2Off className="size-4" />
                 </Button>
               </div>
             </div>

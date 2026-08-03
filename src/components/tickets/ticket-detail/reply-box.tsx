@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { Lock, Reply, Send, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
@@ -11,17 +11,49 @@ import { cn } from "@/lib/utils";
 import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-textarea";
 import type { MentionableAgent } from "@/lib/mentions";
 
+/**
+ * Durées du vol de l'avion, en millisecondes. Elles doivent rester alignées sur
+ * les animations `send-plane-*` de globals.css : c'est un minuteur, et non la fin
+ * de l'animation, qui fait avancer les étapes — sous `prefers-reduced-motion`
+ * l'animation n'existe pas et `animationend` ne se déclencherait jamais.
+ */
+const PLANE_FLIGHT_MS = 560;
+const PLANE_RETURN_MS = 320;
+
+/** Étape du vol : au repos, en train de partir, ou de revenir se poser. */
+type PlanePhase = "idle" | "flying" | "landing";
+
+/**
+ * Zone de rédaction, en bas du fil : on écrit là où la conversation s'arrête.
+ *
+ * Les deux modes ne sont pas deux options d'un même envoi mais deux
+ * destinataires différents — le client, ou l'équipe. Tout ce qui change entre
+ * les deux est donc annoncé : la couleur du bloc, le destinataire au-dessus du
+ * champ, le libellé du bouton, et la signature (jointe à un email, absente
+ * d'une note).
+ */
 export function ReplyBox({
   ticketId,
   currentAgentName,
+  clientEmail,
   canRespond,
   requiresApproval,
+  signature,
   agents,
 }: {
   ticketId: string;
   currentAgentName: string;
+  /** Destinataire de la réponse publique. Null quand aucun client n'est rattaché. */
+  clientEmail: string | null;
   canRespond: boolean;
   requiresApproval: boolean;
+  /**
+   * Signature déjà rendue (voir `SignatureBlock`), affichée sous le champ telle
+   * qu'elle partira. `null` quand aucune signature n'est configurée pour cet
+   * agent : le bloc disparaît alors complètement, plutôt que d'annoncer un
+   * espace vide en bas des emails.
+   */
+  signature: React.ReactNode;
   /** Agents mentionnables en @ dans une note interne. */
   agents: MentionableAgent[];
 }) {
@@ -30,6 +62,34 @@ export function ReplyBox({
   const [isPrivate, setIsPrivate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [planePhase, setPlanePhase] = useState<PlanePhase>("idle");
+  // Copie du message pendant son vol : le champ est vidé dès le clic, c'est
+  // cette copie qui s'envole par-dessus.
+  const [messageInFlight, setMessageInFlight] = useState<string | null>(null);
+
+  const isEmpty = !content.trim();
+
+  // L'avion part, puis revient se poser. Deux étapes enchaînées par ce seul
+  // effet, pour que l'état ne puisse pas rester bloqué « en vol ».
+  useEffect(() => {
+    if (planePhase === "idle") return;
+
+    let duration = PLANE_RETURN_MS;
+    let nextPhase: PlanePhase = "idle";
+    if (planePhase === "flying") {
+      duration = PLANE_FLIGHT_MS;
+      nextPhase = "landing";
+    }
+
+    const timer = setTimeout(() => {
+      setPlanePhase(nextPhase);
+      if (nextPhase === "landing") {
+        setMessageInFlight(null);
+      }
+    }, duration);
+
+    return () => clearTimeout(timer);
+  }, [planePhase]);
 
   async function handleSuggest() {
     setIsSuggesting(true);
@@ -46,18 +106,28 @@ export function ReplyBox({
       setContent(result.suggestion);
       toast.success("Suggestion générée");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Impossible de générer une suggestion.");
+      toast.error(
+        error instanceof Error ? error.message : "Impossible de générer une suggestion."
+      );
     } finally {
       setIsSuggesting(false);
     }
   }
 
   async function handleSubmit() {
-    if (!content.trim()) return;
+    if (isEmpty || isSubmitting) return;
+
+    const sentContent = content;
     setIsSubmitting(true);
+    // Le champ se vide et le message décolle immédiatement : l'aller-retour
+    // serveur se joue pendant le vol, au lieu de laisser le texte figé dans le
+    // champ en attendant la réponse. En cas d'échec, il est rendu tel quel.
+    setContent("");
+    setMessageInFlight(sentContent);
+    setPlanePhase("flying");
+
     try {
-      const result = await addTicketMessage(ticketId, { content, isPrivate });
-      setContent("");
+      const result = await addTicketMessage(ticketId, { content: sentContent, isPrivate });
 
       if (isPrivate && result.mentionedNames.length > 0) {
         toast.success(
@@ -83,15 +153,28 @@ export function ReplyBox({
 
       router.refresh();
     } catch (error) {
+      // Le texte revient dans le champ : un envoi refusé ne doit jamais coûter
+      // le message à l'agent.
+      setContent(sentContent);
+      setPlanePhase("idle");
+      setMessageInFlight(null);
       toast.error(error instanceof Error ? error.message : "Impossible d'envoyer le message");
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  /** ⌘/Ctrl + Entrée envoie, comme dans un client mail. Entrée seule saute une ligne. */
+  function handleKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      handleSubmit();
+    }
+  }
+
   if (!canRespond) {
     return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
         Accès en lecture seule — vous ne pouvez pas répondre à ce ticket.
       </div>
     );
@@ -100,91 +183,176 @@ export function ReplyBox({
   return (
     <div
       className={cn(
-        "space-y-3 rounded-lg border p-4 transition-colors",
+        "overflow-hidden rounded-lg border transition-colors",
         // Même code couleur que les notes internes du fil : impossible de se
         // tromper sur ce que le client verra.
-        isPrivate && "border-primary/40 bg-primary/5",
+        isPrivate ? "border-primary/40 bg-primary/5" : "bg-card"
       )}
     >
-      <div className="inline-flex rounded-md border bg-background p-0.5">
-        <button
-          type="button"
-          onClick={() => setIsPrivate(false)}
-          className={cn(
-            "rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
-            !isPrivate
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Réponse publique
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsPrivate(true)}
-          className={cn(
-            "rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
-            isPrivate
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Note interne
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="inline-flex rounded-md border bg-background p-0.5">
+          <ModeButton
+            selected={!isPrivate}
+            onSelect={() => setIsPrivate(false)}
+            icon={<Reply className="size-4" />}
+            label="Répondre au client"
+          />
+          <ModeButton
+            selected={isPrivate}
+            onSelect={() => setIsPrivate(true)}
+            icon={<Lock className="size-4" />}
+            label="Note interne"
+          />
+        </div>
+
+        <p className="truncate text-xs text-muted-foreground">
+          {isPrivate && "Visible par l'équipe seulement"}
+          {!isPrivate && clientEmail && <>Destinataire : {clientEmail}</>}
+          {!isPrivate && !clientEmail && "Aucun client rattaché — rien ne partira par email"}
+        </p>
       </div>
 
-      {/* L'autocomplétion des mentions n'est montée que sur la note interne :
-          un @ dans une réponse publique ne notifie personne, proposer la liste
-          de l'équipe y serait un piège. */}
-      {isPrivate ? (
-        <MentionTextarea
-          value={content}
-          onChange={setContent}
-          agents={agents}
-          placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
-          rows={4}
-        />
-      ) : (
-        <Textarea
-          placeholder="Répondre au client…"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={4}
-        />
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          {isPrivate ? "Note visible par l'équipe" : "Répond en tant que"}{" "}
-          <span className="font-medium text-foreground">{currentAgentName}</span>
-          {!isPrivate && requiresApproval && " · nécessite une validation"}
-          {isPrivate && " · tapez @ pour notifier un collègue"}
-        </p>
-
-        <div className="flex items-center gap-2">
-          {!isPrivate && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleSuggest}
-              disabled={isSuggesting}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              {isSuggesting ? "Génération…" : "Suggérer une réponse"}
-            </Button>
+      <div className="space-y-3 p-3">
+        <div className="relative">
+          {/* L'autocomplétion des mentions n'est montée que sur la note interne :
+              un @ dans une réponse publique ne notifie personne, proposer la liste
+              de l'équipe y serait un piège. */}
+          {isPrivate ? (
+            <MentionTextarea
+              value={content}
+              onChange={setContent}
+              agents={agents}
+              placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
+              rows={4}
+            />
+          ) : (
+            <Textarea
+              placeholder="Écrire la réponse…"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={4}
+              className="bg-background"
+            />
           )}
-          <Button onClick={handleSubmit} disabled={isSubmitting || !content.trim()} size="sm">
-            {isSubmitting
-              ? "Envoi…"
-              : isPrivate
-                ? "Ajouter la note"
-                : requiresApproval
-                  ? "Envoyer pour validation"
-                  : "Envoyer"}
-          </Button>
+
+          {/* Le message qui s'envole, posé exactement sur le champ qu'il quitte.
+              Purement décoratif — le vrai texte est déjà parti au serveur — donc
+              masqué aux lecteurs d'écran et insensible au pointeur. */}
+          {messageInFlight !== null && (
+            <p
+              aria-hidden
+              className="send-message-liftoff pointer-events-none absolute inset-0 overflow-hidden rounded-lg border border-primary/40 bg-background px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+            >
+              {messageInFlight}
+            </p>
+          )}
+        </div>
+
+        {/* Uniquement sur la réponse publique : une note interne ne part pas par
+            email, y montrer une signature laisserait croire le contraire. */}
+        {!isPrivate && signature && (
+          <div className="rounded-md border border-dashed bg-background/60 px-3 py-2.5">
+            <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              Signature ajoutée à l&apos;email
+            </p>
+            {signature}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {isPrivate ? "Note signée" : "Réponse envoyée"} par{" "}
+            <span className="font-medium text-foreground">{currentAgentName}</span>
+            {!isPrivate && requiresApproval && " · soumise à validation"}
+            {isPrivate && " · tapez @ pour notifier un collègue"}
+          </p>
+
+          <div className="flex items-center gap-2">
+            {!isPrivate && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleSuggest}
+                disabled={isSuggesting}
+              >
+                <Sparkles />
+                {isSuggesting ? "Génération…" : "Suggérer"}
+              </Button>
+            )}
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || isEmpty}
+              size="sm"
+              // Le raccourci n'est branché que sur la réponse publique : la note
+              // interne a son propre traitement du clavier pour les mentions.
+              title={isPrivate ? undefined : "⌘ / Ctrl + Entrée"}
+            >
+              <Send className={planeClass(planePhase)} />
+              {sendLabel({ isSubmitting, isPrivate, requiresApproval })}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Animation portée par l'avion du bouton. `size-4` reste posé par le bouton
+ * lui-même : ici on ne décide que du mouvement.
+ */
+function planeClass(phase: PlanePhase) {
+  if (phase === "flying") return "send-plane-takeoff";
+  if (phase === "landing") return "send-plane-return";
+  return "";
+}
+
+/**
+ * Libellé du bouton d'envoi. Sorti du JSX : trois conditions imbriquées dans
+ * l'attribut se relisaient mal.
+ */
+function sendLabel({
+  isSubmitting,
+  isPrivate,
+  requiresApproval,
+}: {
+  isSubmitting: boolean;
+  isPrivate: boolean;
+  requiresApproval: boolean;
+}) {
+  if (isSubmitting) return "Envoi…";
+  if (isPrivate) return "Ajouter la note";
+  if (requiresApproval) return "Envoyer pour validation";
+  return "Envoyer";
+}
+
+function ModeButton({
+  selected,
+  onSelect,
+  icon,
+  label,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        selected
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

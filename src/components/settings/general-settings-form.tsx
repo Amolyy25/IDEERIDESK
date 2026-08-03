@@ -88,7 +88,7 @@ export function GeneralSettingsForm({ settings }: { settings: GlobalSetting[] })
                     )}
                     {savedKey === setting.key && savingKey !== setting.key && (
                       <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                        <Check className="h-3 w-3" />
+                        <Check className="size-3.5" />
                         Enregistré
                       </span>
                     )}

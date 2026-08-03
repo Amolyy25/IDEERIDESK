@@ -158,7 +158,7 @@ export function ColorField({
             onClick={() => onChange(null)}
             title="Revenir à la couleur du thème"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="size-4" />
           </Button>
         )}
       </div>
@@ -284,7 +284,7 @@ export function LinkListField({
                     className="p-0.5 disabled:opacity-30"
                     title="Monter"
                   >
-                    <ChevronUp className="h-3.5 w-3.5" />
+                    <ChevronUp className="size-4" />
                   </button>
                   <button
                     type="button"
@@ -293,7 +293,7 @@ export function LinkListField({
                     className="p-0.5 disabled:opacity-30"
                     title="Descendre"
                   >
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown className="size-4" />
                   </button>
                 </div>
                 <div className="grid flex-1 gap-2 sm:grid-cols-2">
@@ -317,7 +317,7 @@ export function LinkListField({
                   onClick={() => onChange(links.filter((_, i) => i !== index))}
                   title="Supprimer ce lien"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="size-4" />
                 </Button>
               </div>
               <label className="mt-2 flex items-center gap-2 pl-6 text-xs text-muted-foreground">
@@ -339,7 +339,7 @@ export function LinkListField({
         disabled={links.length >= max}
         onClick={() => onChange([...links, { label: "", href: "", newTab: false }])}
       >
-        <Plus className="h-3.5 w-3.5" />
+        <Plus className="size-4" />
         Ajouter un lien
       </Button>
     </div>
@@ -418,7 +418,7 @@ export function AssetField({
             disabled={isBusy}
             onClick={() => inputRef.current?.click()}
           >
-            <Upload className="h-3.5 w-3.5" />
+            <Upload className="size-4" />
             {isBusy ? "Envoi…" : assetId ? "Remplacer" : "Téléverser"}
           </Button>
           {assetId && (
@@ -439,7 +439,7 @@ export function AssetField({
                 }
               }}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-4" />
               Retirer
             </Button>
           )}

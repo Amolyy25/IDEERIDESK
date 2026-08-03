@@ -38,7 +38,7 @@ function CopyBlock({ label, hint, value }: { label: string; hint?: string; value
       <div className="flex items-center justify-between gap-2">
         <Label>{label}</Label>
         <Button type="button" size="sm" variant="ghost" onClick={copy}>
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
           {copied ? "Copié" : "Copier"}
         </Button>
       </div>

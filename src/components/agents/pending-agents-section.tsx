@@ -94,12 +94,12 @@ export function PendingAgentsSection({
                     disabled={isPending}
                     onClick={() => decide(agent, false)}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="size-4" />
                     Refuser
                   </Button>
                 )}
                 <Button size="sm" disabled={isPending} onClick={() => decide(agent, true)}>
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="size-4" />
                   Approuver
                 </Button>
               </div>

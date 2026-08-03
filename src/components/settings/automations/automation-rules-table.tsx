@@ -135,19 +135,19 @@ export function AutomationRulesTable({
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 {rule.delayDays}j
               </span>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+              <ArrowRight className="size-4 text-muted-foreground" />
               <StatusDot color={rule.actionStatus.color} label={rule.actionStatus.name} />
             </div>
 
             <div className="flex items-center gap-1.5 text-muted-foreground">
               {rule.addNote && (
                 <span title="Ajoute une note interne">
-                  <StickyNote className="h-3.5 w-3.5" />
+                  <StickyNote className="size-4" />
                 </span>
               )}
               {rule.sendEmail && (
                 <span title="Envoie un e-mail au client">
-                  <Mail className="h-3.5 w-3.5" />
+                  <Mail className="size-4" />
                 </span>
               )}
             </div>
@@ -158,14 +158,14 @@ export function AutomationRulesTable({
                 statuses={statuses}
                 trigger={
                   <Button size="icon" variant="ghost">
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="size-4" />
                   </Button>
                 }
               />
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button size="icon" variant="ghost">
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="size-4" />
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>

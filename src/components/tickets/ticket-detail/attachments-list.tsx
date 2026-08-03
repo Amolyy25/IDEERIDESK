@@ -17,9 +17,9 @@ export function AttachmentsList({ attachments }: { attachments: TicketAttachment
           href={`/api/attachments/${attachment.id}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
         >
-          <Paperclip className="h-3 w-3" />
+          <Paperclip className="size-4" />
           {attachment.filename}
           <span className="text-muted-foreground/60">{formatSize(attachment.size)}</span>
         </a>
