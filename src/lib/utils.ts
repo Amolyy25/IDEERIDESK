@@ -13,3 +13,15 @@ export function initials(name: string) {
     .join("")
     .toUpperCase()
 }
+
+/**
+ * Marque du pluriel : `plural(2)` vaut « s », `plural(1)` vaut « ».
+ *
+ * Existe pour une raison de lisibilité : une phrase qui s'accorde sur trois mots
+ * (« 2 client(s) de ticket(s) fusionné(s) ») devenait une file de ternaires où
+ * la phrase elle-même disparaissait.
+ */
+export function plural(count: number, suffix = "s") {
+  if (count > 1) return suffix
+  return ""
+}

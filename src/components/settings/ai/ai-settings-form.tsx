@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { clearAiApiKey, updateAiSettings, type AiSettingsStatus } from "@/lib/actions/ai-settings";
 import type { AiProvider } from "@/lib/ai-settings";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export function AiSettingsForm({ status }: { status: AiSettingsStatus }) {
   const [provider, setProvider] = useState(status.provider);
   const [model, setModel] = useState(status.model);
   const [apiKey, setApiKey] = useState("");
+  const [duplicateDetection, setDuplicateDetection] = useState(status.duplicateDetection);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 
@@ -35,7 +37,12 @@ export function AiSettingsForm({ status }: { status: AiSettingsStatus }) {
     event.preventDefault();
     setIsSubmitting(true);
     try {
-      await updateAiSettings({ provider, model, apiKey: apiKey || undefined });
+      await updateAiSettings({
+        provider,
+        model,
+        apiKey: apiKey || undefined,
+        duplicateDetection,
+      });
       setApiKey("");
       toast.success("Paramètres IA enregistrés");
       router.refresh();
@@ -143,6 +150,23 @@ export function AiSettingsForm({ status }: { status: AiSettingsStatus }) {
               : "Aucune clé enregistrée pour le moment."}
           </p>
         </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+        <div className="space-y-1">
+          <Label htmlFor="duplicateDetection">Détection des doublons</Label>
+          <p className="text-xs text-muted-foreground">
+            À l&apos;ouverture d&apos;un ticket, compare sa demande à celles des 30 derniers jours et
+            propose une fusion quand deux tickets portent sur le même sujet. Seuls le sujet et la
+            demande initiale sont transmis au fournisseur, et uniquement lorsque des tickets
+            proches ont d&apos;abord été trouvés localement.
+          </p>
+        </div>
+        <Switch
+          id="duplicateDetection"
+          checked={duplicateDetection}
+          onCheckedChange={setDuplicateDetection}
+        />
       </div>
 
       <div className="flex items-center gap-2">

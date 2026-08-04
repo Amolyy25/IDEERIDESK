@@ -4,13 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Lock, UserPlus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Lock, Merge, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SourceBadge } from "@/components/tickets/source-badge";
 import { formatDateTime } from "@/lib/format-date";
 import { claimTicket, closeTicket } from "@/lib/actions/tickets";
 import type { TicketWithMessages } from "@/lib/actions/tickets";
+import { MergeDialog } from "@/components/tickets/ticket-detail/merge-dialog";
+import { plural } from "@/lib/utils";
 
 /**
  * En-tête collant de la fiche ticket : ce qu'on doit savoir sans redescendre, et
@@ -25,15 +27,22 @@ import type { TicketWithMessages } from "@/lib/actions/tickets";
 export function TicketHeader({
   ticket,
   currentAgentId,
+  canRespond,
 }: {
   ticket: TicketWithMessages;
   currentAgentId: string | null;
+  canRespond: boolean;
 }) {
   const router = useRouter();
   const [isClaiming, setIsClaiming] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [isMergeOpen, setIsMergeOpen] = useState(false);
 
   const canClaim = Boolean(currentAgentId) && ticket.assigneeId !== currentAgentId;
+  // Un ticket déjà fusionné n'a rien à fusionner de plus : c'est depuis sa
+  // destination que l'équipe travaille, le proposer ici mènerait à des chaînes
+  // que personne ne relit.
+  const canMerge = canRespond && ticket.mergedIntoId === null;
 
   async function handleClaim() {
     setIsClaiming(true);
@@ -42,7 +51,11 @@ export function TicketHeader({
       toast.success("Ticket pris en charge");
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Impossible de prendre en charge");
+      let message = "Impossible de prendre en charge";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      toast.error(message);
     } finally {
       setIsClaiming(false);
     }
@@ -52,10 +65,14 @@ export function TicketHeader({
     setIsClosing(true);
     try {
       const result = await closeTicket(ticket.id);
-      toast.success(result.emailSent ? "Ticket clos, email envoyé au client" : "Ticket clos");
+      toast.success(closeMessage(result));
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Impossible de clore ce ticket");
+      let message = "Impossible de clore ce ticket";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      toast.error(message);
     } finally {
       setIsClosing(false);
     }
@@ -110,9 +127,15 @@ export function TicketHeader({
               {isClaiming ? "Attribution…" : "Prendre en charge"}
             </Button>
           )}
-          {/* Clore est en retrait : c'est l'action qui met fin à l'échange et
-              déclenche un email au client, elle n'a pas à être la plus voyante
-              de l'écran. */}
+          {/* Fusionner et clore sont toutes deux en retrait : ce sont les
+              actions qui retirent un dossier de la file, elles n'ont pas à être
+              les plus voyantes de l'écran. */}
+          {canMerge && (
+            <Button variant="outline" size="sm" onClick={() => setIsMergeOpen(true)}>
+              <Merge />
+              Fusionner
+            </Button>
+          )}
           {!ticket.closedAt && (
             <Button variant="outline" size="sm" onClick={handleClose} disabled={isClosing}>
               <CheckCircle2 />
@@ -121,8 +144,41 @@ export function TicketHeader({
           )}
         </div>
       </div>
+
+      {canMerge && (
+        <MergeDialog
+          ticketId={ticket.id}
+          ticketNumber={ticket.number}
+          open={isMergeOpen}
+          onOpenChange={setIsMergeOpen}
+        />
+      )}
     </header>
   );
+}
+
+/**
+ * Ce que la clôture a réellement provoqué.
+ *
+ * Le nombre de clients servis est dit explicitement : après une fusion, l'email
+ * de clôture part aussi aux clients des doublons, et « email envoyé au client »
+ * laisserait croire qu'un seul l'a reçu.
+ */
+function closeMessage(result: { emailSent: boolean; alsoSentTo: number }) {
+  const extra = result.alsoSentTo;
+
+  if (result.emailSent && extra === 0) return "Ticket clos, email envoyé au client";
+  if (result.emailSent) {
+    return `Ticket clos, email envoyé au client (+ ${extra} client${plural(
+      extra
+    )} de ticket${plural(extra)} fusionné${plural(extra)})`;
+  }
+  if (extra > 0) {
+    return `Ticket clos, email envoyé à ${extra} client${plural(extra)} de ticket${plural(
+      extra
+    )} fusionné${plural(extra)}`;
+  }
+  return "Ticket clos";
 }
 
 /** Statut ou priorité : la couleur définie dans les réglages, puis le nom. */

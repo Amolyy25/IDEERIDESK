@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getAuthenticatedGmailClient } from "@/lib/google-oauth";
 import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_SIZE } from "@/lib/attachment-rules";
 import { reopenClosedTicket } from "@/lib/ticket-reopen";
+import { resolveMergeRoot } from "@/lib/ticket-merge";
 import { readInboundTicketCreationEnabled } from "@/lib/email-account";
 import { createTicketFromInboundEmail } from "@/lib/email-to-ticket";
 
@@ -370,7 +371,10 @@ async function processInboundMessage(
     data: {
       gmailThreadId,
       emailMessageId: messageIdHeader ?? existingTicket.emailMessageId,
-      hasUnreadActivity: true,
+      // Un ticket fusionné n'est plus un dossier de travail : le signaler comme
+      // « à voir » le ferait ressortir dans les vues alors que l'équipe traite
+      // la demande ailleurs. C'est la cible, juste en dessous, qui s'allume.
+      hasUnreadActivity: existingTicket.mergedIntoId === null,
       updatedAt: new Date(),
     },
   });
@@ -384,9 +388,24 @@ async function processInboundMessage(
     });
   }
 
-  // Après l'enregistrement du message, pour que la note système de réouverture
-  // se place bien après la réponse du client dans le fil.
-  const reopened = await reopenClosedTicket(existingTicket.id);
+  // Ticket fusionné : le message reste dans le fil de SON client (c'est sa
+  // conversation, et c'est par elle qu'on lui répondra), mais l'alerte part vers
+  // le ticket où l'équipe travaille. Sans ce renvoi, une relance sur un doublon
+  // n'était visible nulle part. Et surtout : pas de réouverture, qui remettrait
+  // en file un dossier volontairement rattaché.
+  let reopened = false;
+  if (existingTicket.mergedIntoId) {
+    const rootId = await resolveMergeRoot(existingTicket.mergedIntoId);
+    await prisma.ticket.update({
+      where: { id: rootId },
+      data: { hasUnreadActivity: true, updatedAt: new Date() },
+    });
+    await reopenClosedTicket(rootId);
+  } else {
+    // Après l'enregistrement du message, pour que la note système de réouverture
+    // se place bien après la réponse du client dans le fil.
+    reopened = await reopenClosedTicket(existingTicket.id);
+  }
 
   return {
     skipped: false as const,

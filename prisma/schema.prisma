@@ -321,10 +321,30 @@ model Ticket {
   formSource   Source? @relation(fields: [formSourceId], references: [id])
   formSourceId String?
 
+  // --- Fusion de doublons ---
+  // Ticket dans lequel celui-ci a été fusionné. La fusion ne déplace ni ne
+  // supprime rien : le ticket source garde son fil, son numéro et son fil Gmail
+  // (indispensable pour continuer à répondre à SON client dans SA conversation),
+  // il est simplement clos et rattaché à la cible, qui devient le seul endroit
+  // où l'équipe travaille. C'est ce qui rend la fusion réversible.
+  mergedInto    Ticket?   @relation("TicketMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedIntoId  String?
+  mergedTickets Ticket[]  @relation("TicketMerge")
+  mergedAt      DateTime?
+
+  // Dernier passage de la détection de doublons. Sert d'anti-rejeu : sans lui,
+  // chaque ouverture de fiche relancerait un appel facturé au fournisseur d'IA
+  // pour recalculer le même résultat.
+  duplicateScanAt DateTime?
+
   messages      Message[]
   attachments   Attachment[]
   notifications Notification[]
 
+  duplicateSuggestions   TicketDuplicateSuggestion[] @relation("DuplicateSuggestionTicket")
+  duplicateCandidateFor  TicketDuplicateSuggestion[] @relation("DuplicateSuggestionCandidate")
+
+  @@index([mergedIntoId])
   @@index([formSourceId])
   @@index([statusId])
   @@index([priorityId])
@@ -333,6 +353,46 @@ model Ticket {
   @@index([clientId])
   @@index([gmailThreadId])
   @@map("tickets")
+}
+
+enum DuplicateSuggestionStatus {
+  PENDING
+  DISMISSED
+  MERGED
+}
+
+// Rapprochement proposé entre deux tickets qui semblent traiter de la même
+// demande. Persisté plutôt que recalculé à chaque affichage pour deux raisons :
+// le calcul appelle un modèle de langage facturé au jeton, et un rapprochement
+// écarté par un agent doit le rester (sans mémoire, la même proposition
+// reviendrait à chaque ouverture de la fiche).
+//
+// `ticket` est le plus récent des deux — celui qu'un agent est en train de
+// lire — et `candidate` le plus ancien : la fusion va donc, par défaut, dans le
+// sens ticket → candidate, l'antériorité fixant le dossier de référence.
+model TicketDuplicateSuggestion {
+  id String @id @default(cuid())
+
+  // 0 à 100. La part IA du score ; le pré-filtre lexical, lui, ne sert qu'à
+  // choisir les candidats soumis au modèle.
+  score  Int
+  // Justification en une phrase, affichée telle quelle à l'agent : une
+  // proposition de fusion sans motif n'est pas vérifiable.
+  reason String
+
+  status    DuplicateSuggestionStatus @default(PENDING)
+  createdAt DateTime                  @default(now())
+  decidedAt DateTime?
+
+  ticket   Ticket @relation("DuplicateSuggestionTicket", fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  candidate   Ticket @relation("DuplicateSuggestionCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId String
+
+  @@unique([ticketId, candidateId])
+  @@index([ticketId, status])
+  @@map("ticket_duplicate_suggestions")
 }
 
 model Attachment {

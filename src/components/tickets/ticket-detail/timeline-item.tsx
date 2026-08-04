@@ -18,6 +18,15 @@ import { cn } from "@/lib/utils";
  */
 export type TimelineTone = "inbound" | "outbound" | "internal";
 
+/**
+ * Côté où court la ligne de temps.
+ *
+ * `right` ne sert qu'aux conversations parallèles d'un ticket ayant absorbé des
+ * doublons : la demande d'origine descend à gauche, celle du doublon à droite,
+ * et les deux se rejoignent plus bas. Un fil ordinaire n'utilise que `left`.
+ */
+export type TimelineAlign = "left" | "right";
+
 const TONE_CLASS: Record<TimelineTone, string> = {
   inbound: "border-border bg-muted/40",
   outbound: "border-border bg-card",
@@ -30,6 +39,7 @@ export function TimelineItem({
   meta,
   date,
   tone,
+  align = "left",
   children,
   footer,
 }: {
@@ -39,12 +49,13 @@ export function TimelineItem({
   meta?: React.ReactNode;
   date: Date;
   tone: TimelineTone;
+  align?: TimelineAlign;
   children: React.ReactNode;
   /** Zone d'actions en pied de carte, séparée du contenu. */
   footer?: React.ReactNode;
 }) {
   return (
-    <li className="relative flex gap-3">
+    <li className={cn("relative flex gap-3", align === "right" && "flex-row-reverse")}>
       {/* Fond opaque derrière la pastille : c'est ce qui interrompt la ligne de
           temps au niveau de chaque auteur, sans la découper en segments. */}
       <div className="relative z-10 shrink-0 bg-background py-0.5">{avatar}</div>
@@ -75,9 +86,19 @@ export function TimelineItem({
  * fait, pas ce que quelqu'un a écrit. En carte, elles pesaient autant qu'une
  * réponse au client et hachaient la lecture du fil.
  */
-export function TimelineEvent({ children, date }: { children: React.ReactNode; date: Date }) {
+export function TimelineEvent({
+  children,
+  date,
+  align = "left",
+}: {
+  children: React.ReactNode;
+  date: Date;
+  align?: TimelineAlign;
+}) {
   return (
-    <li className="relative flex items-center gap-3">
+    <li
+      className={cn("relative flex items-center gap-3", align === "right" && "flex-row-reverse")}
+    >
       <div className="relative z-10 flex size-8 shrink-0 items-center justify-center bg-background">
         <span className="size-1.5 rounded-full bg-border ring-3 ring-background" />
       </div>
@@ -96,9 +117,23 @@ export function TimelineEvent({ children, date }: { children: React.ReactNode; d
  * La ligne de temps elle-même. Le trait vertical est posé en pseudo-élément sur
  * la liste : il relie les entrées sans qu'aucune n'ait à connaître ses voisines.
  */
-export function Timeline({ children }: { children: React.ReactNode }) {
+export function Timeline({
+  children,
+  align = "left",
+  className,
+}: {
+  children: React.ReactNode;
+  align?: TimelineAlign;
+  className?: string;
+}) {
   return (
-    <ol className="relative flex flex-col gap-3 before:absolute before:top-4 before:bottom-4 before:left-4 before:w-px before:bg-border">
+    <ol
+      className={cn(
+        "relative flex flex-col gap-3 before:absolute before:top-4 before:bottom-4 before:w-px before:bg-border",
+        align === "right" ? "before:right-4" : "before:left-4",
+        className
+      )}
+    >
       {children}
     </ol>
   );

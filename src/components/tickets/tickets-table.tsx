@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Merge } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SortableHeader } from "@/components/tickets/sortable-header";
 import { RelativeTime } from "@/components/tickets/relative-time";
@@ -96,10 +97,20 @@ export function TicketsTable({
                 automatique. */}
             <Td className="w-full max-w-0 pr-6">
               <span className="flex items-baseline gap-2">
+                {/* Un ticket fusionné apparaît encore dans une liste sans filtre :
+                    sans repère, il se lit comme un dossier à traiter alors que le
+                    travail se fait ailleurs. */}
+                {ticket.mergedIntoId && (
+                  <Merge
+                    aria-label="Fusionné dans un autre ticket"
+                    className="size-3.5 shrink-0 self-center text-muted-foreground"
+                  />
+                )}
                 <Link
                   href={`/tickets/${ticket.id}`}
                   className={cn(
-                    "truncate text-foreground group-hover:underline",
+                    "truncate group-hover:underline",
+                    ticket.mergedIntoId ? "text-muted-foreground" : "text-foreground",
                     ticket.hasUnreadActivity ? "font-semibold" : "font-medium",
                   )}
                 >

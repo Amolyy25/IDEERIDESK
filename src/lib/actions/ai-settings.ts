@@ -10,17 +10,19 @@ import {
   parseAiProvider,
   type AiProvider,
 } from "@/lib/ai-settings";
+import { DUPLICATE_DETECTION_KEY } from "@/lib/ticket-duplicates";
 
 export type AiSettingsStatus = {
   provider: AiProvider;
   model: string;
   hasApiKey: boolean;
+  duplicateDetection: boolean;
 };
 
 export async function getAiSettingsStatus(): Promise<AiSettingsStatus> {
   await requireAdmin();
   const rows = await prisma.globalSetting.findMany({
-    where: { key: { in: Object.values(AI_SETTING_KEYS) } },
+    where: { key: { in: [...Object.values(AI_SETTING_KEYS), DUPLICATE_DETECTION_KEY] } },
   });
   const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
@@ -30,6 +32,9 @@ export async function getAiSettingsStatus(): Promise<AiSettingsStatus> {
     provider,
     model: byKey[AI_SETTING_KEYS.model] || AI_DEFAULT_MODEL[provider],
     hasApiKey: Boolean(byKey[AI_SETTING_KEYS.apiKey]),
+    // Absent = activé : la détection rend service dès qu'une clé existe, sans
+    // réglage à découvrir. Voir `scanTicketForDuplicates`.
+    duplicateDetection: byKey[DUPLICATE_DETECTION_KEY] !== "false",
   };
 }
 
@@ -39,6 +44,7 @@ const updateSchema = z.object({
   // Vide = ne pas modifier la clé existante (le champ affiché côté client
   // n'est jamais la vraie valeur, donc un champ vide ne doit pas l'écraser).
   apiKey: z.string().trim().max(500).optional(),
+  duplicateDetection: z.boolean(),
 });
 
 export async function updateAiSettings(input: z.infer<typeof updateSchema>) {
@@ -69,7 +75,20 @@ export async function updateAiSettings(input: z.infer<typeof updateSchema>) {
     });
   }
 
+  await prisma.globalSetting.upsert({
+    where: { key: DUPLICATE_DETECTION_KEY },
+    update: { value: String(data.duplicateDetection) },
+    create: {
+      key: DUPLICATE_DETECTION_KEY,
+      value: String(data.duplicateDetection),
+      label: "Détection IA des doublons",
+      description:
+        "Propose de fusionner deux tickets portant sur la même demande, à l'ouverture d'une fiche.",
+    },
+  });
+
   revalidatePath("/settings/ai");
+  revalidatePath("/tickets");
 }
 
 export async function clearAiApiKey() {

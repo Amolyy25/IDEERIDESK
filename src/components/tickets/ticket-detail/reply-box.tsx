@@ -7,7 +7,7 @@ import { Lock, Reply, Send, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
-import { cn } from "@/lib/utils";
+import { cn, plural } from "@/lib/utils";
 import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-textarea";
 import type { MentionableAgent } from "@/lib/mentions";
 
@@ -36,6 +36,7 @@ export function ReplyBox({
   ticketId,
   currentAgentName,
   clientEmail,
+  mergedRecipientCount = 0,
   canRespond,
   requiresApproval,
   signature,
@@ -45,6 +46,12 @@ export function ReplyBox({
   currentAgentName: string;
   /** Destinataire de la réponse publique. Null quand aucun client n'est rattaché. */
   clientEmail: string | null;
+  /**
+   * Clients des tickets fusionnés qui recevront eux aussi cette réponse, chacun
+   * dans sa propre conversation. Annoncé avant l'écriture, pas après l'envoi :
+   * on ne rédige pas de la même façon pour une personne et pour cinq.
+   */
+  mergedRecipientCount?: number;
   canRespond: boolean;
   requiresApproval: boolean;
   /**
@@ -130,25 +137,14 @@ export function ReplyBox({
       const result = await addTicketMessage(ticketId, { content: sentContent, isPrivate });
 
       if (isPrivate && result.mentionedNames.length > 0) {
+        const names = result.mentionedNames;
         toast.success(
-          `Note ajoutée · ${result.mentionedNames.join(", ")} notifié${
-            result.mentionedNames.length > 1 ? "s" : ""
-          } par email`
+          `Note ajoutée · ${names.join(", ")} notifié${plural(names.length)} par email`
         );
       }
 
       if (!isPrivate) {
-        if (result.pendingApproval) {
-          toast.info("Réponse envoyée pour validation, en attente d'un agent habilité.");
-        } else if (result.emailSent) {
-          toast.success("Réponse envoyée par email");
-        } else {
-          toast.warning(
-            `Réponse enregistrée, mais non envoyée par email${
-              result.emailSkippedReason ? ` (${result.emailSkippedReason})` : ""
-            }`
-          );
-        }
+        announceReply(result);
       }
 
       router.refresh();
@@ -158,7 +154,12 @@ export function ReplyBox({
       setContent(sentContent);
       setPlanePhase("idle");
       setMessageInFlight(null);
-      toast.error(error instanceof Error ? error.message : "Impossible d'envoyer le message");
+
+      let message = "Impossible d'envoyer le message";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -206,9 +207,7 @@ export function ReplyBox({
         </div>
 
         <p className="truncate text-xs text-muted-foreground">
-          {isPrivate && "Visible par l'équipe seulement"}
-          {!isPrivate && clientEmail && <>Destinataire : {clientEmail}</>}
-          {!isPrivate && !clientEmail && "Aucun client rattaché — rien ne partira par email"}
+          {recipientLine({ isPrivate, clientEmail, mergedRecipientCount })}
         </p>
       </div>
 
@@ -297,6 +296,85 @@ export function ReplyBox({
       </div>
     </div>
   );
+}
+
+/**
+ * Qui recevra ce qu'on est en train d'écrire, annoncé au-dessus du champ.
+ *
+ * Le compte des doublons figure ici et pas seulement dans la confirmation
+ * d'envoi : on ne rédige pas de la même façon pour une personne et pour cinq,
+ * et l'apprendre après coup est trop tard.
+ */
+function recipientLine({
+  isPrivate,
+  clientEmail,
+  mergedRecipientCount,
+}: {
+  isPrivate: boolean;
+  clientEmail: string | null;
+  mergedRecipientCount: number;
+}) {
+  if (isPrivate) return "Visible par l'équipe seulement";
+
+  const count = mergedRecipientCount;
+  const mergedPart = `${count} client${plural(count)} de ticket${plural(count)} fusionné${plural(
+    count
+  )}`;
+
+  if (clientEmail && count === 0) return `Destinataire : ${clientEmail}`;
+  if (clientEmail) return `Destinataire : ${clientEmail} + ${mergedPart}`;
+  if (count > 0) return `Destinataires : ${mergedPart}`;
+  return "Aucun client rattaché — rien ne partira par email";
+}
+
+/** Résultat d'un envoi, réduit à ce dont l'annonce a besoin. */
+type ReplyOutcome = {
+  emailSent: boolean;
+  emailSkippedReason: string | null;
+  alsoSentTo: number;
+  pendingApproval: boolean;
+};
+
+/**
+ * Dit à l'agent ce qui vient réellement de partir.
+ *
+ * Le nombre de clients servis est annoncé explicitement : après une fusion, la
+ * réponse part aussi aux clients des doublons, et un simple « envoyée par
+ * email » laisserait croire qu'une seule personne l'a reçue.
+ */
+function announceReply(result: ReplyOutcome) {
+  if (result.pendingApproval) {
+    toast.info("Réponse envoyée pour validation, en attente d'un agent habilité.");
+    return;
+  }
+
+  const extra = result.alsoSentTo;
+
+  if (result.emailSent) {
+    if (extra === 0) {
+      toast.success("Réponse envoyée par email");
+      return;
+    }
+    toast.success(
+      `Réponse envoyée par email · ${extra} client${plural(extra)} de ticket${plural(
+        extra
+      )} fusionné${plural(extra)} également`
+    );
+    return;
+  }
+
+  // Aucun client sur ce ticket, mais des doublons rattachés : la réponse est
+  // bien partie, il ne faut pas l'annoncer comme un échec.
+  if (extra > 0) {
+    toast.success(`Réponse envoyée aux clients des tickets fusionnés (${extra})`);
+    return;
+  }
+
+  if (result.emailSkippedReason) {
+    toast.warning(`Réponse enregistrée, mais non envoyée par email (${result.emailSkippedReason})`);
+    return;
+  }
+  toast.warning("Réponse enregistrée, mais non envoyée par email");
 }
 
 /**

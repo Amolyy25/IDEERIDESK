@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ExternalLink, Trash2 } from "lucide-react";
+import type { DossierClient } from "@/lib/ticket-dossier";
 import {
   Select,
   SelectContent,
@@ -59,8 +61,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/** « Client » au singulier tant qu'il n'y en a qu'un : le pluriel signale la fusion. */
+function clientsBlockTitle(count: number) {
+  if (count > 1) return `Clients (${count})`;
+  return "Client";
+}
+
 export function AttributesPanel({
   ticket,
+  clients,
   statuses,
   priorities,
   categories,
@@ -69,6 +78,12 @@ export function AttributesPanel({
   sourceFields,
 }: {
   ticket: TicketWithMessages;
+  /**
+   * Toutes les personnes du dossier, doublons fusionnés compris — et non le
+   * seul `ticket.client`. Le panneau doit montrer qui recevra la réponse, or
+   * après une fusion ce n'est plus une seule personne.
+   */
+  clients: DossierClient[];
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   categories: TicketCategory[];
@@ -207,18 +222,40 @@ export function AttributesPanel({
           </Field>
         </PanelBlock>
 
-        {ticket.client && (
-          <PanelBlock title="Client">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">{ticket.client.name}</p>
-              <a
-                href={`mailto:${ticket.client.email}`}
-                className="block truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
-                title={ticket.client.email}
-              >
-                {ticket.client.email}
-              </a>
-            </div>
+        {clients.length > 0 && (
+          <PanelBlock title={clientsBlockTitle(clients.length)}>
+            {clients.map((client) => (
+              <div key={client.ticketId} className="space-y-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <p className="text-sm font-medium">{client.name}</p>
+                  {/* D'où vient cette personne. Sans ce repère, deux noms
+                      empilés sous « Clients » ne disent pas lequel a ouvert le
+                      dossier et lequel est arrivé par un doublon. */}
+                  {!client.isPrimary && (
+                    <Link
+                      href={`/tickets/${client.ticketId}`}
+                      className="font-mono text-[11px] text-muted-foreground tabular-nums hover:underline"
+                      title={`Arrivé par le ticket #${client.ticketNumber}, fusionné dans celui-ci`}
+                    >
+                      #{client.ticketNumber}
+                    </Link>
+                  )}
+                </div>
+                <a
+                  href={`mailto:${client.email}`}
+                  className="block truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
+                  title={client.email}
+                >
+                  {client.email}
+                </a>
+              </div>
+            ))}
+
+            {clients.length > 1 && (
+              <p className="border-t pt-3 text-xs text-muted-foreground">
+                Une réponse publique part à chacun, dans sa propre conversation.
+              </p>
+            )}
           </PanelBlock>
         )}
 

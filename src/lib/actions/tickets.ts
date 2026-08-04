@@ -17,6 +17,7 @@ import { notifyMentionedAgents } from "@/lib/mention-notifications";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
+import { getMergedRecipients } from "@/lib/ticket-merge";
 
 const ticketInclude = {
   status: true,
@@ -40,6 +41,50 @@ const ticketDetailInclude = {
     },
   },
   attachments: { omit: { data: true } },
+
+  // Fusion : le ticket dans lequel celui-ci a été versé, et les doublons qu'il a
+  // lui-même absorbés. Les seconds sont chargés avec leur demande, leurs
+  // échanges publics ET leurs pièces jointes — c'est ce qui permet de tout
+  // traiter depuis cette seule fiche, sans naviguer d'un ticket à l'autre. Une
+  // capture d'écran envoyée par le second client est souvent la pièce qui manque
+  // au premier ticket pour comprendre la panne : l'oublier ici viderait la
+  // fusion d'une partie de son intérêt.
+  //
+  // Les notes internes des doublons restent chez eux : les remonter mélangerait
+  // deux dossiers de travail.
+  mergedInto: { select: { id: true, number: true, subject: true } },
+  mergedTickets: {
+    select: {
+      id: true,
+      number: true,
+      subject: true,
+      description: true,
+      createdAt: true,
+      mergedAt: true,
+      client: { select: { name: true, email: true } },
+      messages: {
+        where: { isPrivate: false },
+        select: {
+          id: true,
+          content: true,
+          authorType: true,
+          emailSent: true,
+          createdAt: true,
+          agent: { select: { name: true, avatarUrl: true } },
+          attachments: { omit: { data: true }, orderBy: { createdAt: "asc" } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      // Comme sur la fiche principale : seules les pièces de la demande
+      // initiale, celles des réponses étant déjà rattachées à leur message.
+      attachments: {
+        omit: { data: true },
+        where: { messageId: null },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { mergedAt: "asc" },
+  },
 } satisfies Prisma.TicketInclude;
 
 export type TicketWithMessages = Prisma.TicketGetPayload<{
@@ -346,33 +391,71 @@ export async function closeTicket(id: string) {
   const template = await prisma.ticketClosureTemplate.findFirst();
   let emailSent = false;
   let emailSkippedReason: string | null = null;
+  let alsoSentTo = 0;
 
-  if (template?.bodyHtml && ticket.client?.email) {
+  if (template?.bodyHtml) {
     const { senderName } = await readEmailAccountStatus();
-    const result = await sendTicketClosureEmail({
-      ticket,
-      clientEmail: ticket.client.email,
-      senderName,
-      bodyHtml: template.bodyHtml,
-    });
-    emailSent = result.sent;
-    emailSkippedReason = result.sent ? null : result.error ?? null;
 
-    await prisma.message.create({
-      data: {
-        ticketId: id,
-        content: result.sent
-          ? "Email de clôture envoyé au client."
-          : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
-        authorType: "SYSTEM",
-        isPrivate: true,
-      },
-    });
+    if (ticket.client?.email) {
+      const result = await sendTicketClosureEmail({
+        ticket,
+        clientEmail: ticket.client.email,
+        senderName,
+        bodyHtml: template.bodyHtml,
+      });
+      emailSent = result.sent;
+      emailSkippedReason = result.sent ? null : result.error ?? null;
+
+      await prisma.message.create({
+        data: {
+          ticketId: id,
+          content: result.sent
+            ? "Email de clôture envoyé au client."
+            : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
+          authorType: "SYSTEM",
+          isPrivate: true,
+        },
+      });
+    }
+
+    // Les clients des tickets fusionnés attendent la même réponse : les laisser
+    // sans email de clôture, c'est refermer leur demande sans le leur dire.
+    // Chacun dans sa propre conversation, comme pour une réponse.
+    for (const recipient of await getMergedRecipients(
+      id,
+      ticket.client?.email ? [ticket.client.email] : []
+    )) {
+      const result = await sendTicketClosureEmail({
+        ticket: {
+          id: recipient.ticketId,
+          number: recipient.ticketNumber,
+          subject: recipient.subject,
+          gmailThreadId: recipient.gmailThreadId,
+          emailMessageId: recipient.emailMessageId,
+        },
+        clientEmail: recipient.clientEmail,
+        senderName,
+        bodyHtml: template.bodyHtml,
+      });
+      if (result.sent) alsoSentTo += 1;
+
+      await prisma.message.create({
+        data: {
+          ticketId: recipient.ticketId,
+          content: result.sent
+            ? `Email de clôture envoyé au client, suite à la clôture du ticket #${ticket.number}.`
+            : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
+          authorType: "SYSTEM",
+          isPrivate: true,
+        },
+      });
+      revalidatePath(`/tickets/${recipient.ticketId}`);
+    }
   }
 
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
-  return { emailSent, emailSkippedReason };
+  return { emailSent, emailSkippedReason, alsoSentTo };
 }
 
 export async function deleteTicket(id: string) {
@@ -393,6 +476,43 @@ const addMessageSchema = z.object({
 const EMAIL_HISTORY_LIMIT = 10;
 
 /**
+ * Historique repris en bas de l'email, propre au ticket concerné.
+ *
+ * Toutes les réponses agent partent au nom façade unique "Ideeri Support" (une
+ * seule boîte partagée pour toute l'équipe) — l'historique reprend cette même
+ * convention plutôt que de révéler quel agent a écrit quoi.
+ */
+async function buildEmailHistory({
+  ticketId,
+  excludeMessageId,
+  clientName,
+  senderName,
+}: {
+  ticketId: string;
+  excludeMessageId: string | null;
+  clientName: string | null;
+  senderName: string;
+}): Promise<EmailHistoryEntry[]> {
+  const previousMessages = await prisma.message.findMany({
+    where: {
+      ticketId,
+      isPrivate: false,
+      ...(excludeMessageId ? { id: { not: excludeMessageId } } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: EMAIL_HISTORY_LIMIT,
+  });
+
+  return previousMessages
+    .map((m) => ({
+      authorLabel: m.authorType === "AGENT" ? senderName : clientName ?? "Client",
+      content: m.content,
+      createdAt: m.createdAt,
+    }))
+    .reverse();
+}
+
+/**
  * Builds and actually sends the client-facing email for a public reply, then
  * marks the message as sent. Shared by the direct-send path (no approval
  * required) and `approveMessage` (an approver releasing a held reply) so the
@@ -401,6 +521,10 @@ const EMAIL_HISTORY_LIMIT = 10;
  * `agentId` est l'auteur de la réponse, pas l'expéditeur : c'est lui qui décide
  * de la signature ajoutée en bas de l'email. Une réponse relâchée par un
  * collègue habilité reste donc signée de celui qui l'a rédigée.
+ *
+ * Les tickets fusionnés dans celui-ci reçoivent la même réponse — c'est tout
+ * l'intérêt de la fusion : écrire une fois pour tous ceux qui attendent. Voir
+ * `deliverToMergedTickets` pour la façon dont ces envois sont séparés.
  */
 async function sendApprovedTicketReply(
   ticketId: string,
@@ -409,47 +533,142 @@ async function sendApprovedTicketReply(
   agentId: string | null
 ) {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
-  if (!ticket?.client?.email) {
-    return { emailSent: false as const, emailSkippedReason: "Aucun client associé à ce ticket." };
+  if (!ticket) {
+    return { emailSent: false as const, emailSkippedReason: "Ticket introuvable.", alsoSentTo: 0 };
   }
 
   const { senderName } = await readEmailAccountStatus();
+  const signatureHtml = await resolveSignatureHtmlForAgent(agentId);
 
-  const previousMessages = await prisma.message.findMany({
-    where: { ticketId, isPrivate: false, id: { not: messageId } },
-    orderBy: { createdAt: "desc" },
-    take: EMAIL_HISTORY_LIMIT,
-  });
+  let emailSent = false;
+  let emailSkippedReason: string | null = "Aucun client associé à ce ticket.";
 
-  // Toutes les réponses agent partent au nom façade unique "Ideeri Support"
-  // (une seule boîte partagée pour toute l'équipe) — l'historique reprend
-  // cette même convention plutôt que de révéler quel agent a écrit quoi.
-  const history: EmailHistoryEntry[] = previousMessages
-    .map((m) => ({
-      authorLabel: m.authorType === "AGENT" ? senderName : ticket.client?.name ?? "Client",
-      content: m.content,
-      createdAt: m.createdAt,
-    }))
-    .reverse();
-
-  const result = await sendTicketReplyEmail({
-    ticket,
-    clientEmail: ticket.client.email,
-    senderName,
-    bodyText: content,
-    history,
-    signatureHtml: await resolveSignatureHtmlForAgent(agentId),
-  });
-
-  if (result.sent) {
-    await prisma.message.update({
-      where: { id: messageId },
-      data: { emailSent: true, gmailMessageId: result.gmailMessageId },
+  if (ticket.client?.email) {
+    const result = await sendTicketReplyEmail({
+      ticket,
+      clientEmail: ticket.client.email,
+      senderName,
+      bodyText: content,
+      history: await buildEmailHistory({
+        ticketId,
+        excludeMessageId: messageId,
+        clientName: ticket.client.name,
+        senderName,
+      }),
+      signatureHtml,
     });
-    revalidatePath(`/tickets/${ticketId}`);
+
+    emailSent = result.sent;
+    emailSkippedReason = result.sent ? null : result.error ?? null;
+
+    if (result.sent) {
+      await prisma.message.update({
+        where: { id: messageId },
+        data: { emailSent: true, gmailMessageId: result.gmailMessageId },
+      });
+    }
   }
 
-  return { emailSent: result.sent, emailSkippedReason: result.sent ? null : result.error ?? null };
+  const alsoSentTo = await deliverToMergedTickets({
+    targetTicketId: ticketId,
+    content,
+    agentId,
+    senderName,
+    signatureHtml,
+    alreadyServed: ticket.client?.email ? [ticket.client.email] : [],
+  });
+
+  revalidatePath(`/tickets/${ticketId}`);
+  return { emailSent, emailSkippedReason, alsoSentTo };
+}
+
+/**
+ * Rejoue la réponse auprès des clients des tickets fusionnés dans celui-ci.
+ *
+ * Un email par destinataire, dans sa propre conversation Gmail, jamais un Cc
+ * commun : deux clients qui ont écrit séparément au support n'ont pas accepté
+ * que leur adresse soit montrée à l'autre. C'est aussi ce qui garde chaque fil
+ * lisible côté client — il reçoit une réponse à SON message, pas un message
+ * groupé où il doit se reconnaître.
+ *
+ * Une copie de la réponse est déposée dans le fil de chaque ticket fusionné :
+ * sans elle, le dossier de ce client montrerait une demande restée sans réponse.
+ *
+ * Best-effort et sans exception : un échec d'envoi sur un doublon ne doit pas
+ * faire échouer la réponse principale, déjà partie. Il est journalisé dans le
+ * fil du ticket concerné, là où un agent le verra.
+ */
+async function deliverToMergedTickets({
+  targetTicketId,
+  content,
+  agentId,
+  senderName,
+  signatureHtml,
+  alreadyServed,
+}: {
+  targetTicketId: string;
+  content: string;
+  agentId: string | null;
+  senderName: string;
+  signatureHtml: string | null;
+  alreadyServed: string[];
+}): Promise<number> {
+  const recipients = await getMergedRecipients(targetTicketId, alreadyServed);
+  let delivered = 0;
+
+  for (const recipient of recipients) {
+    const copy = await prisma.message.create({
+      data: {
+        ticketId: recipient.ticketId,
+        content,
+        authorType: "AGENT",
+        agentId,
+        isPrivate: false,
+      },
+    });
+
+    const result = await sendTicketReplyEmail({
+      ticket: {
+        id: recipient.ticketId,
+        number: recipient.ticketNumber,
+        subject: recipient.subject,
+        gmailThreadId: recipient.gmailThreadId,
+        emailMessageId: recipient.emailMessageId,
+      },
+      clientEmail: recipient.clientEmail,
+      senderName,
+      bodyText: content,
+      history: await buildEmailHistory({
+        ticketId: recipient.ticketId,
+        excludeMessageId: copy.id,
+        clientName: recipient.clientName,
+        senderName,
+      }),
+      signatureHtml,
+    });
+
+    if (result.sent) {
+      delivered += 1;
+      await prisma.message.update({
+        where: { id: copy.id },
+        data: { emailSent: true, gmailMessageId: result.gmailMessageId },
+      });
+    } else {
+      await prisma.message.create({
+        data: {
+          ticketId: recipient.ticketId,
+          content: `Échec de l'envoi de la réponse au client de ce ticket fusionné : ${
+            result.error ?? "erreur inconnue"
+          }.`,
+          authorType: "SYSTEM",
+          isPrivate: true,
+        },
+      });
+    }
+    revalidatePath(`/tickets/${recipient.ticketId}`);
+  }
+
+  return delivered;
 }
 
 export async function addTicketMessage(
@@ -492,6 +711,7 @@ export async function addTicketMessage(
     return {
       emailSent: false as const,
       emailSkippedReason: null,
+      alsoSentTo: 0,
       pendingApproval: false,
       mentionedNames,
     };
@@ -501,6 +721,7 @@ export async function addTicketMessage(
     return {
       emailSent: false as const,
       emailSkippedReason: null,
+      alsoSentTo: 0,
       pendingApproval: true,
       mentionedNames: [] as string[],
     };

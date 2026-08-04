@@ -28,21 +28,37 @@ const FALLBACK_TONES: Record<AuthorKind, string> = {
   system: "bg-muted text-muted-foreground",
 };
 
+/**
+ * `sm` sert aux échanges repliés d'un doublon fusionné : ils sont du contexte,
+ * pas le fil qu'on lit — leur donner la même pastille que la conversation
+ * principale mettrait les deux au même rang.
+ */
+const SIZE_CLASS = {
+  md: "size-8",
+  sm: "size-5",
+} as const;
+
 export function AuthorAvatar({
   name,
   kind,
   imageUrl,
+  size = "md",
 }: {
   name: string;
   kind: AuthorKind;
   /** Photo de profil Google de l'agent, quand elle est connue. */
   imageUrl?: string | null;
+  size?: keyof typeof SIZE_CLASS;
 }) {
   return (
-    <Avatar className="size-8">
+    <Avatar className={SIZE_CLASS[size]}>
       {imageUrl && <AvatarImage src={imageUrl} alt="" />}
       <AvatarFallback
-        className={cn("text-[11px] font-medium tracking-wide", FALLBACK_TONES[kind])}
+        className={cn(
+          "font-medium tracking-wide",
+          size === "sm" ? "text-[9px]" : "text-[11px]",
+          FALLBACK_TONES[kind]
+        )}
       >
         {initials(name)}
       </AvatarFallback>

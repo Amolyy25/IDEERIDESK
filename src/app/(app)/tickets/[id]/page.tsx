@@ -10,14 +10,28 @@ import { getSourceFields } from "@/lib/actions/sources";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { AttributesPanel } from "@/components/tickets/ticket-detail/attributes-panel";
 import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
-import { MessageThread } from "@/components/tickets/ticket-detail/message-thread";
+import { TicketThread } from "@/components/tickets/ticket-detail/ticket-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
-import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
-import { EmailOrigin } from "@/components/tickets/ticket-detail/email-origin";
 import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
 import { SignatureBlock } from "@/components/tickets/ticket-detail/signature-block";
-import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
-import { Timeline, TimelineItem } from "@/components/tickets/ticket-detail/timeline-item";
+import { DuplicateBanner } from "@/components/tickets/ticket-detail/duplicate-banner";
+import { MergedIntoBanner } from "@/components/tickets/ticket-detail/merged-tickets";
+import { getPendingDuplicateSuggestions } from "@/lib/ticket-duplicates";
+import { resolveMergeRoot } from "@/lib/ticket-merge";
+import { countMergedRecipients, listDossierClients } from "@/lib/ticket-dossier";
+import { cn } from "@/lib/utils";
+
+/**
+ * Largeur du fil selon le nombre de conversations qu'il porte de front.
+ *
+ * Bornée volontairement : au-delà de deux doublons, élargir encore rendrait
+ * chaque colonne plus étroite qu'un message, sans rien gagner en lisibilité.
+ */
+function threadWidth(mergedCount: number) {
+  if (mergedCount === 0) return "max-w-3xl";
+  if (mergedCount === 1) return "max-w-5xl";
+  return "max-w-7xl";
+}
 
 export default async function TicketDetailPage({
   params,
@@ -40,6 +54,19 @@ export default async function TicketDetailPage({
     notFound();
   }
 
+  // Le dossier : le ticket où la demande se traite réellement. Arriver par un
+  // doublon ne doit pas donner une vue au rabais — c'est le même dossier, vu par
+  // une autre porte. Sans cette résolution, l'agent qui ouvre le ticket rattaché
+  // ne voyait que sa moitié de conversation et pouvait répondre à un seul des
+  // deux clients sans s'en rendre compte.
+  let dossier = ticket;
+  if (ticket.mergedIntoId) {
+    const root = await getTicketById(await resolveMergeRoot(ticket.id));
+    if (root) {
+      dossier = root;
+    }
+  }
+
   const activeCustomFields = customFields.filter((field) => field.isActive);
   // Agents mentionnables en @ dans une note interne : même liste que
   // l'assignation, réduite à ce dont le parseur de mentions a besoin.
@@ -56,48 +83,91 @@ export default async function TicketDetailPage({
   // même fonction qu'à l'envoi, donc ce qui est montré est exactement ce qui
   // partira.
   const signatureHtml = await resolveSignatureHtmlForAgent(session?.user?.id ?? null);
+  const canRespond = session?.user?.canRespond ?? false;
+
+  // À qui proposer une fusion, et quand. Un ticket déjà fusionné a sa place
+  // arrêtée, et un ticket clos n'a plus de demande à rapprocher : dans les deux
+  // cas la recherche ne servirait qu'à dépenser un appel au fournisseur d'IA.
+  let showDuplicates = canRespond;
+  if (ticket.mergedIntoId) showDuplicates = false;
+  if (ticket.status.isClosed) showDuplicates = false;
+
+  // Rapprochements déjà calculés lors d'un passage précédent : rendus avec la
+  // page, sans attendre. La bannière relance elle-même une détection à
+  // l'ouverture, mais ne bloque pas l'affichage pour autant (voir
+  // `DuplicateBanner`).
+  let duplicateSuggestions: Awaited<ReturnType<typeof getPendingDuplicateSuggestions>> = [];
+  if (showDuplicates) {
+    duplicateSuggestions = await getPendingDuplicateSuggestions(ticket.id);
+  }
+
+  // Toutes les personnes du dossier : le panneau de droite les liste, et la zone
+  // de réponse annonce combien d'emails partiront réellement.
+  const dossierClients = listDossierClients(dossier);
+  const mergedRecipientCount = countMergedRecipients(dossierClients);
 
   return (
     <div className="flex h-full">
-      <MarkAsRead ticketId={ticket.id} hasUnreadActivity={ticket.hasUnreadActivity} />
+      {/* Le témoin d'activité vit sur le dossier : une relance arrivée sur un
+          doublon allume le ticket d'accueil (voir la synchro Gmail), c'est donc
+          lui qu'il faut éteindre — quelle que soit la porte par laquelle l'agent
+          est entré pour la lire. */}
+      <MarkAsRead ticketId={dossier.id} hasUnreadActivity={dossier.hasUnreadActivity} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <TicketHeader ticket={ticket} currentAgentId={session?.user?.id ?? null} />
+        <TicketHeader
+          ticket={ticket}
+          currentAgentId={session?.user?.id ?? null}
+          canRespond={canRespond}
+        />
 
-        <div className="mx-auto w-full max-w-3xl px-6 py-6">
-          {/* Un seul fil, ouvert par la demande d'origine : celle-ci est le
-              premier tour de la conversation, la détacher dans un encadré à part
-              obligeait à comparer deux mises en forme pour suivre l'échange. */}
-          <Timeline>
-            <TimelineItem
-              avatar={<AuthorAvatar name={ticket.client?.name ?? "Client"} kind="client" />}
-              author={ticket.client?.name ?? "Demande initiale"}
-              date={ticket.createdAt}
-              tone="inbound"
-            >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
-              <AttachmentsList attachments={ticket.attachments} />
-              {/* Les en-têtes du mail d'origine appartiennent à cette demande :
-                  repliés ici, et non en bloc autonome au-dessus du fil. */}
-              <EmailOrigin metadata={ticket.metadata} />
-            </TimelineItem>
+        {/* Les deux bandeaux de fusion, avant le fil : ils disent où se traite
+            réellement la demande, ce qui conditionne la lecture de tout le
+            reste. Ils s'excluent — un ticket fusionné ailleurs n'a plus de
+            doublon à chercher. */}
+        {ticket.mergedInto && (
+          <MergedIntoBanner
+            mergedInto={ticket.mergedInto}
+            ticketId={ticket.id}
+            canRespond={canRespond}
+          />
+        )}
 
-            <MessageThread
-              messages={ticket.messages}
-              canApprove={session?.user?.canApprove ?? false}
-              agents={mentionableAgents}
-              currentAgentId={session?.user?.id ?? null}
-            />
-          </Timeline>
+        {showDuplicates && (
+          <DuplicateBanner
+            ticketId={ticket.id}
+            ticketNumber={ticket.number}
+            initialSuggestions={duplicateSuggestions}
+          />
+        )}
+
+        {/* Le fil s'élargit dès qu'il porte des conversations parallèles : deux
+            colonnes tenues dans la largeur d'une seule ne se lisent pas. */}
+        <div className={cn("mx-auto w-full px-6 py-6", threadWidth(dossier.mergedTickets.length))}>
+          {/* Le fil est celui du dossier, jamais celui de la seule porte
+              d'entrée : c'est ce qui fait qu'un doublon et son ticket d'accueil
+              montrent exactement la même conversation. */}
+          <TicketThread
+            ticket={dossier}
+            currentTicketId={ticket.id}
+            canApprove={session?.user?.canApprove ?? false}
+            canRespond={canRespond}
+            agents={mentionableAgents}
+            currentAgentId={session?.user?.id ?? null}
+          />
 
           {/* Aligné sur les cartes du fil (largeur de la pastille + son écart) :
-              la zone de rédaction est le prochain tour de la conversation. */}
+              la zone de rédaction est le prochain tour de la conversation.
+              Elle écrit sur le dossier, pas sur la porte d'entrée — répondre
+              depuis un doublon doit servir tout le monde, sinon la fusion
+              n'aurait tenu qu'à l'endroit d'où l'agent a cliqué. */}
           <div className="mt-4 pl-11">
             <ReplyBox
-              ticketId={ticket.id}
+              ticketId={dossier.id}
               currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
-              clientEmail={ticket.client?.email ?? null}
-              canRespond={session?.user?.canRespond ?? false}
+              clientEmail={dossier.client?.email ?? null}
+              mergedRecipientCount={mergedRecipientCount}
+              canRespond={canRespond}
               requiresApproval={session?.user?.requiresApproval ?? false}
               signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
               agents={mentionableAgents}
@@ -108,6 +178,7 @@ export default async function TicketDetailPage({
 
       <AttributesPanel
         ticket={ticket}
+        clients={dossierClients}
         statuses={statuses}
         priorities={priorities}
         categories={categories}
