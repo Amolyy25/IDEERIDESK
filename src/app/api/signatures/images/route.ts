@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { emailAssetPath } from "@/lib/email-asset-urls";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
 
@@ -21,27 +22,17 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
  * exigent un agent connecté tant qu'aucun article publié ne les référence, et
  * une signature n'est jamais « publiée » nulle part.
  *
- * L'URL renvoyée est absolue : un `src` relatif ne s'affiche dans aucun client
- * mail. C'est aussi pourquoi l'absence d'APP_URL est une erreur franche plutôt
- * qu'un repli silencieux sur un chemin relatif, qui donnerait une signature
- * cassée chez tous les clients sans que personne ne le voie côté back-office.
+ * Le chemin renvoyé est **relatif**. Un client mail ne résout aucun chemin
+ * relatif, mais l'origine publique n'a pas à entrer ici : elle est ajoutée à
+ * l'envoi (voir `email-asset-urls.ts`). Renvoyer une adresse absolue la ferait
+ * enregistrer dans le HTML de la signature, qui partirait alors pour toujours
+ * avec l'origine de l'environnement où l'image a été téléversée.
  */
 export async function POST(request: NextRequest) {
   try {
     await requireAdmin();
   } catch {
     return NextResponse.json({ error: "Action réservée aux administrateurs." }, { status: 403 });
-  }
-
-  const appUrl = process.env.APP_URL;
-  if (!appUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "APP_URL n'est pas configurée : impossible de construire l'adresse absolue dont une image d'email a besoin.",
-      },
-      { status: 500 }
-    );
   }
 
   const formData = await request.formData();
@@ -69,8 +60,5 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    id: asset.id,
-    url: `${appUrl.replace(/\/+$/, "")}/api/portal/assets/${asset.id}`,
-  });
+  return NextResponse.json({ id: asset.id, url: emailAssetPath(asset.id) });
 }

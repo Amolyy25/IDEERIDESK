@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { uploadEmailImage } from "@/components/editor/upload-email-image";
 import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { SignaturePreview } from "@/components/settings/signatures/signature-preview";
 import { createEmailSignature, updateEmailSignature } from "@/lib/actions/signatures";
@@ -29,24 +30,6 @@ import { cn } from "@/lib/utils";
 /** Agent proposé dans la liste à cocher — réduit à ce que le formulaire affiche. */
 export type SignatureAgentOption = { id: string; name: string };
 
-/**
- * Téléverse l'image et renvoie son adresse absolue (voir
- * /api/signatures/images) : dans un email, un chemin relatif ne s'affiche pas.
- */
-async function uploadSignatureImage(file: File) {
-  const formData = new FormData();
-  formData.set("file", file);
-
-  const response = await fetch("/api/signatures/images", { method: "POST", body: formData });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.error ?? "Envoi de l'image impossible");
-  }
-
-  const body = await response.json();
-  return body.url as string;
-}
-
 export function SignatureDialog({
   signature,
   agents,
@@ -55,7 +38,7 @@ export function SignatureDialog({
 }: {
   signature?: EmailSignatureWithAgents;
   agents: SignatureAgentOption[];
-  /** Logo insérable dans la signature, quand APP_URL est configurée. */
+  /** Logo insérable dans la signature, en chemin relatif. */
   logoUrl: string | null;
   trigger: React.ReactNode;
 }) {
@@ -177,7 +160,7 @@ function SignatureForm({
             placeholder="Cordialement, {{prenom}} {{nom}}…"
             minHeight="140px"
             logoUrl={logoUrl}
-            onUploadImage={uploadSignatureImage}
+            onUploadImage={uploadEmailImage}
           />
           <p className="text-xs text-muted-foreground">
             Images : sélectionnez-en une pour la redimensionner (poignée au coin bas-droit, ou

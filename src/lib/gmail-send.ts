@@ -17,16 +17,33 @@ import {
   type EmailHistoryEntry,
 } from "@/lib/email-template";
 import { getEmailLayoutHtml } from "@/lib/email-layout-store";
+import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { prisma } from "@/lib/prisma";
+
+/**
+ * Adresse publique de l'application, préfixée aux images de l'email.
+ *
+ * Un client mail ne résout aucun chemin relatif : sans cette origine, le logo et
+ * les images des modèles n'apparaissent pas. Elle est appliquée à l'envoi et
+ * jamais enregistrée — voir `email-asset-urls.ts`.
+ */
+function emailOrigin() {
+  const origin = process.env.APP_URL?.replace(/\/+$/, "");
+  if (!origin) {
+    // Sans origine, les images partiraient en chemin relatif — donc invisibles
+    // chez le destinataire. L'email part quand même (son texte vaut mieux que
+    // rien), mais l'anomalie ne doit pas être silencieuse : elle ne se voit
+    // autrement que dans la boîte du client.
+    console.error(
+      "APP_URL n'est pas configurée : les images des emails sortants ne s'afficheront pas."
+    );
+    return "";
+  }
+  return origin;
+}
 
 function toBase64Url(buffer: Buffer) {
   return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-// `public/logoIdeeri.jpeg` doit être atteignable par une URL absolue — les
-// clients mail chargent les images depuis le web, pas depuis notre serveur.
-function getLogoUrl() {
-  return process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
 }
 
 // En-tête Message-ID RFC822 du message qu'on vient d'envoyer : Gmail ne le
@@ -71,7 +88,7 @@ export async function sendTicketReplyEmail({
   }
   const { gmail, account } = authenticated;
 
-  const logoUrl = getLogoUrl();
+  const logoUrl = await getBrandLogoUrl();
 
   const subject = `Re: [#${ticket.number}] ${ticket.subject}`;
   const html = renderTicketReplyEmailHtml({
@@ -82,6 +99,7 @@ export async function sendTicketReplyEmail({
     history,
     signatureHtml,
     logoUrl,
+    origin: emailOrigin(),
   });
   const text = renderTicketReplyEmailText({
     ticketNumber: ticket.number,
@@ -167,7 +185,7 @@ export async function sendTicketAcknowledgementEmail({
   }
   const { gmail, account } = authenticated;
 
-  const logoUrl = getLogoUrl();
+  const logoUrl = await getBrandLogoUrl();
 
   // « Re: » seulement quand l'accusé prolonge une conversation existante : en
   // tête de fil, ce préfixe répondrait à un message que le client n'a pas écrit.
@@ -183,6 +201,7 @@ export async function sendTicketAcknowledgementEmail({
     senderName,
     bodyHtml,
     logoUrl,
+    origin: emailOrigin(),
   });
   const text = renderTicketAcknowledgementEmailText({
     ticketNumber: ticket.number,
@@ -246,7 +265,8 @@ export async function sendAgentApprovalEmail({
     layoutHtml: await getEmailLayoutHtml(),
     agentName,
     appUrl,
-    logoUrl: getLogoUrl(),
+    logoUrl: await getBrandLogoUrl(),
+    origin: emailOrigin(),
   });
   const text = renderAgentApprovalEmailText({ agentName, appUrl });
 
@@ -312,7 +332,7 @@ export async function sendAgentMentionEmail({
       // librairie d'encodage (injection d'en-tête).
       subject: `${actorName.replace(/[\r\n]+/g, " ")} vous a mentionné · Ticket #${ticket.number}`,
       text: renderAgentMentionEmailText(payload),
-      html: renderAgentMentionEmailHtml({ ...payload, layoutHtml, logoUrl: getLogoUrl() }),
+      html: renderAgentMentionEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
     });
 
     const raw = toBase64Url(await mail.compile().build());
@@ -372,7 +392,7 @@ export async function sendTicketAssignedEmail({
       // l'email de mention.
       subject: `Ticket #${ticket.number} vous a été assigné par ${actorName.replace(/[\r\n]+/g, " ")}`,
       text: renderTicketAssignedEmailText(payload),
-      html: renderTicketAssignedEmailHtml({ ...payload, layoutHtml, logoUrl: getLogoUrl() }),
+      html: renderTicketAssignedEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
     });
 
     const raw = toBase64Url(await mail.compile().build());
@@ -407,7 +427,7 @@ export async function sendTicketClosureEmail({
   }
   const { gmail, account } = authenticated;
 
-  const logoUrl = getLogoUrl();
+  const logoUrl = await getBrandLogoUrl();
   const subject = `Re: [#${ticket.number}] ${ticket.subject} — Ticket clôturé`;
   const html = renderTicketClosureEmailHtml({
     layoutHtml: await getEmailLayoutHtml(),
@@ -415,6 +435,7 @@ export async function sendTicketClosureEmail({
     senderName,
     bodyHtml,
     logoUrl,
+    origin: emailOrigin(),
   });
   const text = renderTicketClosureEmailText({ ticketNumber: ticket.number, senderName, bodyHtml });
 

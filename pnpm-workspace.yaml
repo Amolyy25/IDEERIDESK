@@ -1,3 +1,13 @@
+# Dépôt à un seul paquet, à la racine : ce champ ne sert donc à rien
+# fonctionnellement. Il est là parce qu'un `pnpm-workspace.yaml` présent déclare
+# un espace de travail, et que pnpm 8, 9 et les premières 10.x exigent alors un
+# `packages` non vide — sinon « packages field missing or empty », qui cassait le
+# build. Les pnpm récents (10.34, 11) s'en passent : le champ est ignoré par eux
+# et ne coûte rien, mais protège si la machine de build tourne sur une version
+# plus ancienne que celle d'ici (voir `packageManager` dans package.json).
+packages:
+  - .
+
 allowBuilds:
   '@prisma/engines': true
   esbuild: true

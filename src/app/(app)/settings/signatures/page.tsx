@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { auth } from "@/auth";
+import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { Button } from "@/components/ui/button";
 import { getEmailSignatures } from "@/lib/actions/signatures";
 import { getAgents } from "@/lib/actions/agents";
@@ -20,7 +21,9 @@ export default async function SignaturesSettingsPage() {
   // Seul ce dont le formulaire a besoin : la table `agents` porte aussi des
   // permissions et des dates, inutiles dans une liste à cocher.
   const agentOptions = agents.map((agent) => ({ id: agent.id, name: agent.name }));
-  const logoUrl = process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
+  // Même logo qu'à l'envoi réel (Paramètres > Général) : ce que l'admin
+  // insère dans le modèle est exactement ce que le client recevra.
+  const logoUrl = await getBrandLogoUrl();
 
   return (
     <SettingsSection

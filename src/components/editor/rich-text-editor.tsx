@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { VideoEmbed } from "@/components/editor/video-embed-extension";
 import { StyleBlock } from "@/components/editor/style-block-extension";
 import { ResizableImage } from "@/components/editor/resizable-image-extension";
+import { ImageDragSupport } from "@/components/editor/image-drag-support";
 import { ImageSizeControls } from "@/components/editor/image-size-controls";
 
 export type InternalLinkTarget = { id: string; title: string; slug: string };
@@ -130,6 +131,7 @@ export function RichTextEditor({
       StarterKit,
       Link.configure({ openOnClick: false, autolink: true }),
       ResizableImage,
+      ImageDragSupport,
       VideoEmbed,
       StyleBlock,
       Placeholder.configure({ placeholder: placeholder ?? "Écrivez…" }),

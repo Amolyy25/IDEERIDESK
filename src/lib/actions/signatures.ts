@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import { hostInlineEmailImages } from "@/lib/email-images";
 
 const signatureInclude = {
   agents: { select: { id: true, name: true }, orderBy: { name: "asc" } },
@@ -87,9 +88,13 @@ export async function deleteEmailSignature(id: string) {
 async function parseAndCheck(input: SignatureInput, currentId: string | null) {
   const data = signatureSchema.parse(input);
 
+  // Hébergement avant nettoyage : le bouton d'insertion passe déjà par
+  // /api/signatures/images, mais une image simplement collée arrive en `data:`,
+  // que le nettoyage refuse — elle disparaîtrait sans laisser de trace.
+  const hosted = await hostInlineEmailImages(data.bodyHtml);
   // Inséré tel quel dans l'email : profil « email », qui conserve les styles
   // inline nécessaires à la mise en forme.
-  const bodyHtml = sanitizeEmailHtml(data.bodyHtml);
+  const bodyHtml = sanitizeEmailHtml(hosted);
   if (!bodyHtml) {
     throw new Error("Le contenu de la signature est vide après nettoyage du HTML.");
   }

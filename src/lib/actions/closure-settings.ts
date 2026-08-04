@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getClosureTemplate() {
   await requireAdmin();
@@ -18,10 +19,13 @@ const closureTemplateSchema = z.object({
 export async function saveClosureTemplate(input: z.infer<typeof closureTemplateSchema>) {
   await requireAdmin();
   const parsed = closureTemplateSchema.parse(input);
+  // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
+  // image collée disparaîtrait donc sans laisser de trace.
+  const hosted = await hostInlineEmailImages(parsed.bodyHtml);
   // Inséré tel quel dans le gabarit d'email (email-template.ts). Profil
   // « email » : les styles inline sont conservés, un email en a besoin ; seul
   // ce qui pourrait s'exécuter est retiré.
-  const data = { bodyHtml: sanitizeEmailHtml(parsed.bodyHtml) };
+  const data = { bodyHtml: sanitizeEmailHtml(hosted) };
 
   const existing = await prisma.ticketClosureTemplate.findFirst();
   if (existing) {

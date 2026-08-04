@@ -1,3 +1,4 @@
+import { absolutizeEmailAssetUrls } from "@/lib/email-asset-urls";
 import { escapeHtml } from "@/lib/escape-html";
 
 /**
@@ -14,7 +15,10 @@ import { escapeHtml } from "@/lib/escape-html";
  */
 
 export type EmailLayoutSlots = {
-  /** URL absolue du logo. Chaîne vide quand APP_URL n'est pas configurée. */
+  /**
+   * Chemin du logo, relatif à la racine — rendu absolu à l'envoi, comme toutes
+   * les autres images (voir `email-asset-urls.ts`). Chaîne vide = pas de logo.
+   */
   logoUrl: string;
   /** Nom affiché de l'expéditeur, en tête de la carte. */
   senderName: string;
@@ -161,9 +165,22 @@ function fillPlaceholders(template: string, slots: EmailLayoutSlots) {
  * du `<body>` : l'enveloppe du document est ajoutée ici parce que
  * l'assainissement (`sanitizeEmailHtml`) supprime de toute façon `<!doctype>`,
  * `<html>` et `<body>` à l'enregistrement.
+ *
+ * `origin` est l'adresse publique de l'application (`APP_URL`), ajoutée ici aux
+ * `src` relatifs — logo, images collées, images des signatures et des modèles.
+ * C'est le seul endroit où une origine entre dans un email : tout le contenu
+ * enregistré converge vers cette fonction, quelle que soit sa provenance.
+ *
+ * Sans `origin`, les chemins restent relatifs : c'est ce que veulent les
+ * aperçus des réglages, rendus dans le navigateur.
  */
-export function renderEmailLayout(layoutHtml: string, slots: EmailLayoutSlots) {
-  const body = fillPlaceholders(resolveConditionals(layoutHtml, slots), slots);
+export function renderEmailLayout(
+  layoutHtml: string,
+  slots: EmailLayoutSlots,
+  origin = ""
+) {
+  const filled = fillPlaceholders(resolveConditionals(layoutHtml, slots), slots);
+  const body = absolutizeEmailAssetUrls(filled, origin);
 
   return `<!doctype html>
 <html>

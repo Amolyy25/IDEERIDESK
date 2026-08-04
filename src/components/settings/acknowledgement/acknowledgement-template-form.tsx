@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { uploadEmailImage } from "@/components/editor/upload-email-image";
 import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import {
   saveAcknowledgementTemplate,
@@ -85,6 +86,7 @@ export function AcknowledgementTemplateForm({
           placeholder="Bonjour, nous avons bien reçu votre demande…"
           minHeight="220px"
           logoUrl={logoUrl}
+          onUploadImage={uploadEmailImage}
         />
 
         <HtmlPolicyHint profile="email" />

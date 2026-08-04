@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getAcknowledgementTemplate() {
   await requireAdmin();
@@ -20,9 +21,12 @@ export async function saveAcknowledgementTemplate(
 ) {
   await requireAdmin();
   const parsed = acknowledgementTemplateSchema.parse(input);
+  // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
+  // image collée disparaîtrait donc sans laisser de trace.
+  const hosted = await hostInlineEmailImages(parsed.bodyHtml);
   // Inséré tel quel dans le gabarit d'email : profil « email », qui conserve
   // les styles inline nécessaires à la mise en forme.
-  const data = { bodyHtml: sanitizeEmailHtml(parsed.bodyHtml) };
+  const data = { bodyHtml: sanitizeEmailHtml(hosted) };
 
   const existing = await prisma.ticketAcknowledgementTemplate.findFirst();
   if (existing) {

@@ -221,3 +221,66 @@
     @apply font-sans;
   }
 }
+/* ---------------------------------------------------------------------------
+   Images redimensionnables de l'éditeur (Tiptap)
+   ---------------------------------------------------------------------------
+   Tiptap construit les poignées de redimensionnement mais ne fournit aucune
+   feuille de style : `createHandle()` ne pose qu'un `position: absolute` et un
+   `data-resize-handle`. Sans les règles ci-dessous, les poignées existent bien
+   dans le document mais mesurent 0 × 0 pixel — invisibles, et impossibles à
+   attraper. C'est la seule raison pour laquelle une image insérée ne se
+   redimensionnait pas.
+
+   Les sélecteurs portent sur les attributs de données posés par la librairie,
+   et non sur des classes : elle n'expose pas de `className` à travers l'option
+   `resize` de l'extension Image. */
+
+[data-resize-container] {
+  max-width: 100%;
+}
+
+[data-resize-handle] {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  background-color: var(--background);
+  border: 2px solid var(--primary);
+  /* Discrètes au repos : une image posée dans un modèle d'email est relue bien
+     plus souvent qu'elle n'est retouchée. */
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+[data-resize-container]:hover [data-resize-handle],
+[data-resize-container][data-resize-state="true"] [data-resize-handle],
+[data-resize-container]:has(.ProseMirror-selectednode) [data-resize-handle] {
+  opacity: 1;
+}
+
+/* Débordement de moitié vers l'extérieur : centrées sur le coin, elles restent
+   saisissables même quand l'image est très petite. */
+[data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+  transform: translate(50%, 50%);
+}
+
+[data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+  transform: translate(-50%, 50%);
+}
+
+/* Le conteneur devient la poignée de déplacement (voir `ImageDragSupport`) :
+   le curseur doit l'annoncer. */
+[data-resize-container][draggable="true"] {
+  cursor: grab;
+}
+
+[data-resize-container][draggable="true"]:active {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-resize-handle] {
+    transition: none;
+  }
+}

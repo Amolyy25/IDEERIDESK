@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getEmailLayout() {
   await requireAdmin();
@@ -18,10 +19,13 @@ const emailLayoutSchema = z.object({
 export async function saveEmailLayout(input: z.infer<typeof emailLayoutSchema>) {
   await requireAdmin();
   const parsed = emailLayoutSchema.parse(input);
+  // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
+  // image collée disparaîtrait donc sans laisser de trace.
+  const hosted = await hostInlineEmailImages(parsed.html);
   // Profil « email » : styles inline et blocs <style> conservés, seul ce qui
   // pourrait s'exécuter est retiré. Les emplacements ({{content}}…) traversent
   // l'assainissement intacts, ce ne sont que des caractères de texte.
-  const html = sanitizeEmailHtml(parsed.html);
+  const html = sanitizeEmailHtml(hosted);
 
   const existing = await prisma.emailLayoutTemplate.findFirst();
   if (existing) {

@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { getAcknowledgementTemplate } from "@/lib/actions/acknowledgement-settings";
 import { AcknowledgementTemplateForm } from "@/components/settings/acknowledgement/acknowledgement-template-form";
 import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
@@ -13,7 +14,9 @@ export default async function AcknowledgementSettingsPage() {
   }
 
   const template = await getAcknowledgementTemplate();
-  const logoUrl = process.env.APP_URL ? `${process.env.APP_URL}/logoIdeeri.jpeg` : null;
+  // Même logo qu'à l'envoi réel (Paramètres > Général) : ce que l'admin
+  // insère dans le modèle est exactement ce que le client recevra.
+  const logoUrl = await getBrandLogoUrl();
 
   return (
     <SettingsSection href={HREF}>

@@ -130,6 +130,7 @@ export function renderTicketReplyEmailHtml({
   history = [],
   signatureHtml,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   ticketNumber: number;
@@ -139,6 +140,8 @@ export function renderTicketReplyEmailHtml({
   /** Signature de l'agent auteur de la réponse, variables déjà remplies. */
   signatureHtml?: string | null;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   return renderEmailLayout(layoutHtml, {
     logoUrl: optionalText(logoUrl),
@@ -146,7 +149,7 @@ export function renderTicketReplyEmailHtml({
     headline: `Ticket #${ticketNumber}`,
     content: `${textToHtmlParagraphs(bodyText)}${renderSignatureBlockHtml(signatureHtml)}${renderHistoryHtml(history)}`,
     footer: "Vous pouvez répondre directement à cet email pour continuer la conversation.",
-  });
+  }, origin);
 }
 
 // L'email de clôture est rédigé par un admin via un éditeur riche (HTML déjà
@@ -158,12 +161,15 @@ export function renderTicketClosureEmailHtml({
   senderName,
   bodyHtml,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   ticketNumber: number;
   senderName: string;
   bodyHtml: string;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   return renderEmailLayout(layoutHtml, {
     logoUrl: optionalText(logoUrl),
@@ -171,7 +177,7 @@ export function renderTicketClosureEmailHtml({
     headline: `Ticket #${ticketNumber} · Clôturé`,
     content: bodyHtml,
     footer: "",
-  });
+  }, origin);
 }
 
 /**
@@ -190,6 +196,7 @@ export function renderTicketAcknowledgementEmailHtml({
   senderName,
   bodyHtml,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   ticketNumber: number;
@@ -197,6 +204,8 @@ export function renderTicketAcknowledgementEmailHtml({
   senderName: string;
   bodyHtml: string;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   const recap = renderInfoBox({
     label: "Votre demande",
@@ -209,7 +218,7 @@ export function renderTicketAcknowledgementEmailHtml({
     headline: `Ticket #${ticketNumber} · Demande reçue`,
     content: `${bodyHtml}${recap}`,
     footer: "Vous pouvez répondre directement à cet email pour compléter votre demande.",
-  });
+  }, origin);
 }
 
 export function renderTicketAcknowledgementEmailText({
@@ -270,11 +279,14 @@ export function renderAgentApprovalEmailHtml({
   agentName,
   appUrl,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   agentName: string;
   appUrl: string | null;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   let ctaUrl = null;
   if (appUrl) {
@@ -296,7 +308,7 @@ export function renderAgentApprovalEmailHtml({
     headline: "Accès validé",
     content,
     footer: "Email automatique — inutile d'y répondre.",
-  });
+  }, origin);
 }
 
 // Email interne également : prévient un agent qu'un collègue l'a mentionné en
@@ -311,6 +323,7 @@ export function renderAgentMentionEmailHtml({
   noteContent,
   ticketUrl,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   recipientName: string;
@@ -320,6 +333,8 @@ export function renderAgentMentionEmailHtml({
   noteContent: string;
   ticketUrl: string | null;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   const content = `
     <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
@@ -336,7 +351,7 @@ export function renderAgentMentionEmailHtml({
     headline: `Vous avez été mentionné · Ticket #${ticketNumber}`,
     content,
     footer: "Email automatique — répondez depuis le ticket, pas par email.",
-  });
+  }, origin);
 }
 
 /** Ticket confié à un agent. Même famille d'email interne que la mention. */
@@ -350,6 +365,7 @@ export function renderTicketAssignedEmailHtml({
   priorityName,
   ticketUrl,
   logoUrl,
+  origin,
 }: {
   layoutHtml: string;
   recipientName: string;
@@ -360,6 +376,8 @@ export function renderTicketAssignedEmailHtml({
   priorityName: string;
   ticketUrl: string | null;
   logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
 }) {
   const content = `
     <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
@@ -379,7 +397,7 @@ export function renderTicketAssignedEmailHtml({
     headline: `Ticket qui vous est confié · #${ticketNumber}`,
     content,
     footer: "Email automatique — répondez depuis le ticket, pas par email.",
-  });
+  }, origin);
 }
 
 export function renderTicketAssignedEmailText({

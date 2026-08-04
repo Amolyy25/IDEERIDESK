@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
+import { uploadEmailImage } from "@/components/editor/upload-email-image";
 import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { saveClosureTemplate, deleteClosureTemplate } from "@/lib/actions/closure-settings";
 import type { TicketClosureTemplate } from "@/generated/prisma/client";
@@ -72,6 +73,7 @@ export function ClosureTemplateForm({
           placeholder="Bonjour, votre demande a bien été traitée…"
           minHeight="220px"
           logoUrl={logoUrl}
+          onUploadImage={uploadEmailImage}
         />
 
         <HtmlPolicyHint profile="email" />
