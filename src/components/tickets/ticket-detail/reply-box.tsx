@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Lock, Reply, Send, Sparkles } from "lucide-react";
+import { ChevronDown, Lock, PenLine, Reply, Send, Sparkles, Wand2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn, plural } from "@/lib/utils";
 import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-textarea";
+import { CannedResponsePicker } from "@/components/tickets/ticket-detail/canned-response-picker";
 import type { MentionableAgent } from "@/lib/mentions";
+import type { TicketCannedResponses } from "@/lib/canned-responses";
 
 /**
  * Durées du vol de l'avion, en millisecondes. Elles doivent rester alignées sur
@@ -41,6 +43,7 @@ export function ReplyBox({
   requiresApproval,
   signature,
   agents,
+  cannedResponses,
 }: {
   ticketId: string;
   currentAgentName: string;
@@ -63,9 +66,21 @@ export function ReplyBox({
   signature: React.ReactNode;
   /** Agents mentionnables en @ dans une note interne. */
   agents: MentionableAgent[];
+  /**
+   * Réponses type qui concernent ce ticket, variables déjà remplies (voir
+   * /settings/canned-responses) : celles proposées dans la liste, et celle qui
+   * pré-remplit le champ s'il en existe une.
+   */
+  cannedResponses: TicketCannedResponses;
 }) {
   const router = useRouter();
-  const [content, setContent] = useState("");
+  const autoInserted = cannedResponses.autoInserted;
+  // Le pré-remplissage est un état INITIAL, pas une valeur imposée : dès ce
+  // premier rendu, le texte appartient à l'agent, qui le réécrit ou l'efface
+  // sans que rien ne le remette. La page du ticket monte une zone de rédaction
+  // neuve par dossier (voir la clé posée sur `ReplyBox`), c'est donc bien à
+  // chaque ouverture de ticket que le brouillon est proposé.
+  const [content, setContent] = useState(autoInserted?.body ?? "");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -75,6 +90,7 @@ export function ReplyBox({
   const [messageInFlight, setMessageInFlight] = useState<string | null>(null);
 
   const isEmpty = !content.trim();
+  const status = metaLine({ isPrivate, currentAgentName, requiresApproval });
 
   // L'avion part, puis revient se poser. Deux étapes enchaînées par ce seul
   // effet, pour que l'état ne puisse pas rester bloqué « en vol ».
@@ -97,6 +113,21 @@ export function ReplyBox({
 
     return () => clearTimeout(timer);
   }, [planePhase]);
+
+  /**
+   * Insère une réponse type dans le champ.
+   *
+   * Le texte déjà écrit n'est jamais remplacé : la réponse type s'ajoute à la
+   * suite, séparée d'une ligne vide. Écraser une phrase en cours de rédaction
+   * pour un clic sur la mauvaise ligne de la liste serait un coût sans retour.
+   */
+  function handleInsertCannedResponse(body: string) {
+    if (isEmpty) {
+      setContent(body);
+      return;
+    }
+    setContent(`${content.trimEnd()}\n\n${body}`);
+  }
 
   async function handleSuggest() {
     setIsSuggesting(true);
@@ -211,7 +242,14 @@ export function ReplyBox({
         </p>
       </div>
 
-      <div className="space-y-3 p-3">
+      <div className="space-y-2 p-3">
+        {/* Pourquoi il y a déjà du texte dans le champ. L'avis disparaît à la
+            première frappe : passé ce point le brouillon est celui de l'agent,
+            continuer à l'attribuer à une réponse type serait faux. */}
+        {!isPrivate && autoInserted && content === autoInserted.body && (
+          <PrefilledNotice title={autoInserted.title} onClear={() => setContent("")} />
+        )}
+
         <div className="relative">
           {/* L'autocomplétion des mentions n'est montée que sur la note interne :
               un @ dans une réponse publique ne notifie personne, proposer la liste
@@ -222,7 +260,7 @@ export function ReplyBox({
               onChange={setContent}
               agents={agents}
               placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
-              rows={4}
+              rows={6}
             />
           ) : (
             <Textarea
@@ -230,7 +268,7 @@ export function ReplyBox({
               value={content}
               onChange={(event) => setContent(event.target.value)}
               onKeyDown={handleKeyDown}
-              rows={4}
+              rows={6}
               className="bg-background"
             />
           )}
@@ -251,23 +289,25 @@ export function ReplyBox({
         {/* Uniquement sur la réponse publique : une note interne ne part pas par
             email, y montrer une signature laisserait croire le contraire. */}
         {!isPrivate && signature && (
-          <div className="rounded-md border border-dashed bg-background/60 px-3 py-2.5">
-            <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              Signature ajoutée à l&apos;email
-            </p>
-            {signature}
-          </div>
+          <SignatureDisclosure agentName={currentAgentName}>{signature}</SignatureDisclosure>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {isPrivate ? "Note signée" : "Réponse envoyée"} par{" "}
-            <span className="font-medium text-foreground">{currentAgentName}</span>
-            {!isPrivate && requiresApproval && " · soumise à validation"}
-            {isPrivate && " · tapez @ pour notifier un collègue"}
-          </p>
+        {/* La ligne d'état peut être vide (cas courant) : `ml-auto` sur les
+            actions les garde alors à droite, sans paragraphe fantôme pour tenir
+            la place. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          {status && <p className="text-xs text-muted-foreground">{status}</p>}
 
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2">
+            {/* Réservé à la réponse publique, comme la suggestion IA : une
+                réponse type est écrite pour un client, la proposer sur une note
+                interne n'aurait pas de destinataire. */}
+            {!isPrivate && (
+              <CannedResponsePicker
+                responses={cannedResponses.available}
+                onInsert={handleInsertCannedResponse}
+              />
+            )}
             {!isPrivate && (
               <Button
                 type="button"
@@ -296,6 +336,110 @@ export function ReplyBox({
       </div>
     </div>
   );
+}
+
+/**
+ * Le brouillon vient d'une réponse prédéfinie : dit laquelle, et permet de le
+ * jeter d'un clic.
+ *
+ * Un texte qui apparaît sans qu'on l'ait demandé doit s'expliquer, sinon il se
+ * fait envoyer sans être relu — ou pire, l'agent le prend pour un reste
+ * d'édition sur un autre ticket. Mais ça reste une note de bas de page : une
+ * seule ligne au-dessus du champ, pas un encadré qui pèse plus lourd que le
+ * message lui-même.
+ */
+function PrefilledNotice({ title, onClear }: { title: string; onClear: () => void }) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+      <Wand2 className="size-3.5 shrink-0" />
+      <span>
+        Brouillon{" "}
+        <span className="font-medium text-foreground">« {title} »</span>, à relire avant
+        l&apos;envoi.
+      </span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        Effacer
+      </button>
+    </p>
+  );
+}
+
+/**
+ * La signature, repliée par défaut.
+ *
+ * Ce qu'il faut savoir en écrivant, c'est QU'IL Y EN A une et laquelle — pas à
+ * quoi elle ressemble, elle ne change jamais. Dépliée en permanence, elle
+ * occupait plus de hauteur que la zone de rédaction (logo compris) et repoussait
+ * le bouton d'envoi hors de l'écran.
+ */
+function SignatureDisclosure({
+  agentName,
+  children,
+}: {
+  agentName: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="text-xs text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 hover:text-foreground"
+      >
+        <PenLine className="size-3.5 shrink-0" />
+        {/* Espaces explicites autour du nom : une espace laissée en fin de ligne
+            JSX est supprimée à la compilation, et « MEILLERajoutée » se
+            recollait. Le reste de la phrase tient donc sur une seule ligne. */}
+        <span>
+          Signature de{" "}
+          <span className="font-medium text-foreground">{agentName}</span>{" "}
+          ajoutée à l&apos;email
+        </span>
+        <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {/* Hauteur bornée : une signature avec un grand logo ne doit pas reprendre
+          tout l'espace qu'on vient de lui retirer. */}
+      {open && (
+        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-dashed bg-background/60 px-3 py-2.5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * La ligne d'état sous le champ, réduite à ce qui n'est pas déjà écrit ailleurs.
+ *
+ * En réponse publique, le nom de l'agent figure déjà sur la ligne de signature :
+ * le répéter ici ne servait qu'à occuper une ligne. Il ne reste donc que ce qui
+ * s'apprend nulle part ailleurs — la validation à venir, ou le rappel des
+ * mentions sur une note.
+ */
+function metaLine({
+  isPrivate,
+  currentAgentName,
+  requiresApproval,
+}: {
+  isPrivate: boolean;
+  currentAgentName: string;
+  requiresApproval: boolean;
+}) {
+  if (isPrivate) {
+    return `Note signée par ${currentAgentName} · tapez @ pour notifier un collègue`;
+  }
+  if (requiresApproval) {
+    return "Soumise à validation par un agent habilité avant l'envoi.";
+  }
+  return "";
 }
 
 /**

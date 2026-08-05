@@ -60,6 +60,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         description:
           "Les informations demandées en plus sur tous les formulaires publics.",
       },
+      {
+        href: "/settings/canned-responses",
+        label: "Réponses prédéfinies",
+        description:
+          "Les réponses type proposées d'un clic dans la zone de rédaction d'un ticket. Chacune peut être limitée à certains produits, sources, priorités ou statuts : seules celles qui concernent le ticket ouvert sont proposées.",
+      },
     ],
   },
   {

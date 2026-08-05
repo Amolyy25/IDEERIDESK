@@ -16,6 +16,10 @@ import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
 import { SignatureBlock } from "@/components/tickets/ticket-detail/signature-block";
 import { DuplicateBanner } from "@/components/tickets/ticket-detail/duplicate-banner";
 import { MergedIntoBanner } from "@/components/tickets/ticket-detail/merged-tickets";
+import {
+  listCannedResponsesForTicket,
+  type TicketCannedResponses,
+} from "@/lib/canned-responses";
 import { getPendingDuplicateSuggestions } from "@/lib/ticket-duplicates";
 import { resolveMergeRoot } from "@/lib/ticket-merge";
 import { countMergedRecipients, listDossierClients } from "@/lib/ticket-dossier";
@@ -84,6 +88,28 @@ export default async function TicketDetailPage({
   // partira.
   const signatureHtml = await resolveSignatureHtmlForAgent(session?.user?.id ?? null);
   const canRespond = session?.user?.canRespond ?? false;
+
+  // Réponses type qui concernent ce dossier (voir /settings/canned-responses).
+  // Les critères sont lus sur le dossier et non sur la porte d'entrée, comme
+  // tout le reste de la zone de rédaction. Inutile de les charger pour un compte
+  // en lecture seule : il n'a pas de champ où les insérer.
+  let cannedResponses: TicketCannedResponses = { available: [], autoInserted: null };
+  if (canRespond) {
+    cannedResponses = await listCannedResponsesForTicket(
+      {
+        categoryId: dossier.categoryId,
+        formSourceId: dossier.formSourceId,
+        priorityId: dossier.priorityId,
+        statusId: dossier.statusId,
+      },
+      {
+        client: dossier.client?.name ?? null,
+        agent: session?.user?.name ?? null,
+        ticket: `#${dossier.number}`,
+        produit: dossier.category?.name ?? null,
+      },
+    );
+  }
 
   // À qui proposer une fusion, et quand. Un ticket déjà fusionné a sa place
   // arrêtée, et un ticket clos n'a plus de demande à rapprocher : dans les deux
@@ -162,7 +188,13 @@ export default async function TicketDetailPage({
               depuis un doublon doit servir tout le monde, sinon la fusion
               n'aurait tenu qu'à l'endroit d'où l'agent a cliqué. */}
           <div className="mt-4 pl-11">
+            {/* La clé attache la zone de rédaction à SON dossier : passer d'un
+                ticket à l'autre remonte un champ neuf, au lieu de conserver
+                l'état du précédent. Indispensable depuis le pré-remplissage —
+                sans elle, le brouillon proposé pour un ticket pourrait survivre
+                à la navigation et se retrouver sous les yeux du mauvais client. */}
             <ReplyBox
+              key={dossier.id}
               ticketId={dossier.id}
               currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
               clientEmail={dossier.client?.email ?? null}
@@ -171,6 +203,7 @@ export default async function TicketDetailPage({
               requiresApproval={session?.user?.requiresApproval ?? false}
               signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
               agents={mentionableAgents}
+              cannedResponses={cannedResponses}
             />
           </div>
         </div>

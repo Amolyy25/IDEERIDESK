@@ -190,6 +190,79 @@ model CustomField {
 }
 
 // ---------------------------------------------------------------------------
+// Réponses prédéfinies
+// ---------------------------------------------------------------------------
+
+// Dimension du ticket sur laquelle une réponse prédéfinie peut être restreinte.
+// Ajouter une dimension = ajouter une valeur ici PUIS une entrée dans le
+// registre `FILTER_DIMENSIONS` de src/lib/canned-responses.ts. Le registre est
+// le seul endroit du code qui sait ce que chaque valeur désigne : ni le
+// formulaire de réglages ni le filtrage n'ont de liste en dur.
+enum CannedResponseDimension {
+  CATEGORY // produit concerné du ticket (TicketCategory)
+  SOURCE // formulaire d'origine du ticket (Source)
+  PRIORITY // priorité du ticket (TicketPriority)
+  STATUS // statut courant du ticket (TicketStatus)
+}
+
+// Réponse type, insérée d'un clic dans la zone de rédaction d'un ticket. Le
+// corps est du texte brut, comme `Message.content` : ce qui est écrit ici est
+// exactement ce que l'agent verra apparaître dans son champ, à lui de le
+// relire et de l'ajuster avant envoi.
+//
+// Les variables `{{client}}`, `{{agent}}`… sont remplies au moment de
+// l'insertion avec le contexte du ticket ouvert — voir
+// src/lib/canned-responses.ts.
+model CannedResponse {
+  id       String  @id @default(cuid())
+  title    String  @unique
+  body     String
+  isActive Boolean @default(true)
+
+  // Pré-remplit la zone de rédaction dès l'ouverture d'un ticket qu'elle
+  // concerne, sans que l'agent aille la chercher dans la liste. Combiné aux
+  // filtres, c'est ce qui permet un premier jet d'office : « statut = Nouveau »
+  // + « produit = Papairis » et le message d'accueil est déjà là.
+  //
+  // Plusieurs réponses peuvent porter le drapeau : c'est la plus ciblée qui
+  // gagne, voir `pickAutoInserted` dans src/lib/canned-responses.ts.
+  autoInsert Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filters CannedResponseFilter[]
+
+  @@index([isActive])
+  @@map("canned_responses")
+}
+
+// Une restriction : « cette réponse ne concerne que ces valeurs, sur cette
+// dimension ». Aucune ligne pour une dimension = la réponse vaut pour toutes
+// ses valeurs. Plusieurs lignes sur la même dimension se lisent comme un OU
+// (l'une OU l'autre), deux dimensions différentes comme un ET — voir
+// `matchesTicket`.
+//
+// `valueId` n'est volontairement pas une clé étrangère : c'est le prix de la
+// modularité, une seule table portant les filtres de toutes les dimensions
+// plutôt qu'une table de jointure par dimension. La contrepartie est assumée et
+// traitée : l'existence est vérifiée à l'enregistrement, et une valeur
+// supprimée entre-temps est signalée dans la liste des réponses au lieu de
+// filtrer sur un identifiant fantôme.
+model CannedResponseFilter {
+  id        String                  @id @default(cuid())
+  dimension CannedResponseDimension
+  valueId   String
+
+  response   CannedResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId String
+
+  @@unique([responseId, dimension, valueId])
+  @@index([responseId])
+  @@map("canned_response_filters")
+}
+
+// ---------------------------------------------------------------------------
 // Tickets & fil de messages
 // ---------------------------------------------------------------------------
 
