@@ -13,6 +13,7 @@ import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
 import { TicketThread } from "@/components/tickets/ticket-detail/ticket-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
 import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
+import { LogTicketView } from "@/components/tickets/ticket-detail/log-ticket-view";
 import { SignatureBlock } from "@/components/tickets/ticket-detail/signature-block";
 import { DuplicateBanner } from "@/components/tickets/ticket-detail/duplicate-banner";
 import { MergedIntoBanner } from "@/components/tickets/ticket-detail/merged-tickets";
@@ -139,6 +140,13 @@ export default async function TicketDetailPage({
           lui qu'il faut éteindre — quelle que soit la porte par laquelle l'agent
           est entré pour la lire. */}
       <MarkAsRead ticketId={dossier.id} hasUnreadActivity={dossier.hasUnreadActivity} />
+
+      {/* La trace d'audit porte sur le ticket réellement ouvert, et non sur le
+          dossier comme le témoin d'activité ci-dessus : le journal doit dire ce
+          que l'agent a fait — « il a ouvert #128 » — sans réécrire son geste en
+          « il a ouvert le dossier de #128 ». Sur un ticket non fusionné, les deux
+          sont le même. */}
+      <LogTicketView ticketId={ticket.id} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <TicketHeader

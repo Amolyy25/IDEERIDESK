@@ -18,6 +18,13 @@ import { notifyTicketAssigned } from "@/lib/assignment-notifications";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
 import { getMergedRecipients } from "@/lib/ticket-merge";
+import {
+  diffTicketSnapshots,
+  readTicketSnapshot,
+  recordAudit,
+  recordTicketView,
+  type AuditTicketRef,
+} from "@/lib/audit";
 
 const ticketInclude = {
   status: true,
@@ -259,6 +266,36 @@ export async function markTicketAsRead(id: string) {
   revalidatePath("/tickets");
 }
 
+/** Référence figée dans le journal d'audit — numéro et sujet, rien de plus. */
+function auditRefSelect() {
+  return { id: true, number: true, subject: true } satisfies Prisma.TicketSelect;
+}
+
+/**
+ * Journalise l'ouverture d'une fiche ticket (voir `LogTicketView`).
+ *
+ * Appelée depuis le client après montage, et non depuis la page : le préchargement
+ * des `<Link>` de Next rend le composant serveur de la fiche sans qu'aucun agent
+ * ne l'ait ouverte. Journaliser côté serveur inscrirait donc des consultations
+ * fantômes — un journal d'audit qui affirme faux ne vaut rien. Même raisonnement
+ * que `MarkAsRead`.
+ *
+ * Aucune valeur de retour, et aucune erreur remontée : la trace ne doit pas
+ * perturber la lecture du ticket.
+ */
+export async function logTicketConsultation(ticketId: string) {
+  // Consulter est un geste de lecture : la garde est celle de la lecture.
+  const session = await requireApprovedAgent();
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: auditRefSelect(),
+  });
+  if (!ticket) return;
+
+  await recordTicketView({ session, ticket });
+}
+
 const createTicketSchema = z.object({
   subject: z.string().trim().min(1, "Sujet requis").max(200),
   description: z.string().trim().min(1, "Description requise"),
@@ -270,7 +307,7 @@ const createTicketSchema = z.object({
 });
 
 export async function createTicket(input: z.infer<typeof createTicketSchema>) {
-  await requireCanRespond();
+  const session = await requireCanRespond();
   const data = createTicketSchema.parse(input);
   const ticket = await prisma.ticket.create({
     data: {
@@ -283,6 +320,14 @@ export async function createTicket(input: z.infer<typeof createTicketSchema>) {
       metadata: (data.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
+
+  await recordAudit({
+    session,
+    action: "TICKET_CREATED",
+    ticket,
+    summary: "Créé à la main depuis le back-office.",
+  });
+
   revalidatePath("/tickets");
   return ticket;
 }
@@ -308,15 +353,17 @@ export async function updateTicketAttributes(
     closedAt = status?.isClosed ? new Date() : null;
   }
 
-  // Assignation relue avant l'écriture : sans elle, impossible de distinguer
-  // « ce ticket vient de changer de main » d'un simple renvoi de la même valeur
-  // par le panneau d'attributs — et l'agent recevrait une notification à chaque
-  // modification de priorité.
   const nextAssigneeId = data.assigneeId === undefined ? undefined : data.assigneeId || null;
-  const previous =
-    nextAssigneeId === undefined
-      ? null
-      : await prisma.ticket.findUnique({ where: { id }, select: { assigneeId: true } });
+
+  // État complet relu avant l'écriture, pour deux usages :
+  //
+  // — l'assignation, sans quoi il est impossible de distinguer « ce ticket vient
+  //   de changer de main » d'un simple renvoi de la même valeur par le panneau
+  //   d'attributs (l'agent recevrait une notification à chaque changement de
+  //   priorité) ;
+  // — le journal d'audit, qui doit dire QUOI a changé : « Statut : Nouveau → En
+  //   cours » et non « ticket modifié », seule forme réellement vérifiable.
+  const before = await readTicketSnapshot(id);
 
   await prisma.ticket.update({
     where: { id },
@@ -330,12 +377,23 @@ export async function updateTicketAttributes(
     },
   });
 
-  if (nextAssigneeId && previous && nextAssigneeId !== previous.assigneeId) {
+  if (nextAssigneeId && before && nextAssigneeId !== before.assigneeId) {
     await notifyTicketAssigned({
       ticketId: id,
       assigneeId: nextAssigneeId,
       actorId: session.user.id,
     });
+  }
+
+  const after = before ? await readTicketSnapshot(id) : null;
+  if (before && after) {
+    const changes = diffTicketSnapshots(before, after);
+    // Le panneau d'attributs renvoie l'ensemble des champs à chaque
+    // enregistrement : sans ce test, la moitié du journal serait des lignes
+    // « modifié » sans aucune modification.
+    if (changes.length > 0) {
+      await recordAudit({ session, action: "TICKET_UPDATED", ticket: after, changes });
+    }
   }
 
   revalidatePath(`/tickets/${id}`);
@@ -354,19 +412,30 @@ export async function claimTicket(id: string) {
     where: { isInProgressDefault: true },
   });
 
-  await prisma.ticket.update({
+  const ticket = await prisma.ticket.update({
     where: { id },
     data: {
       assigneeId: agentId,
       ...(inProgressStatus ? { statusId: inProgressStatus.id } : {}),
     },
+    select: auditRefSelect(),
   });
+
+  await recordAudit({
+    session,
+    action: "TICKET_CLAIMED",
+    ticket,
+    summary: inProgressStatus
+      ? `Assigné à lui-même, statut passé à « ${inProgressStatus.name} ».`
+      : "Assigné à lui-même.",
+  });
+
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
 }
 
 export async function closeTicket(id: string) {
-  await requireCanRespond();
+  const session = await requireCanRespond();
 
   const closeStatus = await prisma.ticketStatus.findFirst({ where: { isCloseDefault: true } });
   if (!closeStatus) {
@@ -453,6 +522,24 @@ export async function closeTicket(id: string) {
     }
   }
 
+  await recordAudit({
+    session,
+    action: "TICKET_CLOSED",
+    ticket,
+    summary: [
+      `Statut passé à « ${closeStatus.name} ».`,
+      emailSent ? "Email de clôture envoyé au client." : null,
+      emailSkippedReason ? `Email de clôture non envoyé : ${emailSkippedReason}` : null,
+      alsoSentTo > 0
+        ? `Clôture répercutée sur ${alsoSentTo} ticket${alsoSentTo > 1 ? "s" : ""} fusionné${
+            alsoSentTo > 1 ? "s" : ""
+          }.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  });
+
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
   return { emailSent, emailSkippedReason, alsoSentTo };
@@ -461,10 +548,27 @@ export async function closeTicket(id: string) {
 export async function deleteTicket(id: string) {
   // Suppression définitive et non réversible d'un dossier client : réservée aux
   // admins, pas à tout agent capable de répondre.
-  await requireAdmin();
+  const session = await requireAdmin();
+
+  // Relu AVANT la suppression : c'est la seule occasion de figer le numéro et le
+  // sujet dans le journal.
+  const ticket = await prisma.ticket.findUnique({ where: { id }, select: auditRefSelect() });
+
   // Messages et pièces jointes suivent en cascade (onDelete: Cascade côté
   // schéma) — pas de nettoyage manuel à faire ici.
   await prisma.ticket.delete({ where: { id } });
+
+  await recordAudit({
+    session,
+    action: "TICKET_DELETED",
+    // `id: null` et non l'identifiant du ticket : il n'existe plus, et la clé
+    // étrangère rejetterait la ligne — la trace de la suppression serait perdue
+    // au moment précis où elle compte le plus. Numéro et sujet suffisent à
+    // désigner le dossier disparu.
+    ticket: ticket ? { id: null, number: ticket.number, subject: ticket.subject } : null,
+    summary: "Suppression définitive du ticket et de tout son fil.",
+  });
+
   revalidatePath("/tickets");
 }
 
@@ -695,7 +799,11 @@ export async function addTicketMessage(
       approvalStatus: needsApproval ? "PENDING" : null,
     },
   });
-  await prisma.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
+  const auditTicket = await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { updatedAt: new Date() },
+    select: auditRefSelect(),
+  });
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
 
@@ -708,6 +816,21 @@ export async function addTicketMessage(
       actorId: agentId,
       content: data.content,
     });
+
+    // Le corps de la note n'est PAS journalisé : le journal dit qu'une note a été
+    // ajoutée, le fil du ticket dit laquelle. Les agents mentionnés, eux, font
+    // partie du « qui » — c'est ce qui explique pourquoi un collègue s'est mis à
+    // travailler sur ce dossier.
+    await recordAudit({
+      session,
+      action: "TICKET_NOTE_ADDED",
+      ticket: auditTicket,
+      summary:
+        mentionedNames.length > 0
+          ? `Note interne, avec mention de ${mentionedNames.join(", ")}.`
+          : "Note interne, non visible du client.",
+    });
+
     return {
       emailSent: false as const,
       emailSkippedReason: null,
@@ -718,6 +841,12 @@ export async function addTicketMessage(
   }
 
   if (needsApproval) {
+    await recordAudit({
+      session,
+      action: "TICKET_REPLIED",
+      ticket: auditTicket,
+      summary: "Réponse rédigée, retenue en attente de validation — rien n'est parti au client.",
+    });
     return {
       emailSent: false as const,
       emailSkippedReason: null,
@@ -728,7 +857,48 @@ export async function addTicketMessage(
   }
 
   const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content, agentId);
+
+  await recordAudit({
+    session,
+    action: "TICKET_REPLIED",
+    ticket: auditTicket,
+    summary: replySummary(sendResult),
+  });
+
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[] };
+}
+
+/**
+ * Ce que le journal retient d'une réponse partie : son sort, jamais son contenu.
+ *
+ * Un envoi qui a échoué est le fait le plus important à tracer — c'est celui qui
+ * explique, des semaines plus tard, pourquoi un client dit n'avoir jamais eu de
+ * réponse alors que le fil du ticket en montre une.
+ */
+function replySummary({
+  emailSent,
+  emailSkippedReason,
+  alsoSentTo,
+}: {
+  emailSent: boolean;
+  emailSkippedReason: string | null;
+  alsoSentTo: number;
+}) {
+  const parts = [
+    emailSent
+      ? "Réponse publique envoyée au client par email."
+      : `Réponse publique enregistrée, email non envoyé : ${
+          emailSkippedReason ?? "raison inconnue"
+        }`,
+  ];
+  if (alsoSentTo > 0) {
+    parts.push(
+      `Également envoyée aux clients de ${alsoSentTo} ticket${
+        alsoSentTo > 1 ? "s" : ""
+      } fusionné${alsoSentTo > 1 ? "s" : ""}.`,
+    );
+  }
+  return parts.join(" ");
 }
 
 const pendingApprovalSelect = {
@@ -801,12 +971,25 @@ export async function approveMessage(messageId: string) {
     message.content,
     message.agentId
   );
+
+  await recordAudit({
+    session,
+    action: "REPLY_APPROVED",
+    ticket: await auditRefFor(message.ticketId),
+    // L'auteur de la réponse et son valideur sont deux personnes différentes
+    // (la garde ci-dessus l'impose) : le journal doit nommer les deux, sinon la
+    // trace laisse croire que le valideur a écrit la réponse.
+    summary: `Validation de la réponse rédigée par ${await agentLabelById(
+      message.agentId,
+    )}. ${replySummary(result)}`,
+  });
+
   revalidatePath(`/tickets/${message.ticketId}`);
   return result;
 }
 
 export async function rejectMessage(messageId: string) {
-  await requireCanApprove();
+  const session = await requireCanApprove();
 
   const message = await prisma.message.findUnique({ where: { id: messageId } });
   if (!message || message.approvalStatus !== "PENDING") {
@@ -817,5 +1000,29 @@ export async function rejectMessage(messageId: string) {
     where: { id: messageId },
     data: { approvalStatus: "REJECTED" },
   });
+
+  await recordAudit({
+    session,
+    action: "REPLY_REJECTED",
+    ticket: await auditRefFor(message.ticketId),
+    summary: `Refus de la réponse rédigée par ${await agentLabelById(
+      message.agentId,
+    )} — rien n'est parti au client.`,
+  });
+
   revalidatePath(`/tickets/${message.ticketId}`);
+}
+
+/** Référence d'audit d'un ticket connu par son seul identifiant. */
+async function auditRefFor(ticketId: string): Promise<AuditTicketRef | null> {
+  return prisma.ticket.findUnique({ where: { id: ticketId }, select: auditRefSelect() });
+}
+
+async function agentLabelById(agentId: string | null) {
+  if (!agentId) return "un agent";
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { name: true, email: true },
+  });
+  return agent?.name || agent?.email || "un agent";
 }

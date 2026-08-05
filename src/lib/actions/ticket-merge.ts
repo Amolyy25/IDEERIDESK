@@ -17,6 +17,15 @@ import {
   type DuplicateScanResult,
   type DuplicateSuggestion,
 } from "@/lib/ticket-duplicates";
+import { recordAudit } from "@/lib/audit";
+
+/** Ce que le journal d'audit retient d'un ticket : son numéro et son sujet. */
+function auditRef(ticketId: string) {
+  return prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { id: true, number: true, subject: true },
+  });
+}
 
 /**
  * Fusion de doublons : recherche des rapprochements, fusion, défusion.
@@ -99,6 +108,29 @@ export async function mergeTicketInto(input: z.infer<typeof mergeSchema>): Promi
 
   try {
     const outcome = await mergeTickets({ ...data, actorName });
+
+    // Tracé sur le ticket ABSORBÉ : c'est celui dont l'équipe cessera de
+    // s'occuper, donc celui qu'on cherchera dans le journal en se demandant
+    // « pourquoi ce dossier ne bouge plus ? ». Le numéro de la cible est dans le
+    // libellé, ce qui rend la ligne lisible sans ouvrir les deux fiches.
+    await recordAudit({
+      session,
+      action: "TICKET_MERGED",
+      ticket: await auditRef(data.sourceId),
+      summary: [
+        `Fusionné dans le ticket #${outcome.targetNumber}, qui devient le dossier de référence.`,
+        outcome.reattachedCount > 0
+          ? `${outcome.reattachedCount} doublon${
+              outcome.reattachedCount > 1 ? "s" : ""
+            } qu'il avait absorbé${outcome.reattachedCount > 1 ? "s" : ""} y ${
+              outcome.reattachedCount > 1 ? "ont" : "a"
+            } été rattaché${outcome.reattachedCount > 1 ? "s" : ""}.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    });
+
     revalidatePath(`/tickets/${data.sourceId}`);
     revalidatePath(`/tickets/${outcome.targetId}`);
     revalidatePath("/tickets");
@@ -120,6 +152,14 @@ export async function separateMergedTicket(ticketId: string) {
 
   try {
     const result = await unmergeTicket({ ticketId, actorName });
+
+    await recordAudit({
+      session,
+      action: "TICKET_UNMERGED",
+      ticket: await auditRef(ticketId),
+      summary: `Détaché du ticket #${result.previousNumber} : il redevient un dossier autonome.`,
+    });
+
     revalidatePath(`/tickets/${ticketId}`);
     revalidatePath("/tickets");
     return result;

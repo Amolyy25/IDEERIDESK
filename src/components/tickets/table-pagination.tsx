@@ -15,11 +15,14 @@ export function TablePagination({
   pageCount,
   total,
   pageSize,
+  emptyLabel = "Aucun ticket",
 }: {
   page: number;
   pageCount: number;
   total: number;
   pageSize: number;
+  /** Ce que compte la liste, quand elle est vide (« Aucune entrée »). */
+  emptyLabel?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,7 +40,7 @@ export function TablePagination({
   return (
     <div className="flex h-12 items-center justify-between gap-3 border-t bg-muted/30 px-4">
       <p className="text-xs text-muted-foreground">
-        {total === 0 && "Aucun ticket"}
+        {total === 0 && emptyLabel}
         {total > 0 && (
           <>
             <span className="tabular-nums text-foreground">

@@ -46,6 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         pendingAgentCount={pendingAgentCount}
         canApprove={session.user.canApprove ?? false}
         pendingApprovalCount={pendingApprovalCount}
+        isAdmin={session.user.role === "ADMIN"}
         notifications={notifications.items}
         unreadNotificationCount={notifications.unreadCount}
         gmailConnected={emailStatus.connected}

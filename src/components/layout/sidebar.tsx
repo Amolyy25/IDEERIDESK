@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  ScrollText,
   ShieldCheck,
   Settings,
   Ticket,
@@ -23,6 +24,15 @@ type NavItem = { label: string; href: string; icon: LucideIcon };
 // Le travail quotidien en haut, groupé par nature ; la configuration en bas,
 // près de la fiche agent — elle ne se consulte pas au même rythme.
 const APPROVALS_ITEM: NavItem = { label: "Validations", href: "/approvals", icon: ShieldCheck };
+
+// Groupe réservé aux admins : le journal dit qui a ouvert quel dossier et quand,
+// c'est-à-dire aussi un relevé d'activité nominatif de chaque agent. Ouvert à
+// toute l'équipe, l'outil de conformité deviendrait un outil de surveillance
+// entre collègues.
+const SUPERVISION_GROUP: { label: string; items: NavItem[] } = {
+  label: "Supervision",
+  items: [{ label: "Journal d'audit", href: "/audit", icon: ScrollText }],
+};
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
@@ -98,6 +108,7 @@ export function Sidebar({
   pendingAgentCount,
   canApprove,
   pendingApprovalCount,
+  isAdmin,
   notifications,
   unreadNotificationCount,
   gmailConnected,
@@ -110,6 +121,8 @@ export function Sidebar({
   canApprove: boolean;
   /** Réponses retenues en attente de validation — toujours 0 sans `canApprove`. */
   pendingApprovalCount: number;
+  /** Administrateur : conditionne le groupe « Supervision ». */
+  isAdmin: boolean;
   /** Mentions @ reçues par l'agent connecté. */
   notifications: NotificationItem[];
   unreadNotificationCount: number;
@@ -142,13 +155,17 @@ export function Sidebar({
     return null;
   };
 
-  // L'entrée n'apparaît que pour qui peut s'en servir : ailleurs, la page
+  // Les entrées n'apparaissent que pour qui peut s'en servir : ailleurs, la page
   // renvoie vers les tickets.
-  const navGroups = canApprove
+  let navGroups = canApprove
     ? NAV_GROUPS.map((group) =>
         group.label === "Support" ? { ...group, items: [...group.items, APPROVALS_ITEM] } : group
       )
     : NAV_GROUPS;
+
+  if (isAdmin) {
+    navGroups = [...navGroups, SUPERVISION_GROUP];
+  }
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">

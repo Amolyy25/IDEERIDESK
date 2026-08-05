@@ -59,6 +59,8 @@ model Agent {
   // Signatures qui lui sont nominativement assignées (voir EmailSignature).
   signatures EmailSignature[]
 
+  auditEntries AuditLog[]
+
   // Admin ayant approuvé/refusé ce compte (null pour les comptes créés avant
   // le workflow d'approbation).
   approvalDecidedBy   Agent?  @relation("AgentApprovalDecidedBy", fields: [approvalDecidedById], references: [id])
@@ -413,6 +415,7 @@ model Ticket {
   messages      Message[]
   attachments   Attachment[]
   notifications Notification[]
+  auditEntries  AuditLog[]
 
   duplicateSuggestions   TicketDuplicateSuggestion[] @relation("DuplicateSuggestionTicket")
   duplicateCandidateFor  TicketDuplicateSuggestion[] @relation("DuplicateSuggestionCandidate")
@@ -577,6 +580,76 @@ model Notification {
 
   @@index([recipientId, readAt])
   @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Journal d'audit (qui a consulté, répondu, modifié — et quand)
+// ---------------------------------------------------------------------------
+
+// Un geste d'agent tracé. Ajouter une valeur ici impose d'ajouter son entrée
+// dans le registre `AUDIT_ACTIONS` de src/lib/audit-actions.ts : c'est le seul
+// endroit du code qui sait comment libeller une action et à quelle famille
+// (consultation / réponse / modification) elle appartient.
+enum AuditAction {
+  TICKET_VIEWED // ouverture de la fiche par un agent
+  TICKET_CREATED
+  TICKET_REPLIED // réponse publique, partie (ou en attente de validation)
+  TICKET_NOTE_ADDED // note interne, jamais envoyée au client
+  TICKET_UPDATED // statut, priorité, produit, assignation, champs personnalisés
+  TICKET_CLAIMED // « Prendre en charge »
+  TICKET_CLOSED
+  TICKET_DELETED
+  TICKET_MERGED
+  TICKET_UNMERGED
+  REPLY_APPROVED
+  REPLY_REJECTED
+}
+
+// Une ligne du journal, en écriture seule : rien dans l'application ne modifie
+// ni ne supprime une entrée — un journal réinscriptible ne prouve rien.
+//
+// Ce qui est délibérément ABSENT : le corps des messages et la valeur des champs
+// personnalisés. Le journal répond à « qui, quoi, quand », pas « qu'a-t-on écrit
+// au client » — le fil du ticket est là pour ça. Recopier ces contenus ici
+// dupliquerait des données personnelles dans une table conservée même après la
+// suppression du ticket (principe de minimisation).
+model AuditLog {
+  id        String      @id @default(cuid())
+  action    AuditAction
+  createdAt DateTime    @default(now())
+
+  // --- Qui ---
+  // Le lien vers l'agent se dénoue à la suppression du compte (`SetNull`), mais
+  // le nom et l'email restent figés : une trace qui perd son auteur ne répond
+  // plus à « qui ».
+  actor      Agent?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorId    String?
+  actorName  String
+  actorEmail String
+
+  // --- Sur quoi ---
+  // Même raisonnement : le ticket peut être supprimé (`deleteTicket`), son
+  // numéro et son sujet sont recopiés pour que la ligne reste lisible ensuite.
+  // C'est justement la suppression qu'un journal doit pouvoir raconter.
+  ticket        Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  ticketId      String?
+  ticketNumber  Int?
+  ticketSubject String?
+
+  // --- Quoi exactement ---
+  // `changes` porte le détail d'une modification, champ par champ :
+  // [{ label, from, to }] — c'est ce qui rend un TICKET_UPDATED vérifiable.
+  // `summary` porte la précision d'une action qui n'est pas un différentiel
+  // (« réponse envoyée par email », « fusionné dans le ticket #128 »). Les deux
+  // ne se recouvrent pas : une action renseigne l'un ou l'autre.
+  changes Json    @default("[]")
+  summary String?
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+  @@index([ticketId, createdAt])
+  @@map("audit_logs")
 }
 
 // ---------------------------------------------------------------------------
