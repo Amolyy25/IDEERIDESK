@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { Download, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -78,6 +78,16 @@ export function AuditToolbar({
 
   const activeFamily = searchParams.get("family");
   const hasActiveFilters = FILTER_KEYS.some((key) => searchParams.get(key));
+
+  // L'export reprend les filtres, jamais la pagination : on exporte le périmètre
+  // filtré en entier, pas la page qu'on a sous les yeux.
+  const exportParams = new URLSearchParams();
+  for (const key of FILTER_KEYS) {
+    const value = searchParams.get(key);
+    if (value) exportParams.set(key, value);
+  }
+  const exportQuery = exportParams.toString();
+  const exportHref = `/api/audit/export${exportQuery ? `?${exportQuery}` : ""}`;
 
   /** Un filtre posé se voit sur son propre contrôle, pas seulement dans la liste. */
   function triggerClass(key: string, width: string) {
@@ -189,6 +199,17 @@ export function AuditToolbar({
           Réinitialiser
         </Button>
       )}
+
+      {/* Poussé à droite : l'export porte sur le résultat des filtres posés à
+          gauche, il se lit donc comme leur aboutissement. `<a>` et non un bouton
+          avec `fetch` : le téléchargement est le travail du navigateur, et
+          `download` lui dit de ne pas tenter d'afficher le fichier. */}
+      <Button asChild variant="outline" size="sm" className="ml-auto h-9">
+        <a href={exportHref} download>
+          <Download className="size-4" />
+          Exporter en CSV
+        </a>
+      </Button>
     </div>
   );
 }

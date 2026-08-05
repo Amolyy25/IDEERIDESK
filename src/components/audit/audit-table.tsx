@@ -20,7 +20,7 @@ import {
   parseAuditChanges,
   type AuditFamily,
 } from "@/lib/audit-actions";
-import type { AuditLogEntry } from "@/lib/actions/audit-log";
+import type { AuditLogEntry } from "@/lib/audit-query";
 
 /**
  * Le journal, une ligne par geste : QUAND, QUI, QUOI, sur quel ticket.

@@ -605,8 +605,19 @@ enum AuditAction {
   REPLY_REJECTED
 }
 
-// Une ligne du journal, en écriture seule : rien dans l'application ne modifie
-// ni ne supprime une entrée — un journal réinscriptible ne prouve rien.
+// Une ligne du journal, en AJOUT SEUL — un journal réinscriptible ne prouve rien.
+//
+// Ce n'est pas seulement une convention de code : la migration
+// `20260805170000_audit_log_append_only` installe deux déclencheurs Postgres qui
+// refusent tout UPDATE et tout DELETE sur cette table. Prisma ne sait pas décrire
+// un déclencheur dans un schéma, donc rien ici ne le laisse voir — d'où ce
+// commentaire. Les seules exceptions, et leurs raisons, sont documentées dans le
+// SQL de cette migration : le dénouage d'un lien par `onDelete: SetNull`, et une
+// purge de conservation qui doit se déclarer explicitement.
+//
+// Conséquence à connaître avant d'écrire du code sur cette table : un
+// `prisma.auditLog.update()` ou `.delete()` lèvera une erreur Postgres. C'est
+// voulu.
 //
 // Ce qui est délibérément ABSENT : le corps des messages et la valeur des champs
 // personnalisés. Le journal répond à « qui, quoi, quand », pas « qu'a-t-on écrit
