@@ -18,41 +18,27 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useBackgroundSync } from "@/components/layout/use-background-sync";
 import type { NotificationItem } from "@/lib/actions/notifications";
+import { visibleNavGroups } from "@/lib/app-navigation";
+import { canAny, permissionsInGroup, type PermissionKey } from "@/lib/permissions";
 
-type NavItem = { label: string; href: string; icon: LucideIcon };
+/** Une entrée « Paramètres » n'a de sens que pour qui peut ouvrir au moins une section. */
+const SETTINGS_PERMISSIONS = permissionsInGroup("settings");
 
-// Le travail quotidien en haut, groupé par nature ; la configuration en bas,
-// près de la fiche agent — elle ne se consulte pas au même rythme.
-const APPROVALS_ITEM: NavItem = { label: "Validations", href: "/approvals", icon: ShieldCheck };
-
-// Groupe réservé aux admins : le journal dit qui a ouvert quel dossier et quand,
-// c'est-à-dire aussi un relevé d'activité nominatif de chaque agent. Ouvert à
-// toute l'équipe, l'outil de conformité deviendrait un outil de surveillance
-// entre collègues.
-const SUPERVISION_GROUP: { label: string; items: NavItem[] } = {
-  label: "Supervision",
-  items: [{ label: "Journal d'audit", href: "/audit", icon: ScrollText }],
+/**
+ * Les icônes vivent ici et non dans le plan (`src/lib/app-navigation.ts`) : ce
+ * plan est lu par du code serveur — redirections, page d'atterrissage — qui n'a
+ * que faire de composants React. Même partage que `settings-navigation.ts`.
+ */
+const NAV_ICONS: Record<string, LucideIcon> = {
+  "/tickets": Ticket,
+  "/approvals": ShieldCheck,
+  "/clients": Users,
+  "/agents": UsersRound,
+  "/knowledge-base": BookOpen,
+  "/audit": ScrollText,
 };
 
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: "Support",
-    items: [{ label: "Tickets", href: "/tickets", icon: Ticket }],
-  },
-  {
-    label: "Répertoire",
-    items: [
-      { label: "Clients", href: "/clients", icon: Users },
-      { label: "Équipe", href: "/agents", icon: UsersRound },
-    ],
-  },
-  {
-    label: "Contenu",
-    items: [{ label: "Base de connaissances", href: "/knowledge-base", icon: BookOpen }],
-  },
-];
-
-const SETTINGS_ITEM: NavItem = { label: "Paramètres", href: "/settings", icon: Settings };
+const SETTINGS_ITEM = { label: "Paramètres", href: "/settings" };
 
 type CurrentAgent = { name: string | null | undefined; email: string | null | undefined };
 
@@ -60,7 +46,7 @@ type CurrentAgent = { name: string | null | undefined; email: string | null | un
 function badgeLabel(href: string, count: number) {
   const plural = count > 1 ? "s" : "";
   if (href === "/agents") return `${count} demande${plural} d'accès en attente`;
-  if (href === APPROVALS_ITEM.href) return `${count} réponse${plural} en attente de validation`;
+  if (href === "/approvals") return `${count} réponse${plural} en attente de validation`;
   return `${count} ticket${plural} avec de l'activité non lue`;
 }
 
@@ -69,11 +55,11 @@ function NavLink({
   active,
   badge,
 }: {
-  item: NavItem;
+  item: { label: string; href: string };
   active: boolean;
   badge: number | null;
 }) {
-  const Icon = item.icon;
+  const Icon = NAV_ICONS[item.href] ?? Settings;
 
   return (
     <Link
@@ -104,25 +90,22 @@ function NavLink({
 
 export function Sidebar({
   currentAgent,
+  permissions,
   unreadCount,
   pendingAgentCount,
-  canApprove,
   pendingApprovalCount,
-  isAdmin,
   notifications,
   unreadNotificationCount,
   gmailConnected,
 }: {
   currentAgent: CurrentAgent;
+  /** Permissions déjà résolues de l'agent connecté : décident des entrées affichées. */
+  permissions: PermissionKey[];
   unreadCount: number;
-  /** Demandes d'accès en attente — toujours 0 pour un non-admin. */
+  /** Demandes d'accès en attente — toujours 0 sans « team.view ». */
   pendingAgentCount: number;
-  /** Agent habilité à valider les réponses : conditionne l'entrée « Validations ». */
-  canApprove: boolean;
-  /** Réponses retenues en attente de validation — toujours 0 sans `canApprove`. */
+  /** Réponses retenues en attente de validation — toujours 0 sans « approvals.handle ». */
   pendingApprovalCount: number;
-  /** Administrateur : conditionne le groupe « Supervision ». */
-  isAdmin: boolean;
   /** Mentions @ reçues par l'agent connecté. */
   notifications: NotificationItem[];
   unreadNotificationCount: number;
@@ -145,27 +128,18 @@ export function Sidebar({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   // Trois pastilles : activité non lue sur les tickets, demandes d'accès en
-  // attente sur l'équipe (admins seuls), réponses à valider (agents habilités).
+  // attente sur l'équipe, réponses à valider.
   const badgeFor = (href: string) => {
     if (href === "/tickets") return unreadCount > 0 ? unreadCount : null;
     if (href === "/agents") return pendingAgentCount > 0 ? pendingAgentCount : null;
-    if (href === APPROVALS_ITEM.href) {
-      return pendingApprovalCount > 0 ? pendingApprovalCount : null;
-    }
+    if (href === "/approvals") return pendingApprovalCount > 0 ? pendingApprovalCount : null;
     return null;
   };
 
   // Les entrées n'apparaissent que pour qui peut s'en servir : ailleurs, la page
-  // renvoie vers les tickets.
-  let navGroups = canApprove
-    ? NAV_GROUPS.map((group) =>
-        group.label === "Support" ? { ...group, items: [...group.items, APPROVALS_ITEM] } : group
-      )
-    : NAV_GROUPS;
-
-  if (isAdmin) {
-    navGroups = [...navGroups, SUPERVISION_GROUP];
-  }
+  // renvoie vers la première section accessible.
+  const navGroups = visibleNavGroups(permissions);
+  const showSettings = canAny(permissions, SETTINGS_PERMISSIONS);
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -211,13 +185,11 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="shrink-0 px-3 pb-2">
-        <NavLink
-          item={SETTINGS_ITEM}
-          active={isActive(SETTINGS_ITEM.href)}
-          badge={null}
-        />
-      </div>
+      {showSettings && (
+        <div className="shrink-0 px-3 pb-2">
+          <NavLink item={SETTINGS_ITEM} active={isActive(SETTINGS_ITEM.href)} badge={null} />
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center gap-2.5 border-t border-sidebar-border px-4 py-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-[11px] font-medium ring-1 ring-inset ring-white/10">

@@ -45,6 +45,9 @@ export const AUDIT_ACTIONS: Record<AuditAction, AuditActionMeta> = {
   TICKET_UNMERGED: { label: "Fusion annulée", family: "MODIFICATION" },
   REPLY_APPROVED: { label: "Réponse validée", family: "REPONSE" },
   REPLY_REJECTED: { label: "Réponse refusée", family: "REPONSE" },
+  AGENT_ACCESS_GRANTED: { label: "Accès approuvé", family: "MODIFICATION" },
+  AGENT_ACCESS_DENIED: { label: "Accès refusé", family: "MODIFICATION" },
+  AGENT_PERMISSIONS_UPDATED: { label: "Permissions modifiées", family: "MODIFICATION" },
 };
 
 /** Actions listées dans l'ordre du registre, pour le filtre déroulant. */

@@ -16,10 +16,11 @@ import type { Agent } from "@/generated/prisma/client";
  */
 export function PendingAgentsSection({
   requests,
-  isAdmin,
+  canManage,
 }: {
   requests: Agent[];
-  isAdmin: boolean;
+  /** Permission « team.manage » : sans elle, la liste se lit sans se trancher. */
+  canManage: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   // Ligne retirée localement dès la décision : la revalidation serveur
@@ -65,7 +66,7 @@ export function PendingAgentsSection({
       <p className="text-sm text-muted-foreground">
         Comptes créés à la première connexion Google. Tant qu&apos;ils ne sont pas approuvés,
         ils n&apos;accèdent à aucune page de l&apos;espace agent.
-        {!isAdmin && " Seul un administrateur peut trancher."}
+        {!canManage && " Seul un compte habilité à gérer l\u2019équipe peut trancher."}
       </p>
 
       <ul className="divide-y rounded-lg border">
@@ -85,7 +86,7 @@ export function PendingAgentsSection({
               </p>
             </div>
 
-            {isAdmin && (
+            {canManage && (
               <div className="flex shrink-0 items-center gap-2">
                 {agent.approvalStatus === "PENDING" && (
                   <Button

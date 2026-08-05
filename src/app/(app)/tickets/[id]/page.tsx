@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageAccess } from "@/lib/require-page-access";
+import { can } from "@/lib/permissions";
 import { getTicketById } from "@/lib/actions/tickets";
 import { getTicketStatuses } from "@/lib/actions/statuses";
 import { getTicketPriorities } from "@/lib/actions/priorities";
@@ -45,8 +46,13 @@ export default async function TicketDetailPage({
 }) {
   const { id } = await params;
 
-  const [session, ticket, statuses, priorities, categories, agents, customFields] = await Promise.all([
-    auth(),
+  // La garde d'affichage AVANT les chargements, et non dans le même
+  // `Promise.all` : les actions portent la même permission et lèveraient au
+  // même instant. `Promise.all` rejette sur le premier arrivé — l'agent
+  // tomberait tantôt sur une redirection propre, tantôt sur une page d'erreur.
+  const session = await requirePageAccess("tickets.view");
+
+  const [ticket, statuses, priorities, categories, agents, customFields] = await Promise.all([
     getTicketById(id),
     getTicketStatuses(),
     getTicketPriorities(),
@@ -88,7 +94,7 @@ export default async function TicketDetailPage({
   // même fonction qu'à l'envoi, donc ce qui est montré est exactement ce qui
   // partira.
   const signatureHtml = await resolveSignatureHtmlForAgent(session?.user?.id ?? null);
-  const canRespond = session?.user?.canRespond ?? false;
+  const canRespond = can(session.user.permissions, "tickets.respond");
 
   // Réponses type qui concernent ce dossier (voir /settings/canned-responses).
   // Les critères sont lus sur le dossier et non sur la porte d'entrée, comme
@@ -115,7 +121,9 @@ export default async function TicketDetailPage({
   // À qui proposer une fusion, et quand. Un ticket déjà fusionné a sa place
   // arrêtée, et un ticket clos n'a plus de demande à rapprocher : dans les deux
   // cas la recherche ne servirait qu'à dépenser un appel au fournisseur d'IA.
-  let showDuplicates = canRespond;
+  // La fusion a sa propre permission : répondre n'est pas rapprocher deux dossiers.
+  const canMerge = can(session.user.permissions, "tickets.merge");
+  let showDuplicates = canMerge;
   if (ticket.mergedIntoId) showDuplicates = false;
   if (ticket.status.isClosed) showDuplicates = false;
 
@@ -153,6 +161,7 @@ export default async function TicketDetailPage({
           ticket={ticket}
           currentAgentId={session?.user?.id ?? null}
           canRespond={canRespond}
+          canMerge={canMerge}
         />
 
         {/* Les deux bandeaux de fusion, avant le fil : ils disent où se traite
@@ -163,7 +172,7 @@ export default async function TicketDetailPage({
           <MergedIntoBanner
             mergedInto={ticket.mergedInto}
             ticketId={ticket.id}
-            canRespond={canRespond}
+            canMerge={canMerge}
           />
         )}
 
@@ -184,8 +193,8 @@ export default async function TicketDetailPage({
           <TicketThread
             ticket={dossier}
             currentTicketId={ticket.id}
-            canApprove={session?.user?.canApprove ?? false}
-            canRespond={canRespond}
+            canApprove={can(session.user.permissions, "approvals.handle")}
+            canMerge={canMerge}
             agents={mentionableAgents}
             currentAgentId={session?.user?.id ?? null}
           />
@@ -208,7 +217,7 @@ export default async function TicketDetailPage({
               clientEmail={dossier.client?.email ?? null}
               mergedRecipientCount={mergedRecipientCount}
               canRespond={canRespond}
-              requiresApproval={session?.user?.requiresApproval ?? false}
+              requiresApproval={session.user.requiresApproval}
               signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
               agents={mentionableAgents}
               cannedResponses={cannedResponses}
@@ -226,6 +235,7 @@ export default async function TicketDetailPage({
         agents={agents}
         customFields={activeCustomFields}
         sourceFields={sourceFields}
+        canDelete={can(session.user.permissions, "tickets.delete")}
       />
     </div>
   );

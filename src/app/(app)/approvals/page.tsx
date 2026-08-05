@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageAccess } from "@/lib/require-page-access";
 import { getPendingApprovalMessages } from "@/lib/actions/tickets";
 import { PendingApprovalsList } from "@/components/approvals/pending-approvals-list";
 
@@ -11,14 +10,9 @@ import { PendingApprovalsList } from "@/components/approvals/pending-approvals-l
  * tant qu'on ne l'ouvrait pas. Le client, lui, attendait.
  */
 export default async function ApprovalsPage() {
-  const session = await auth();
-
-  // Redirection et pas 404 : la page existe, elle n'est simplement pas pour cet
-  // agent. La donnée elle-même est protégée par `requireCanApprove` dans
-  // l'action, pas par cette redirection.
-  if (!session?.user?.canApprove) {
-    redirect("/tickets");
-  }
+  // La donnée elle-même est protégée par « approvals.handle » dans l'action,
+  // pas par cette garde, qui ne protège que l'affichage.
+  await requirePageAccess("approvals.handle");
 
   const messages = await getPendingApprovalMessages();
 

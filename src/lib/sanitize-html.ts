@@ -106,7 +106,7 @@ function installHooks() {
  * règles ne sont pas encapsulées, elles s'appliquent à toute la page qui affiche
  * l'article, et un article partagé publiquement peut donc en changer
  * l'apparence. Acceptable ici parce que seuls des agents approuvés rédigent
- * (`requireCanRespond`).
+ * (permission « kb.manage »).
  *
  * La frontière déplacée est celle du CSS, pas celle du code : ce qui EXÉCUTE
  * reste retiré — script, gestionnaires d'événements, `javascript:`, iframe hors

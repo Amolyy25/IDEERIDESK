@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 export const MAX_SOURCE_ASSET_SIZE = 1024 * 1024; // 1 Mo
 
@@ -16,7 +16,7 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requirePermission("settings.channels");
   } catch {
     return NextResponse.json({ error: "Action réservée aux administrateurs." }, { status: 403 });
   }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireCanRespond } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 const categorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(60),
@@ -21,7 +21,7 @@ export async function getTicketCategories() {
 }
 
 export async function createTicketCategory(input: z.infer<typeof categorySchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = categorySchema.parse(input);
   const count = await prisma.ticketCategory.count();
 
@@ -34,7 +34,7 @@ export async function createTicketCategory(input: z.infer<typeof categorySchema>
 }
 
 export async function updateTicketCategory(id: string, input: z.infer<typeof categorySchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = categorySchema.parse(input);
 
   if (data.isDefault) {
@@ -49,7 +49,7 @@ export async function updateTicketCategory(id: string, input: z.infer<typeof cat
 }
 
 export async function deleteTicketCategory(id: string) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const inUse = await prisma.ticket.count({ where: { categoryId: id } });
   if (inUse > 0) {
     throw new Error("Ce produit concerné est utilisé par des tickets et ne peut pas être supprimé.");
@@ -59,7 +59,7 @@ export async function deleteTicketCategory(id: string) {
 }
 
 export async function reorderTicketCategories(orderedIds: string[]) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   await prisma.$transaction(
     orderedIds.map((id, order) =>
       prisma.ticketCategory.update({ where: { id }, data: { order } })

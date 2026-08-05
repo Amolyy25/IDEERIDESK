@@ -5,7 +5,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { requireApprovedAgent, requireCanRespond } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { sanitizeRichHtml } from "@/lib/sanitize-html";
 
 // ---------------------------------------------------------------------------
@@ -17,12 +17,12 @@ const categorySchema = z.object({
 });
 
 export async function getKnowledgeCategories() {
-  await requireApprovedAgent();
+  await requirePermission("kb.view");
   return prisma.knowledgeCategory.findMany({ orderBy: { order: "asc" } });
 }
 
 export async function createKnowledgeCategory(input: z.infer<typeof categorySchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = categorySchema.parse(input);
   const count = await prisma.knowledgeCategory.count();
   await prisma.knowledgeCategory.create({ data: { ...data, order: count } });
@@ -30,14 +30,14 @@ export async function createKnowledgeCategory(input: z.infer<typeof categorySche
 }
 
 export async function updateKnowledgeCategory(id: string, input: z.infer<typeof categorySchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = categorySchema.parse(input);
   await prisma.knowledgeCategory.update({ where: { id }, data });
   revalidatePath("/knowledge-base/categories");
 }
 
 export async function deleteKnowledgeCategory(id: string) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const inUse = await prisma.knowledgeArticle.count({ where: { categoryId: id } });
   if (inUse > 0) {
     throw new Error("Cette catégorie contient des articles et ne peut pas être supprimée.");
@@ -56,12 +56,12 @@ const templateSchema = z.object({
 });
 
 export async function getArticleTemplates() {
-  await requireApprovedAgent();
+  await requirePermission("kb.view");
   return prisma.articleTemplate.findMany({ orderBy: { name: "asc" } });
 }
 
 export async function createArticleTemplate(input: z.infer<typeof templateSchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = templateSchema.parse(input);
   await prisma.articleTemplate.create({
     data: { ...data, content: sanitizeRichHtml(data.content) },
@@ -70,7 +70,7 @@ export async function createArticleTemplate(input: z.infer<typeof templateSchema
 }
 
 export async function updateArticleTemplate(id: string, input: z.infer<typeof templateSchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = templateSchema.parse(input);
   await prisma.articleTemplate.update({
     where: { id },
@@ -80,7 +80,7 @@ export async function updateArticleTemplate(id: string, input: z.infer<typeof te
 }
 
 export async function deleteArticleTemplate(id: string) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   await prisma.articleTemplate.delete({ where: { id } });
   revalidatePath("/knowledge-base/templates");
 }
@@ -131,7 +131,7 @@ export type KnowledgeArticleListItem = Prisma.KnowledgeArticleGetPayload<{
 }>;
 
 export async function getKnowledgeArticles() {
-  await requireApprovedAgent();
+  await requirePermission("kb.view");
   return prisma.knowledgeArticle.findMany({
     include: articleInclude,
     orderBy: { updatedAt: "desc" },
@@ -139,12 +139,12 @@ export async function getKnowledgeArticles() {
 }
 
 export async function getKnowledgeArticleById(id: string) {
-  await requireApprovedAgent();
+  await requirePermission("kb.view");
   return prisma.knowledgeArticle.findUnique({ where: { id }, include: articleInclude });
 }
 
 export async function createKnowledgeArticle(input: z.infer<typeof articleSchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = articleSchema.parse(input);
   const slug = await uniqueSlug(data.title);
 
@@ -168,7 +168,7 @@ export async function createKnowledgeArticle(input: z.infer<typeof articleSchema
 }
 
 export async function updateKnowledgeArticle(id: string, input: z.infer<typeof articleSchema>) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const data = articleSchema.parse(input);
   const existing = await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id } });
 
@@ -192,13 +192,13 @@ export async function updateKnowledgeArticle(id: string, input: z.infer<typeof a
 }
 
 export async function deleteKnowledgeArticle(id: string) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   await prisma.knowledgeArticle.delete({ where: { id } });
   revalidatePath("/knowledge-base");
 }
 
 export async function getKnowledgeArticleBySlug(slug: string) {
-  await requireApprovedAgent();
+  await requirePermission("kb.view");
   return prisma.knowledgeArticle.findUnique({ where: { slug }, include: articleInclude });
 }
 
@@ -267,7 +267,7 @@ async function uniqueShareSlug(title: string, excludeId?: string) {
 }
 
 export async function generateArticleShareLink(id: string, scope: "PUBLIC" | "INTERNAL") {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const existing = await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id } });
   const shareToken = existing.shareToken ?? (await uniqueShareSlug(existing.title, id));
   const updated = await prisma.knowledgeArticle.update({
@@ -279,7 +279,7 @@ export async function generateArticleShareLink(id: string, scope: "PUBLIC" | "IN
 }
 
 export async function updateArticleShareSlug(id: string, rawSlug: string) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   const base = rawSlug.trim().toLowerCase();
   if (!SHARE_SLUG_PATTERN.test(base)) {
     throw new Error("Lien invalide : lettres minuscules, chiffres et tirets uniquement.");
@@ -303,7 +303,7 @@ export async function updateArticleShareSlug(id: string, rawSlug: string) {
 }
 
 export async function revokeArticleShareLink(id: string) {
-  await requireCanRespond();
+  await requirePermission("kb.manage");
   await prisma.knowledgeArticle.update({
     where: { id },
     data: { shareToken: null, shareScope: null },

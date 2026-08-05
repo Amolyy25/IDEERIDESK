@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createOAuthClient } from "@/lib/google-oauth";
-import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 import {
   INBOUND_CREATE_TICKETS_KEY,
   SENDER_NAME_KEY,
@@ -24,7 +24,7 @@ export async function getEmailAccountStatus(): Promise<EmailAccountStatus> {
 }
 
 export async function updateSenderName(name: string) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const senderName = z.string().trim().min(1).max(120).parse(name);
 
   await prisma.globalSetting.upsert({
@@ -46,7 +46,7 @@ export async function updateSenderName(name: string) {
  * agents, et une boîte Gmail ordinaire reçoit aussi du courrier hors support.
  */
 export async function updateInboundTicketCreation(enabled: boolean) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const value = z.boolean().parse(enabled) ? "1" : "0";
 
   await prisma.globalSetting.upsert({
@@ -65,7 +65,7 @@ export async function updateInboundTicketCreation(enabled: boolean) {
 }
 
 export async function disconnectEmailAccount() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const account = await prisma.emailAccount.findFirst();
   if (!account) return;
 

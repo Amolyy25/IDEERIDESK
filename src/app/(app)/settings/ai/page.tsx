@@ -1,15 +1,12 @@
-import { auth } from "@/auth";
 import { getAiSettingsStatus } from "@/lib/actions/ai-settings";
 import { AiSettingsForm } from "@/components/settings/ai/ai-settings-form";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/ai";
 
 export default async function AiSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const status = await getAiSettingsStatus();

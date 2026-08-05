@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireApprovedAgent, requireCanRespond } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 import {
   dimensionLabel,
   FILTER_DIMENSION_KEYS,
@@ -69,7 +69,7 @@ const cannedResponseSchema = z.object({
 export type CannedResponseInput = z.infer<typeof cannedResponseSchema>;
 
 export async function createCannedResponse(input: CannedResponseInput) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = await parseAndCheck(input, null);
 
   await prisma.cannedResponse.create({
@@ -85,7 +85,7 @@ export async function createCannedResponse(input: CannedResponseInput) {
 }
 
 export async function updateCannedResponse(id: string, input: CannedResponseInput) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = await parseAndCheck(input, id);
 
   // Les filtres sont remplacés en bloc plutôt que rapprochés un à un : ils n'ont
@@ -110,7 +110,7 @@ export async function updateCannedResponse(id: string, input: CannedResponseInpu
 }
 
 export async function deleteCannedResponse(id: string) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   // Les filtres partent avec elle (onDelete: Cascade). Rien d'autre n'y fait
   // référence : une réponse déjà insérée dans un message en est une copie, elle
   // ne dépend plus du modèle.

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import {
   PORTAL_DEFAULTS,
   portalLinkSchema,
@@ -99,7 +99,7 @@ function revalidatePortal() {
 }
 
 export async function savePortalSettings(input: unknown) {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   const data = portalSettingsSchema.parse(input);
 
   const existing = await prisma.portalSettings.findFirst();
@@ -114,7 +114,7 @@ export async function savePortalSettings(input: unknown) {
 
 /** Remet tous les réglages du portail à leurs valeurs d'origine. */
 export async function resetPortalSettings() {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   const existing = await prisma.portalSettings.findFirst();
   if (existing) {
     await prisma.portalSettings.update({ where: { id: existing.id }, data: PORTAL_DEFAULTS });
@@ -128,7 +128,7 @@ export async function resetPortalSettings() {
  * un instant vers un id inexistant.
  */
 export async function deletePortalAsset(kind: "logo" | "favicon") {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   const existing = await prisma.portalSettings.findFirst();
   if (!existing) return;
 

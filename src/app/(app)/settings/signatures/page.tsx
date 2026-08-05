@@ -1,20 +1,17 @@
 import { Plus } from "lucide-react";
-import { auth } from "@/auth";
 import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { Button } from "@/components/ui/button";
 import { getEmailSignatures } from "@/lib/actions/signatures";
 import { getAgents } from "@/lib/actions/agents";
 import { SignaturesTable } from "@/components/settings/signatures/signatures-table";
 import { SignatureDialog } from "@/components/settings/signatures/signature-dialog";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/signatures";
 
 export default async function SignaturesSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const [signatures, agents] = await Promise.all([getEmailSignatures(), getAgents()]);

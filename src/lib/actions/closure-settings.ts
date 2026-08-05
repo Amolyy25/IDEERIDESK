@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getClosureTemplate() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   return prisma.ticketClosureTemplate.findFirst();
 }
 
@@ -17,7 +17,7 @@ const closureTemplateSchema = z.object({
 });
 
 export async function saveClosureTemplate(input: z.infer<typeof closureTemplateSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const parsed = closureTemplateSchema.parse(input);
   // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
   // image collée disparaîtrait donc sans laisser de trace.
@@ -40,7 +40,7 @@ export async function saveClosureTemplate(input: z.infer<typeof closureTemplateS
 }
 
 export async function deleteClosureTemplate() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   await prisma.ticketClosureTemplate.deleteMany({});
   revalidatePath("/settings/closure");
 }

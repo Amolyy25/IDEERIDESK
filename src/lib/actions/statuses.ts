@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireApprovedAgent, requireCanRespond } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 
 const statusSchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(60),
@@ -21,7 +21,7 @@ export async function getTicketStatuses() {
 }
 
 export async function createTicketStatus(input: z.infer<typeof statusSchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = statusSchema.parse(input);
   const count = await prisma.ticketStatus.count();
 
@@ -43,7 +43,7 @@ export async function createTicketStatus(input: z.infer<typeof statusSchema>) {
 }
 
 export async function updateTicketStatus(id: string, input: z.infer<typeof statusSchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = statusSchema.parse(input);
 
   if (data.isDefault) {
@@ -76,7 +76,7 @@ export async function updateTicketStatus(id: string, input: z.infer<typeof statu
 }
 
 export async function deleteTicketStatus(id: string) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const inUse = await prisma.ticket.count({ where: { statusId: id } });
   if (inUse > 0) {
     throw new Error("Ce statut est utilisé par des tickets et ne peut pas être supprimé.");
@@ -86,7 +86,7 @@ export async function deleteTicketStatus(id: string) {
 }
 
 export async function reorderTicketStatuses(orderedIds: string[]) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   await prisma.$transaction(
     orderedIds.map((id, order) =>
       prisma.ticketStatus.update({ where: { id }, data: { order } })

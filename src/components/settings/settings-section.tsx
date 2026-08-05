@@ -1,3 +1,5 @@
+import { auth } from "@/auth";
+import { PERMISSIONS, can } from "@/lib/permissions";
 import { settingsItem, settingsTitle } from "@/lib/settings-navigation";
 
 /**
@@ -31,14 +33,33 @@ export function SettingsSection({
   );
 }
 
-/** Message affiché à la place du contenu quand la section est réservée aux admins. */
-export function SettingsAdminOnly({ href }: { href: string }) {
+/**
+ * L'agent a-t-il la permission déclarée par cette section ?
+ *
+ * Chaque page de réglages ouvre là-dessus. Le contrôle reste dans la page et
+ * non dans le layout : une section refusée doit garder son titre et sa
+ * description — l'agent voit à quoi il n'a pas accès, ce qui lui permet de
+ * demander la bonne chose. Un layout qui masque tout ne dit rien.
+ *
+ * Ce n'est, là encore, qu'une garde d'affichage : les Server Actions derrière
+ * chaque formulaire portent la même permission.
+ */
+export async function canOpenSettings(href: string) {
+  const session = await auth();
+  return can(session?.user?.permissions, settingsItem(href).permission);
+}
+
+/** Message affiché à la place du contenu quand la permission manque. */
+export function SettingsNoAccess({ href }: { href: string }) {
+  const { permission } = settingsItem(href);
+
   return (
     <SettingsSection href={href}>
       <div className="rounded-lg border border-dashed py-12 text-center">
-        <p className="text-sm font-medium">Section réservée aux administrateurs</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Demandez à un administrateur de modifier ces réglages.
+        <p className="text-sm font-medium">Section verrouillée</p>
+        <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
+          Il vous manque la permission «&nbsp;{PERMISSIONS[permission].label}&nbsp;». Demandez-la à
+          un administrateur depuis la page Équipe.
         </p>
       </div>
     </SettingsSection>

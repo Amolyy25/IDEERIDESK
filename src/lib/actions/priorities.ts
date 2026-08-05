@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireApprovedAgent, requireCanRespond } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 
 const prioritySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(60),
@@ -17,7 +17,7 @@ export async function getTicketPriorities() {
 }
 
 export async function createTicketPriority(input: z.infer<typeof prioritySchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = prioritySchema.parse(input);
   const count = await prisma.ticketPriority.count();
 
@@ -30,7 +30,7 @@ export async function createTicketPriority(input: z.infer<typeof prioritySchema>
 }
 
 export async function updateTicketPriority(id: string, input: z.infer<typeof prioritySchema>) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const data = prioritySchema.parse(input);
 
   if (data.isDefault) {
@@ -45,7 +45,7 @@ export async function updateTicketPriority(id: string, input: z.infer<typeof pri
 }
 
 export async function deleteTicketPriority(id: string) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   const inUse = await prisma.ticket.count({ where: { priorityId: id } });
   if (inUse > 0) {
     throw new Error("Cette priorité est utilisée par des tickets et ne peut pas être supprimée.");
@@ -55,7 +55,7 @@ export async function deleteTicketPriority(id: string) {
 }
 
 export async function reorderTicketPriorities(orderedIds: string[]) {
-  await requireCanRespond();
+  await requirePermission("settings.tickets");
   await prisma.$transaction(
     orderedIds.map((id, order) =>
       prisma.ticketPriority.update({ where: { id }, data: { order } })

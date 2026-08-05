@@ -5,6 +5,8 @@ import { countPendingAgents } from "@/lib/actions/agents";
 import { getMyNotifications } from "@/lib/actions/notifications";
 import { Sidebar } from "@/components/layout/sidebar";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
+import { can } from "@/lib/permissions";
+import { defaultLandingPath } from "@/lib/app-navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -27,26 +29,39 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
+  const permissions = session.user.permissions ?? [];
+
+  // Compte approuvé mais dépouillé de toutes ses permissions : aucune page de
+  // cet espace ne s'ouvrirait, et chacune le renverrait vers une autre. Le
+  // filet est ici, dans le layout, pour couvrir aussi une page qui oublierait
+  // sa propre garde.
+  if (defaultLandingPath(permissions) === "/aucun-acces") {
+    redirect("/aucun-acces");
+  }
+
+  // Chaque compteur est conditionné à la permission qui ouvre la page qu'il
+  // décore : l'action correspondante refuse les autres, et un appel refusé ici
+  // ferait échouer le rendu de TOUTES les pages de l'espace agent, y compris
+  // celles auxquelles l'agent a droit.
   const [unreadCount, emailStatus, pendingAgentCount, notifications, pendingApprovalCount] =
     await Promise.all([
-      getUnreadTicketCount(),
+      can(permissions, "tickets.view") ? getUnreadTicketCount() : Promise.resolve(0),
       getEmailAccountStatus(),
-      session.user.role === "ADMIN" ? countPendingAgents() : Promise.resolve(0),
+      can(permissions, "team.view") ? countPendingAgents() : Promise.resolve(0),
       getMyNotifications(),
-      // Le compteur n'est relevé que pour un agent habilité : l'action refuse
-      // les autres, l'appeler pour eux ferait échouer tout le rendu.
-      session.user.canApprove ? countPendingApprovalMessages() : Promise.resolve(0),
+      can(permissions, "approvals.handle")
+        ? countPendingApprovalMessages()
+        : Promise.resolve(0),
     ]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar
         currentAgent={{ name: session.user.name, email: session.user.email }}
+        permissions={permissions}
         unreadCount={unreadCount}
         pendingAgentCount={pendingAgentCount}
-        canApprove={session.user.canApprove ?? false}
         pendingApprovalCount={pendingApprovalCount}
-        isAdmin={session.user.role === "ADMIN"}
         notifications={notifications.items}
         unreadNotificationCount={notifications.unreadCount}
         gmailConnected={emailStatus.connected}

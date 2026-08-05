@@ -3,21 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { SETTINGS_GROUPS, type SettingsItem } from "@/lib/settings-navigation";
+import { visibleSettingsGroups, type SettingsItem } from "@/lib/settings-navigation";
+import type { PermissionKey } from "@/lib/permissions";
 
 /**
  * Navigation des réglages : colonne latérale sur grand écran, bande
- * horizontale défilante en dessous de `lg`. Les sections réservées aux
- * administrateurs sont masquées aux autres agents plutôt que d'aboutir à un
- * message de refus.
+ * horizontale défilante en dessous de `lg`. Une section que l'agent n'a pas la
+ * permission d'ouvrir est masquée plutôt que d'aboutir à un message de refus.
  */
-export function SettingsNav({ isAdmin }: { isAdmin: boolean }) {
+export function SettingsNav({ permissions }: { permissions: PermissionKey[] }) {
   const pathname = usePathname();
 
-  const groups = SETTINGS_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => isAdmin || !item.adminOnly),
-  })).filter((group) => group.items.length > 0);
+  const groups = visibleSettingsGroups(permissions);
 
   // Une sous-page (ex. l'éditeur d'une source) garde sa section parente active.
   const isActive = (item: SettingsItem) =>

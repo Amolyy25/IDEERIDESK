@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireCanRespond } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { validateAttachmentFile } from "@/lib/attachment-rules";
 
 export async function POST(request: NextRequest) {
   // Dépôt de fichier en base : réservé aux agents habilités à rédiger, pas à
   // tout porteur de cookie de session.
   try {
-    await requireCanRespond();
+    await requirePermission("kb.manage");
   } catch {
     return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
   }

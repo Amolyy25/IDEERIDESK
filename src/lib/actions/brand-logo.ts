@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { BRAND_LOGO_SETTING_KEY, getBrandLogoUrl } from "@/lib/brand-logo";
 
 /**
@@ -19,7 +19,7 @@ export type BrandLogoStatus = {
 };
 
 export async function getBrandLogoStatus(): Promise<BrandLogoStatus> {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
 
   const setting = await prisma.globalSetting.findUnique({
     where: { key: BRAND_LOGO_SETTING_KEY },
@@ -39,7 +39,7 @@ const assetSchema = z.object({ assetId: z.string().min(1) });
  * identifiant inventé laisserait une image morte en en-tête de tous les emails.
  */
 export async function setBrandLogo(input: z.infer<typeof assetSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const { assetId } = assetSchema.parse(input);
 
   const asset = await prisma.portalAsset.findUnique({
@@ -67,7 +67,7 @@ export async function setBrandLogo(input: z.infer<typeof assetSchema>) {
 
 /** Revient au logo livré avec l'application. */
 export async function clearBrandLogo() {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   await prisma.globalSetting.deleteMany({ where: { key: BRAND_LOGO_SETTING_KEY } });
   revalidateLogoConsumers();
 }

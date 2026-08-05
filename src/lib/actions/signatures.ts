@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { hostInlineEmailImages } from "@/lib/email-images";
 
@@ -17,7 +17,7 @@ export type EmailSignatureWithAgents = Prisma.EmailSignatureGetPayload<{
 }>;
 
 export async function getEmailSignatures() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   return prisma.emailSignature.findMany({
     include: signatureInclude,
     // Les signatures nominatives après celle de toute l'équipe : c'est l'ordre
@@ -37,7 +37,7 @@ const signatureSchema = z.object({
 type SignatureInput = z.infer<typeof signatureSchema>;
 
 export async function createEmailSignature(input: SignatureInput) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const data = await parseAndCheck(input, null);
 
   await prisma.emailSignature.create({
@@ -53,7 +53,7 @@ export async function createEmailSignature(input: SignatureInput) {
 }
 
 export async function updateEmailSignature(id: string, input: SignatureInput) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const data = await parseAndCheck(input, id);
 
   await prisma.emailSignature.update({
@@ -71,7 +71,7 @@ export async function updateEmailSignature(id: string, input: SignatureInput) {
 }
 
 export async function deleteEmailSignature(id: string) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   await prisma.emailSignature.delete({ where: { id } });
   revalidatePath("/settings/signatures");
 }

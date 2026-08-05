@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 import {
   fieldKeyFromLabel,
   isDecorativeField,
@@ -60,7 +60,7 @@ function toConfig(source: SourceWithFields): SourceConfig {
 // ---------------------------------------------------------------------------
 
 export async function getSources(): Promise<SourceListItem[]> {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   return prisma.source.findMany({
     orderBy: { createdAt: "asc" },
     include: { _count: { select: { fields: true, tickets: true } } },
@@ -68,7 +68,7 @@ export async function getSources(): Promise<SourceListItem[]> {
 }
 
 export async function getSourceConfig(id: string): Promise<SourceConfig | null> {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   const source = await prisma.source.findUnique({
     where: { id },
     include: { fields: { orderBy: { order: "asc" } } },
@@ -135,7 +135,7 @@ function revalidateSources(id?: string) {
  * par défaut du schéma Prisma, l'admin le personnalise ensuite dans le builder.
  */
 export async function createSource(input: { name: string; description?: string | null }) {
-  await requireAdmin();
+  await requirePermission("settings.channels");
 
   const name = input.name.trim();
   if (!name) throw new Error("Nom requis.");
@@ -172,7 +172,7 @@ export async function createSource(input: { name: string; description?: string |
  * change), ceux absents du payload sont supprimés.
  */
 export async function updateSource(id: string, input: unknown) {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   const data = sourceConfigSchema.parse(input);
 
   const existing = await prisma.source.findUnique({
@@ -262,7 +262,7 @@ export async function updateSource(id: string, input: unknown) {
 }
 
 export async function setSourceActive(id: string, isActive: boolean) {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   await prisma.source.update({ where: { id }, data: { isActive } });
   revalidateSources(id);
 }
@@ -272,7 +272,7 @@ export async function setSourceActive(id: string, isActive: boolean) {
  * (leur rattachement passe simplement à null, cf. `onDelete: SetNull`).
  */
 export async function deleteSource(id: string) {
-  await requireAdmin();
+  await requirePermission("settings.channels");
   await prisma.source.delete({ where: { id } });
   revalidateSources();
 }

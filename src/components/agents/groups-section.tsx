@@ -32,12 +32,13 @@ export function GroupsSection({
   groups,
   agents,
   categories,
-  isAdmin,
+  canManage,
 }: {
   groups: GroupWithRelations[];
   agents: Agent[];
   categories: TicketCategory[];
-  isAdmin: boolean;
+  /** Permission « team.manage » : sans elle, les groupes se consultent sans se modifier. */
+  canManage: boolean;
 }) {
   const router = useRouter();
 
@@ -55,7 +56,7 @@ export function GroupsSection({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">Groupes</h2>
-        {isAdmin && (
+        {canManage && (
           <GroupDialog
             agents={agents}
             categories={categories}
@@ -83,7 +84,7 @@ export function GroupsSection({
                   />
                   {group.name}
                 </span>
-                {isAdmin && (
+                {canManage && (
                   <div className="flex gap-1">
                     <GroupDialog
                       group={group}

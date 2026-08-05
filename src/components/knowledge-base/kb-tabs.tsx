@@ -4,18 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
+// Catégories et modèles n'existent que pour organiser et rédiger : un lecteur
+// n'y trouverait que des formulaires qui refusent d'enregistrer.
 const tabs = [
-  { label: "Articles", href: "/knowledge-base" },
-  { label: "Catégories", href: "/knowledge-base/categories" },
-  { label: "Modèles", href: "/knowledge-base/templates" },
+  { label: "Articles", href: "/knowledge-base", manageOnly: false },
+  { label: "Catégories", href: "/knowledge-base/categories", manageOnly: true },
+  { label: "Modèles", href: "/knowledge-base/templates", manageOnly: true },
 ];
 
-export function KbTabs() {
+export function KbTabs({ canManage }: { canManage: boolean }) {
   const pathname = usePathname();
+  const visibleTabs = tabs.filter((tab) => canManage || !tab.manageOnly);
 
   return (
     <div className="flex gap-1 border-b">
-      {tabs.map((tab) => {
+      {visibleTabs.map((tab) => {
         const isActive =
           tab.href === "/knowledge-base"
             ? pathname === "/knowledge-base" ||

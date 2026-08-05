@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requirePageAccess } from "@/lib/require-page-access";
 import { getAuditLog, getAuditActors } from "@/lib/actions/audit-log";
 import { AuditToolbar } from "@/components/audit/audit-toolbar";
 import { AuditTable } from "@/components/audit/audit-table";
@@ -25,14 +24,9 @@ type SearchParams = Promise<{
 }>;
 
 export default async function AuditPage({ searchParams }: { searchParams: SearchParams }) {
-  const [session, params] = await Promise.all([auth(), searchParams]);
-
-  // Redirection et pas 404 : la page existe, elle n'est pas pour cet agent. La
-  // donnée, elle, est protégée par `requireAdmin` dans les actions — pas par
-  // cette redirection, qui ne protège que l'affichage.
-  if (session?.user?.role !== "ADMIN") {
-    redirect("/tickets");
-  }
+  // La donnée est protégée par « audit.view » dans les actions — pas par cette
+  // garde, qui ne protège que l'affichage.
+  const [, params] = await Promise.all([requirePageAccess("audit.view"), searchParams]);
 
   const page = Number(params.page ?? "1") || 1;
 

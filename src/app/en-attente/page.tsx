@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock, XCircle } from "lucide-react";
 import { auth, signOut } from "@/auth";
+import { defaultLandingPath } from "@/lib/app-navigation";
 import { Button } from "@/components/ui/button";
 
 export const metadata = { title: "Demande en attente · Ideeri Desk" };
@@ -18,7 +19,7 @@ export default async function PendingApprovalPage() {
   // Un compte approuvé a un `id` et n'a rien à faire ici ; un compte reconnu
   // mais non tranché n'a que `approvalStatus` ; sans même ça, personne n'est
   // connecté.
-  if (session?.user?.id) redirect("/tickets");
+  if (session?.user?.id) redirect(defaultLandingPath(session.user.permissions));
   if (!session?.user?.approvalStatus) redirect("/login");
 
   const isRejected = session.user.approvalStatus === "REJECTED";

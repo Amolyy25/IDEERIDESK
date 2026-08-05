@@ -6,12 +6,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sendTicketReplyEmail, sendTicketClosureEmail } from "@/lib/gmail-send";
 import { readEmailAccountStatus } from "@/lib/email-account";
-import {
-  requireAdmin,
-  requireApprovedAgent,
-  requireCanApprove,
-  requireCanRespond,
-} from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
@@ -117,7 +112,7 @@ export type TicketListFilters = {
 };
 
 export async function getUnreadTicketCount() {
-  await requireApprovedAgent();
+  await requirePermission("tickets.view");
   return prisma.ticket.count({ where: { hasUnreadActivity: true } });
 }
 
@@ -144,7 +139,7 @@ export async function getTicketQueueStats({
   agentId: string | null;
   categoryIds?: string[];
 }): Promise<TicketQueueStats> {
-  await requireApprovedAgent();
+  await requirePermission("tickets.view");
 
   const scope: Prisma.TicketWhereInput = { status: { isClosed: false } };
   if (categoryIds.length > 0) {
@@ -166,7 +161,7 @@ export async function getTicketQueueStats({
 }
 
 export async function getTickets(filters: TicketListFilters = {}) {
-  await requireApprovedAgent();
+  await requirePermission("tickets.view");
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const sortBy = filters.sortBy ?? "createdAt";
@@ -229,7 +224,7 @@ export async function getTickets(filters: TicketListFilters = {}) {
 }
 
 export async function getTicketById(id: string) {
-  await requireApprovedAgent();
+  await requirePermission("tickets.view");
   return prisma.ticket.findUnique({
     where: { id },
     include: {
@@ -258,7 +253,7 @@ export async function getTicketById(id: string) {
 }
 
 export async function markTicketAsRead(id: string) {
-  await requireApprovedAgent();
+  await requirePermission("tickets.view");
   await prisma.ticket.updateMany({
     where: { id, hasUnreadActivity: true },
     data: { hasUnreadActivity: false },
@@ -285,7 +280,7 @@ function auditRefSelect() {
  */
 export async function logTicketConsultation(ticketId: string) {
   // Consulter est un geste de lecture : la garde est celle de la lecture.
-  const session = await requireApprovedAgent();
+  const session = await requirePermission("tickets.view");
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -307,7 +302,7 @@ const createTicketSchema = z.object({
 });
 
 export async function createTicket(input: z.infer<typeof createTicketSchema>) {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.respond");
   const data = createTicketSchema.parse(input);
   const ticket = await prisma.ticket.create({
     data: {
@@ -344,7 +339,7 @@ export async function updateTicketAttributes(
   id: string,
   input: z.infer<typeof updateTicketAttributesSchema>
 ) {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.respond");
   const data = updateTicketAttributesSchema.parse(input);
 
   let closedAt: Date | null | undefined = undefined;
@@ -403,7 +398,7 @@ export async function updateTicketAttributes(
 export async function claimTicket(id: string) {
   // Garde partagée plutôt qu'un contrôle réécrit sur place : un contrôle
   // dupliqué à la main est un contrôle qu'on oublie de mettre à jour.
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.respond");
   const agentId = session.user.id;
 
   // Statut cible optionnel (configuré depuis /settings/statuses) — si aucun
@@ -435,7 +430,7 @@ export async function claimTicket(id: string) {
 }
 
 export async function closeTicket(id: string) {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.respond");
 
   const closeStatus = await prisma.ticketStatus.findFirst({ where: { isCloseDefault: true } });
   if (!closeStatus) {
@@ -546,9 +541,10 @@ export async function closeTicket(id: string) {
 }
 
 export async function deleteTicket(id: string) {
-  // Suppression définitive et non réversible d'un dossier client : réservée aux
-  // admins, pas à tout agent capable de répondre.
-  const session = await requireAdmin();
+  // Suppression définitive et non réversible d'un dossier client : sa propre
+  // permission, distincte de « répondre et modifier » — savoir traiter un
+  // ticket n'est pas savoir en effacer un.
+  const session = await requirePermission("tickets.delete");
 
   // Relu AVANT la suppression : c'est la seule occasion de figer le numéro et le
   // sujet dans le journal.
@@ -783,7 +779,7 @@ export async function addTicketMessage(
 
   // L'auteur vient toujours de la session, jamais d'une valeur transmise par
   // le client : sinon un agent pourrait faire répondre un collègue à sa place.
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.respond");
   const agentId = session.user.id;
 
   const isPublicAgentReply = !data.isPrivate;
@@ -930,7 +926,7 @@ export type PendingApprovalMessage = Prisma.MessageGetPayload<{
  * Les plus anciennes d'abord : c'est l'ordre d'attente du client.
  */
 export async function getPendingApprovalMessages() {
-  await requireCanApprove();
+  await requirePermission("approvals.handle");
   return prisma.message.findMany({
     where: { approvalStatus: "PENDING" },
     select: pendingApprovalSelect,
@@ -939,18 +935,18 @@ export async function getPendingApprovalMessages() {
 }
 
 export async function countPendingApprovalMessages() {
-  await requireCanApprove();
+  await requirePermission("approvals.handle");
   return prisma.message.count({ where: { approvalStatus: "PENDING" } });
 }
 
 export async function approveMessage(messageId: string) {
-  const session = await requireCanApprove();
+  const session = await requirePermission("approvals.handle");
 
   const message = await prisma.message.findUnique({ where: { id: messageId } });
   if (!message || message.approvalStatus !== "PENDING") {
     throw new Error("Ce message n'est plus en attente de validation.");
   }
-  // Un agent portant à la fois `requiresApproval` et `canApprove` pourrait
+  // Un agent portant à la fois `requiresApproval` et « approvals.handle » pourrait
   // sinon relâcher ses propres réponses, ce qui vide le workflow de son sens.
   if (message.agentId === session.user.id) {
     throw new Error("Un autre agent habilité doit valider votre propre réponse.");
@@ -989,7 +985,7 @@ export async function approveMessage(messageId: string) {
 }
 
 export async function rejectMessage(messageId: string) {
-  const session = await requireCanApprove();
+  const session = await requirePermission("approvals.handle");
 
   const message = await prisma.message.findUnique({ where: { id: messageId } });
   if (!message || message.approvalStatus !== "PENDING") {

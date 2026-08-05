@@ -1,3 +1,4 @@
+import { requirePageAccess } from "@/lib/require-page-access";
 import { notFound } from "next/navigation";
 import {
   getKnowledgeArticleById,
@@ -12,6 +13,8 @@ export default async function EditKnowledgeArticlePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePageAccess("kb.manage");
+
   const { id } = await params;
   const [article, categories, templates, allArticles] = await Promise.all([
     getKnowledgeArticleById(id),

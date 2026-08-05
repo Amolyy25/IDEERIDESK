@@ -6,6 +6,7 @@ import { searchPublishedArticles } from "@/lib/actions/knowledge-base";
 import { getAiConfig } from "@/lib/ai-settings";
 import { generateAiSuggestion, AiProviderError } from "@/lib/ai-provider";
 import { rateLimit } from "@/lib/rate-limit";
+import { can } from "@/lib/permissions";
 
 const bodySchema = z.object({ ticketId: z.string().min(1) });
 
@@ -29,7 +30,7 @@ Ne réponds qu'avec le texte du message, sans préambule ni formule du type "Voi
 
 export async function POST(request: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id || !session.user.canRespond) {
+  if (!session?.user?.id || !can(session.user.permissions, "tickets.respond")) {
     return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
   }
 

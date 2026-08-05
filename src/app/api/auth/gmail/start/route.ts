@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { GMAIL_OAUTH_STATE_COOKIE, getGoogleAuthUrl } from "@/lib/google-oauth";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 // Durée de vie du `state` : le temps d'un écran de consentement Google, pas plus.
 const STATE_TTL_SECONDS = 10 * 60;
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requirePermission("settings.email");
 
     // Lie ce départ au retour : le callback refusera un code d'autorisation
     // qui n'est pas accompagné de ce même `state`.

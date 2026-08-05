@@ -1,18 +1,15 @@
 import { Plus } from "lucide-react";
-import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { getSources } from "@/lib/actions/sources";
 import { SourcesList } from "@/components/settings/sources/sources-list";
 import { SourceCreateDialog } from "@/components/settings/sources/source-create-dialog";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/sources";
 
 export default async function SourcesSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const sources = await getSources();

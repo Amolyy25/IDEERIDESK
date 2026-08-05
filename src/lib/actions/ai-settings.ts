@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import {
   AI_SETTING_KEYS,
   AI_DEFAULT_MODEL,
@@ -20,7 +20,7 @@ export type AiSettingsStatus = {
 };
 
 export async function getAiSettingsStatus(): Promise<AiSettingsStatus> {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const rows = await prisma.globalSetting.findMany({
     where: { key: { in: [...Object.values(AI_SETTING_KEYS), DUPLICATE_DETECTION_KEY] } },
   });
@@ -48,7 +48,7 @@ const updateSchema = z.object({
 });
 
 export async function updateAiSettings(input: z.infer<typeof updateSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const data = updateSchema.parse(input);
 
   await prisma.globalSetting.upsert({
@@ -92,7 +92,7 @@ export async function updateAiSettings(input: z.infer<typeof updateSchema>) {
 }
 
 export async function clearAiApiKey() {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   await prisma.globalSetting.deleteMany({ where: { key: AI_SETTING_KEYS.apiKey } });
   revalidatePath("/settings/ai");
 }

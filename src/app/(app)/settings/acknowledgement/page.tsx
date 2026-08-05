@@ -1,16 +1,13 @@
-import { auth } from "@/auth";
 import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { getAcknowledgementTemplate } from "@/lib/actions/acknowledgement-settings";
 import { AcknowledgementTemplateForm } from "@/components/settings/acknowledgement/acknowledgement-template-form";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/acknowledgement";
 
 export default async function AcknowledgementSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const template = await getAcknowledgementTemplate();

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { AI_SETTING_KEYS } from "@/lib/ai-settings";
 import { INBOUND_CREATE_TICKETS_KEY } from "@/lib/email-account";
 
@@ -30,7 +30,7 @@ export async function getGlobalSettings() {
 }
 
 export async function updateGlobalSetting(key: string, value: string) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const ownerSection = OWNED_BY_SECTION[key];
   if (ownerSection) {
     throw new Error(`Ce réglage se modifie depuis la section ${ownerSection}.`);

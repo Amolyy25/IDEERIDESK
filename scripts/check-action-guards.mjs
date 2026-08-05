@@ -12,12 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ACTIONS_DIR = "src/lib/actions";
-const GUARDS = [
-  "requireApprovedAgent",
-  "requireCanRespond",
-  "requireCanApprove",
-  "requireAdmin",
-];
+const GUARDS = ["requireApprovedAgent", "requirePermission", "requireAdmin"];
 
 /**
  * Actions volontairement ouvertes, avec la raison. Toute entrée ajoutée ici est

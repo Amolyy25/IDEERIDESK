@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireCanRespond } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   mergeTickets,
@@ -45,7 +45,7 @@ const SCANS_PER_HOUR = 40;
 const MAX_SEARCH_RESULTS = 12;
 
 export async function getDuplicateSuggestions(ticketId: string): Promise<DuplicateSuggestion[]> {
-  await requireCanRespond();
+  await requirePermission("tickets.merge");
   return getPendingDuplicateSuggestions(ticketId);
 }
 
@@ -61,7 +61,7 @@ export async function detectTicketDuplicates(
   ticketId: string,
   options: { force?: boolean } = {}
 ): Promise<DuplicateScanResult> {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.merge");
 
   const limit = rateLimit(`duplicate-scan:${session.user.id}`, SCANS_PER_HOUR, 60 * 60 * 1000);
   if (!limit.allowed) {
@@ -75,7 +75,7 @@ export async function detectTicketDuplicates(
 }
 
 export async function dismissDuplicateSuggestion(suggestionId: string) {
-  await requireCanRespond();
+  await requirePermission("tickets.merge");
 
   const suggestion = await prisma.ticketDuplicateSuggestion.findUnique({
     where: { id: suggestionId },
@@ -101,7 +101,7 @@ const mergeSchema = z.object({
 });
 
 export async function mergeTicketInto(input: z.infer<typeof mergeSchema>): Promise<MergeOutcome> {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.merge");
   const data = mergeSchema.parse(input);
 
   const actorName = session.user.name || session.user.email || "un agent";
@@ -147,7 +147,7 @@ export async function mergeTicketInto(input: z.infer<typeof mergeSchema>): Promi
 }
 
 export async function separateMergedTicket(ticketId: string) {
-  const session = await requireCanRespond();
+  const session = await requirePermission("tickets.merge");
   const actorName = session.user.name || session.user.email || "un agent";
 
   try {
@@ -193,7 +193,7 @@ export async function searchTicketsToMergeInto(
   ticketId: string,
   search: string
 ): Promise<MergeSearchResult[]> {
-  await requireCanRespond();
+  await requirePermission("tickets.merge");
 
   const term = search.trim();
   const searchedNumber = term ? Number(term.replace(/^#/, "")) : Number.NaN;

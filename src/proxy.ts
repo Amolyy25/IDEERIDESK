@@ -22,6 +22,9 @@ export const config = {
     "/agents/:path*",
     "/knowledge-base/:path*",
     "/settings/:path*",
+    "/approvals/:path*",
+    "/audit/:path*",
     "/en-attente",
+    "/aucun-acces",
   ],
 };

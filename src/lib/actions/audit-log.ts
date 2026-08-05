@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import {
   auditSelect,
   buildAuditWhere,
@@ -25,7 +25,7 @@ import {
  */
 
 export async function getAuditLog(filters: AuditLogFilters = {}) {
-  await requireAdmin();
+  await requirePermission("audit.view");
 
   const page = Math.max(filters.page ?? 1, 1);
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -55,7 +55,7 @@ export async function getAuditLog(filters: AuditLogFilters = {}) {
  * précisément celui qu'on cherche.
  */
 export async function getAuditActors() {
-  await requireAdmin();
+  await requirePermission("audit.view");
 
   const rows = await prisma.auditLog.groupBy({
     by: ["actorId", "actorName"],

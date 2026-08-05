@@ -1,16 +1,13 @@
-import { auth } from "@/auth";
 import { getBrandLogoUrl } from "@/lib/brand-logo";
 import { getClosureTemplate } from "@/lib/actions/closure-settings";
 import { ClosureTemplateForm } from "@/components/settings/closure/closure-template-form";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/closure";
 
 export default async function ClosureSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const template = await getClosureTemplate();

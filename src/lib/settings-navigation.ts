@@ -1,3 +1,5 @@
+import { can, type PermissionKey } from "@/lib/permissions";
+
 /**
  * Plan unique de la page Paramètres : l'ordre des groupes, le libellé de
  * navigation et l'intitulé complet de chaque section.
@@ -13,7 +15,12 @@ export type SettingsItem = {
   /** Titre de la section, si plus explicite que le libellé de navigation. */
   title?: string;
   description: string;
-  adminOnly?: boolean;
+  /**
+   * Permission qui ouvre la section (voir src/lib/permissions.ts). Ce n'est pas
+   * ce qui protège la donnée — les Server Actions ont leurs propres gardes —
+   * mais ce qui décide de l'affichage de l'entrée et de la section.
+   */
+  permission: PermissionKey;
 };
 
 export type SettingsGroup = {
@@ -27,10 +34,10 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       {
         href: "/settings/general",
+        permission: "settings.workspace",
         label: "Général",
         description:
           "Identité de l'entreprise, fuseau horaire et messages affichés aux clients.",
-        adminOnly: true,
       },
     ],
   },
@@ -39,29 +46,34 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       {
         href: "/settings/statuses",
+        permission: "settings.tickets",
         label: "Statuts",
         title: "Statuts de ticket",
         description: "Les états par lesquels passe un ticket, du dépôt à la clôture.",
       },
       {
         href: "/settings/priorities",
+        permission: "settings.tickets",
         label: "Priorités",
         description: "Les niveaux d'urgence que les agents peuvent attribuer.",
       },
       {
         href: "/settings/categories",
+        permission: "settings.tickets",
         label: "Produits",
         title: "Produits concernés",
         description: "Les logiciels et services auxquels rattacher un ticket.",
       },
       {
         href: "/settings/custom-fields",
+        permission: "settings.tickets",
         label: "Champs personnalisés",
         description:
           "Les informations demandées en plus sur tous les formulaires publics.",
       },
       {
         href: "/settings/canned-responses",
+        permission: "settings.tickets",
         label: "Réponses prédéfinies",
         description:
           "Les réponses type proposées d'un clic dans la zone de rédaction d'un ticket. Chacune peut être limitée à certains produits, sources, priorités ou statuts : seules celles qui concernent le ticket ouvert sont proposées.",
@@ -73,18 +85,18 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       {
         href: "/settings/portal",
+        permission: "settings.channels",
         label: "Portail",
         title: "Portail public",
         description:
           "Apparence et contenu des pages publiques : accueil, FAQ et création de ticket.",
-        adminOnly: true,
       },
       {
         href: "/settings/sources",
+        permission: "settings.channels",
         label: "Sources",
         title: "Sources de tickets",
         description: "Les points d'entrée de tickets et le formulaire propre à chacun.",
-        adminOnly: true,
       },
     ],
   },
@@ -93,37 +105,38 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       {
         href: "/settings/email",
+        permission: "settings.email",
         label: "Boîte de support",
         description:
           "Compte Gmail relié au support, réception des réponses et création de tickets depuis les emails entrants.",
       },
       {
         href: "/settings/email-layout",
+        permission: "settings.email",
         label: "Habillage des emails",
         description:
           "Le HTML et le CSS de l'enveloppe commune à tous les emails sortants : en-tête, carte, pied de page.",
-        adminOnly: true,
       },
       {
         href: "/settings/signatures",
+        permission: "settings.email",
         label: "Signatures",
         title: "Signatures des agents",
         description:
           "Le bloc ajouté en bas des réponses envoyées au client, avec le nom de l'agent qui répond. Une signature vaut pour toute l'équipe ou pour quelques agents seulement.",
-        adminOnly: true,
       },
       {
         href: "/settings/acknowledgement",
+        permission: "settings.email",
         label: "Accusé de réception",
         description:
           "L'email envoyé au client dès qu'un ticket est ouvert à son nom, depuis un formulaire public comme depuis un email entrant.",
-        adminOnly: true,
       },
       {
         href: "/settings/closure",
+        permission: "settings.email",
         label: "Message de clôture",
         description: "L'email envoyé au client quand son ticket est clos.",
-        adminOnly: true,
       },
     ],
   },
@@ -132,17 +145,17 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       {
         href: "/settings/ai",
+        permission: "settings.workspace",
         label: "Assistant IA",
         description:
           "Fournisseur, modèle et clé d'API utilisés pour les suggestions de réponse.",
-        adminOnly: true,
       },
       {
         href: "/settings/automations",
+        permission: "settings.workspace",
         label: "Règles automatiques",
         description:
           "Actions déclenchées seules sur les tickets restés trop longtemps sans activité.",
-        adminOnly: true,
       },
     ],
   },
@@ -163,4 +176,14 @@ export function settingsItem(href: string): SettingsItem {
 
 export function settingsTitle(item: SettingsItem) {
   return item.title ?? item.label;
+}
+
+/** Groupes réduits à ce que l'agent peut ouvrir ; les groupes vidés disparaissent. */
+export function visibleSettingsGroups(
+  permissions: readonly PermissionKey[] | undefined,
+): SettingsGroup[] {
+  return SETTINGS_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => can(permissions, item.permission)),
+  })).filter((group) => group.items.length > 0);
 }

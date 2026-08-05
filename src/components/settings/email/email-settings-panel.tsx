@@ -37,14 +37,17 @@ type EmailAccountStatus = {
   inboundCreatesTickets: boolean;
 };
 
+/**
+ * Plus de distinction lecteur/administrateur ici : la section entière est
+ * derrière la permission « settings.email » (voir le plan des réglages).
+ * Quiconque affiche ce panneau peut agir dessus.
+ */
 export function EmailSettingsPanel({
   status,
-  isAdmin,
   justConnected,
   oauthError,
 }: {
   status: EmailAccountStatus;
-  isAdmin: boolean;
   justConnected: boolean;
   oauthError: string | null;
 }) {
@@ -140,8 +143,7 @@ export function EmailSettingsPanel({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary">Connecté</Badge>
-              {isAdmin && (
-                <AlertDialog>
+              <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="outline" size="sm" disabled={isDisconnecting}>
                       Déconnecter
@@ -161,10 +163,9 @@ export function EmailSettingsPanel({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-              )}
             </div>
           </div>
-        ) : isAdmin ? (
+        ) : (
           <div className="rounded-lg border p-4">
             <p className="mb-3 text-sm text-muted-foreground">
               Connectez la boîte email support pour transformer automatiquement les emails
@@ -173,12 +174,6 @@ export function EmailSettingsPanel({
             <Button asChild size="sm">
               <Link href="/api/auth/gmail/start">Connecter Gmail</Link>
             </Button>
-          </div>
-        ) : (
-          <div className="rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground">
-              Aucune boîte email connectée. Seul un administrateur peut connecter Gmail.
-            </p>
           </div>
         )}
       </div>
@@ -192,12 +187,10 @@ export function EmailSettingsPanel({
           value={senderName}
           onChange={(e) => setSenderName(e.target.value)}
           onBlur={handleSenderNameBlur}
-          disabled={isSavingName || !isAdmin}
+          disabled={isSavingName}
         />
         <p className="text-xs text-muted-foreground">
-          {isAdmin
-            ? `Affiché comme nom d'expéditeur dans les emails envoyés aux clients (ex. « ${senderName || "Ideeri Support"} »).`
-            : "Réglage partagé par toute l'équipe — modifiable uniquement par un administrateur."}
+          {`Affiché comme nom d'expéditeur dans les emails envoyés aux clients (ex. « ${senderName || "Ideeri Support"} »).`}
         </p>
       </div>
 
@@ -230,7 +223,7 @@ export function EmailSettingsPanel({
                 id="inboundCreatesTickets"
                 checked={createsTickets}
                 onCheckedChange={handleTicketCreationChange}
-                disabled={isSavingCreation || !isAdmin}
+                disabled={isSavingCreation}
               />
             </div>
 
@@ -276,12 +269,6 @@ export function EmailSettingsPanel({
               </p>
             )}
 
-            {!isAdmin && (
-              <p className="text-xs text-muted-foreground">
-                Réglage partagé par toute l&apos;équipe — modifiable uniquement par un
-                administrateur.
-              </p>
-            )}
           </div>
         </>
       )}

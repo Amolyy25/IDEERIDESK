@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { emailAssetPath } from "@/lib/email-asset-urls";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 export const MAX_SIGNATURE_IMAGE_SIZE = 1024 * 1024; // 1 Mo
 
@@ -30,7 +30,7 @@ const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requirePermission("settings.email");
   } catch {
     return NextResponse.json({ error: "Action réservée aux administrateurs." }, { status: 403 });
   }

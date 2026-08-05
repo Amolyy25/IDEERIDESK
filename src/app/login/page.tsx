@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { defaultLandingPath } from "@/lib/app-navigation";
 import { auth, signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/icons/google-icon";
@@ -21,7 +22,7 @@ export default async function Home({
   // page protégée qui renverrait ici (boucle de redirection). Un compte
   // reconnu mais pas encore tranché n'a que `approvalStatus`.
   if (session?.user?.id) {
-    redirect("/tickets");
+    redirect(defaultLandingPath(session.user.permissions));
   }
   if (session?.user?.approvalStatus) {
     redirect("/en-attente");
@@ -54,7 +55,11 @@ export default async function Home({
         <form
           action={async () => {
             "use server";
-            await signIn("google", { redirectTo: "/tickets" });
+            // Retour sur cette page plutôt que sur `/tickets` : la destination
+            // dépend des permissions, que l'on ne connaît pas avant d'être
+            // connecté. Le garde en tête de fichier s'en charge alors, sans
+            // boucle possible — il ne renvoie que vers une page ouverte.
+            await signIn("google", { redirectTo: "/login" });
           }}
         >
           <Button type="submit" variant="outline" size="lg" className="w-full gap-2.5 font-medium">

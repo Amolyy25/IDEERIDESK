@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getEmailLayout() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   return prisma.emailLayoutTemplate.findFirst();
 }
 
@@ -17,7 +17,7 @@ const emailLayoutSchema = z.object({
 });
 
 export async function saveEmailLayout(input: z.infer<typeof emailLayoutSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const parsed = emailLayoutSchema.parse(input);
   // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
   // image collée disparaîtrait donc sans laisser de trace.
@@ -40,7 +40,7 @@ export async function saveEmailLayout(input: z.infer<typeof emailLayoutSchema>) 
 
 /** Retour au gabarit livré avec l'application : la ligne enregistrée disparaît. */
 export async function resetEmailLayout() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   await prisma.emailLayoutTemplate.deleteMany({});
   revalidatePath("/settings/email-layout");
 }

@@ -8,7 +8,7 @@ import {
   exchangeCodeForTokens,
 } from "@/lib/google-oauth";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 function redirectToSettings(request: NextRequest, params: Record<string, string>) {
   // Derrière le proxy Railway, `request.url` reflète l'hôte interne du
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   store.delete(GMAIL_OAUTH_STATE_COOKIE);
 
   try {
-    await requireAdmin();
+    await requirePermission("settings.email");
   } catch {
     return redirectToSettings(request, {
       error: "Connexion Gmail réservée aux administrateurs.",

@@ -23,11 +23,12 @@ import type { TicketWithMessages } from "@/lib/actions/tickets";
 export function MergedIntoBanner({
   mergedInto,
   ticketId,
-  canRespond,
+  canMerge,
 }: {
   mergedInto: NonNullable<TicketWithMessages["mergedInto"]>;
   ticketId: string;
-  canRespond: boolean;
+  /** Défaire une fusion relève de « tickets.merge », comme la faire. */
+  canMerge: boolean;
 }) {
   return (
     <section className="mx-auto w-full max-w-3xl px-6 pt-6">
@@ -48,7 +49,7 @@ export function MergedIntoBanner({
           </span>
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          {canRespond && <SeparateButton ticketId={ticketId} />}
+          {canMerge && <SeparateButton ticketId={ticketId} />}
           <Button asChild size="sm" variant="outline">
             <Link href={`/tickets/${mergedInto.id}`}>Ouvrir le #{mergedInto.number}</Link>
           </Button>

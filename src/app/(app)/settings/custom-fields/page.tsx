@@ -3,14 +3,24 @@ import { Button } from "@/components/ui/button";
 import { getCustomFields } from "@/lib/actions/custom-fields";
 import { CustomFieldsTable } from "@/components/settings/custom-fields/custom-fields-table";
 import { CustomFieldDialog } from "@/components/settings/custom-fields/custom-field-dialog";
-import { SettingsSection } from "@/components/settings/settings-section";
+import {
+  SettingsNoAccess,
+  SettingsSection,
+  canOpenSettings,
+} from "@/components/settings/settings-section";
+
+const HREF = "/settings/custom-fields";
 
 export default async function CustomFieldsSettingsPage() {
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
+  }
+
   const fields = await getCustomFields();
 
   return (
     <SettingsSection
-      href="/settings/custom-fields"
+      href={HREF}
       action={
         <CustomFieldDialog
           trigger={

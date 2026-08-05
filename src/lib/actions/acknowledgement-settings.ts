@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { hostInlineEmailImages } from "@/lib/email-images";
 
 export async function getAcknowledgementTemplate() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   return prisma.ticketAcknowledgementTemplate.findFirst();
 }
 
@@ -19,7 +19,7 @@ const acknowledgementTemplateSchema = z.object({
 export async function saveAcknowledgementTemplate(
   input: z.infer<typeof acknowledgementTemplateSchema>
 ) {
-  await requireAdmin();
+  await requirePermission("settings.email");
   const parsed = acknowledgementTemplateSchema.parse(input);
   // Hébergement avant nettoyage : le nettoyage refuse le schéma `data:`, une
   // image collée disparaîtrait donc sans laisser de trace.
@@ -41,7 +41,7 @@ export async function saveAcknowledgementTemplate(
 }
 
 export async function deleteAcknowledgementTemplate() {
-  await requireAdmin();
+  await requirePermission("settings.email");
   await prisma.ticketAcknowledgementTemplate.deleteMany({});
   revalidatePath("/settings/acknowledgement");
 }

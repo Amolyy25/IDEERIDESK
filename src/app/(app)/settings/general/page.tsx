@@ -1,17 +1,14 @@
-import { auth } from "@/auth";
 import { getGlobalSettings } from "@/lib/actions/settings";
 import { getBrandLogoStatus } from "@/lib/actions/brand-logo";
 import { GeneralSettingsForm } from "@/components/settings/general-settings-form";
 import { BrandLogoForm } from "@/components/settings/brand-logo-form";
-import { SettingsAdminOnly, SettingsSection } from "@/components/settings/settings-section";
+import { SettingsNoAccess, SettingsSection, canOpenSettings } from "@/components/settings/settings-section";
 
 const HREF = "/settings/general";
 
 export default async function GeneralSettingsPage() {
-  const session = await auth();
-
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href={HREF} />;
+  if (!(await canOpenSettings(HREF))) {
+    return <SettingsNoAccess href={HREF} />;
   }
 
   const [settings, brandLogo] = await Promise.all([getGlobalSettings(), getBrandLogoStatus()]);

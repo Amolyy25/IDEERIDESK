@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { prisma } from "@/lib/prisma";
 import authConfig from "@/auth.config";
+import { DEFAULT_AGENT_PERMISSIONS, effectivePermissions } from "@/lib/permissions";
 
 const allowedDomain = process.env.ALLOWED_GOOGLE_DOMAIN?.toLowerCase();
 
@@ -53,12 +54,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Première connexion : compte créé en attente de validation. Un admin
       // l'approuve (ou le refuse) depuis /agents, puis ajuste rôle et
       // permissions fines.
+      //
+      // Les permissions courantes sont posées dès la création plutôt qu'à
+      // l'approbation : elles ne donnent accès à rien tant que le compte n'est
+      // pas approuvé (le callback `session` ci-dessous ne les expose pas), mais
+      // l'admin qui tranche voit une proposition sensée à ajuster, au lieu d'un
+      // compte approuvé qui n'accède à rien.
       await prisma.agent.create({
         data: {
           email,
           name: user.name ?? email,
           role: "AGENT",
           approvalStatus: "PENDING",
+          permissions: DEFAULT_AGENT_PERMISSIONS,
         },
       });
       return true;
@@ -90,9 +98,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = agent.id;
       session.user.role = agent.role;
       session.user.name = agent.name;
-      session.user.canRespond = agent.canRespond;
+      // Résolues ici, une fois pour toutes : un ADMIN reçoit le registre
+      // complet, un agent ses clés refermées sur leurs prérequis. Comme le
+      // reste, c'est relu à chaque requête et non figé dans le token — un
+      // retrait de permission prend effet à la navigation suivante, sans
+      // attendre l'expiration de la session.
+      session.user.permissions = effectivePermissions(agent);
       session.user.requiresApproval = agent.requiresApproval;
-      session.user.canApprove = agent.canApprove;
 
       return session;
     },

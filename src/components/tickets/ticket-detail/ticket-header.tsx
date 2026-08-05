@@ -28,21 +28,26 @@ export function TicketHeader({
   ticket,
   currentAgentId,
   canRespond,
+  canMerge: hasMergePermission,
 }: {
   ticket: TicketWithMessages;
   currentAgentId: string | null;
   canRespond: boolean;
+  /** Permission « tickets.merge », distincte de « répondre et modifier ». */
+  canMerge: boolean;
 }) {
   const router = useRouter();
   const [isClaiming, setIsClaiming] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isMergeOpen, setIsMergeOpen] = useState(false);
 
-  const canClaim = Boolean(currentAgentId) && ticket.assigneeId !== currentAgentId;
+  // « Prendre en charge » et « Clore » écrivent sur le ticket : un compte en
+  // lecture seule voyait jusqu'ici deux boutons que le serveur refusait.
+  const canClaim = canRespond && Boolean(currentAgentId) && ticket.assigneeId !== currentAgentId;
   // Un ticket déjà fusionné n'a rien à fusionner de plus : c'est depuis sa
   // destination que l'équipe travaille, le proposer ici mènerait à des chaînes
   // que personne ne relit.
-  const canMerge = canRespond && ticket.mergedIntoId === null;
+  const canMerge = hasMergePermission && ticket.mergedIntoId === null;
 
   async function handleClaim() {
     setIsClaiming(true);
@@ -136,7 +141,7 @@ export function TicketHeader({
               Fusionner
             </Button>
           )}
-          {!ticket.closedAt && (
+          {canRespond && !ticket.closedAt && (
             <Button variant="outline" size="sm" onClick={handleClose} disabled={isClosing}>
               <CheckCircle2 />
               {isClosing ? "Clôture…" : "Clore"}

@@ -1,11 +1,10 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
 import { getSourceConfig } from "@/lib/actions/sources";
 import { getTicketCategories } from "@/lib/actions/categories";
 import { getCustomFields } from "@/lib/actions/custom-fields";
 import { getGlobalSettings } from "@/lib/actions/settings";
 import { SourceFormBuilder } from "@/components/settings/sources/source-form-builder";
-import { SettingsAdminOnly } from "@/components/settings/settings-section";
+import { SettingsNoAccess, canOpenSettings } from "@/components/settings/settings-section";
 
 export default async function SourceBuilderPage({
   params,
@@ -13,10 +12,11 @@ export default async function SourceBuilderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await auth();
 
-  if (session?.user?.role !== "ADMIN") {
-    return <SettingsAdminOnly href="/settings/sources" />;
+  // L'éditeur d'une source n'a pas d'entrée propre dans le plan des réglages :
+  // il partage la permission de la liste qui y mène.
+  if (!(await canOpenSettings("/settings/sources"))) {
+    return <SettingsNoAccess href="/settings/sources" />;
   }
 
   const [source, categories, customFields, settings] = await Promise.all([

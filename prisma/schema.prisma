@@ -37,13 +37,23 @@ model Agent {
   approvalStatus AgentApprovalStatus @default(PENDING)
   approvalDecidedAt DateTime?
 
-  // Permissions fines, indépendantes du rôle ADMIN/AGENT (qui régit l'accès
-  // aux paramètres) : un agent "lecture seule" ne peut ni répondre ni modifier
-  // un ticket ; un agent dont les réponses nécessitent validation voit ses
-  // emails sortants bloqués en attente d'un agent habilité à les approuver.
-  canRespond       Boolean @default(true)
+  // Permissions fines : les clés du registre `src/lib/permissions.ts` accordées
+  // à ce compte (« tickets.respond », « audit.view »…). Volontairement des
+  // chaînes libres et non un enum Postgres — ajouter une permission ne doit
+  // coûter qu'une entrée dans le registre, pas une migration. La contrepartie
+  // est assumée et traitée : les clés inconnues sont écartées à la lecture par
+  // `normalizePermissions`, elles n'autorisent donc jamais rien.
+  //
+  // Vide pour un ADMIN, et ce n'est pas un oubli : le rôle vaut « toutes les
+  // permissions », y compris celles qui n'existent pas encore. Ne rien stocker
+  // pour lui évite d'avoir à le rattraper à chaque ajout au registre.
+  permissions String[] @default([])
+
+  // Contrainte, et non permission : les réponses publiques de cet agent partent
+  // en attente de validation au lieu d'être envoyées. Ce n'est pas un droit
+  // qu'on accorde, c'est une retenue qu'on impose — d'où sa place hors du
+  // registre.
   requiresApproval Boolean @default(false)
-  canApprove       Boolean @default(false)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -603,6 +613,12 @@ enum AuditAction {
   TICKET_UNMERGED
   REPLY_APPROVED
   REPLY_REJECTED
+  // Gestes portant sur les comptes de l'équipe. Ce sont les actions les plus
+  // sensibles de l'application — elles décident de qui peut voir et faire quoi
+  // — et c'étaient les seules à n'être tracées nulle part.
+  AGENT_ACCESS_GRANTED // demande d'accès approuvée
+  AGENT_ACCESS_DENIED // demande d'accès refusée
+  AGENT_PERMISSIONS_UPDATED // rôle, activation ou permissions fines modifiés
 }
 
 // Une ligne du journal, en AJOUT SEUL — un journal réinscriptible ne prouve rien.

@@ -76,6 +76,7 @@ export function AttributesPanel({
   agents,
   customFields,
   sourceFields,
+  canDelete,
 }: {
   ticket: TicketWithMessages;
   /**
@@ -91,6 +92,8 @@ export function AttributesPanel({
   customFields: CustomField[];
   /** Champs du formulaire de la source d'origine, en lecture seule. */
   sourceFields: SourceField[];
+  /** Permission « tickets.delete » : sans elle, le pied du panneau disparaît. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -300,34 +303,36 @@ export function AttributesPanel({
         )}
       </div>
 
-      <div className="shrink-0 border-t px-5 py-3">
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={isDeleting}
-              className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="size-4" />
-              Supprimer le ticket
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Supprimer ce ticket ?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Cette action est irréversible. Le fil de messages et les pièces jointes
-                associées seront définitivement supprimés.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete}>Supprimer</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+      {canDelete && (
+        <div className="shrink-0 border-t px-5 py-3">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isDeleting}
+                className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="size-4" />
+                Supprimer le ticket
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Supprimer ce ticket ?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Cette action est irréversible. Le fil de messages et les pièces jointes
+                  associées seront définitivement supprimés.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete}>Supprimer</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
     </aside>
   );
 }

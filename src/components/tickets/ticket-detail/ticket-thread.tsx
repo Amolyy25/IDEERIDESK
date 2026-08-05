@@ -37,14 +37,15 @@ type MergedMessage = MergedTicket["messages"][number];
 export function TicketThread({
   ticket,
   canApprove,
-  canRespond,
+  canMerge,
   agents,
   currentAgentId,
   currentTicketId,
 }: {
   ticket: TicketWithMessages;
   canApprove: boolean;
-  canRespond: boolean;
+  /** Permission « tickets.merge » : conditionne le bouton « Séparer » d'une branche. */
+  canMerge: boolean;
   agents: MentionableAgent[];
   currentAgentId: string | null;
   /**
@@ -135,7 +136,7 @@ export function TicketThread({
             header={
               <DuplicateBranchHeader
                 duplicate={duplicate}
-                canRespond={canRespond}
+                canMerge={canMerge}
                 isCurrent={currentTicketId === duplicate.id}
               />
             }
@@ -246,16 +247,16 @@ function OwnBranchHeader({
 
 function DuplicateBranchHeader({
   duplicate,
-  canRespond,
+  canMerge,
   isCurrent,
 }: {
   duplicate: MergedTicket;
-  canRespond: boolean;
+  canMerge: boolean;
   isCurrent: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-      {canRespond && <SeparateButton ticketId={duplicate.id} className="h-6 px-2 text-xs" />}
+      {canMerge && <SeparateButton ticketId={duplicate.id} className="h-6 px-2 text-xs" />}
       {/* Inutile de proposer d'ouvrir la page où l'on se trouve déjà. */}
       {!isCurrent && (
         <Link

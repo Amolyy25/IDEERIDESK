@@ -3,10 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin, requireApprovedAgent } from "@/lib/require-permission";
+import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
 
+// Les groupes ne se lisent que depuis la page Équipe. Le pré-filtrage de la
+// liste des tickets, lui, passe par `getAgentDefaultCategoryIds` ci-dessous, qui
+// reste ouvert à tout agent : un membre privé de la page Équipe doit quand même
+// retrouver ses produits.
 export async function getGroups() {
-  await requireApprovedAgent();
+  await requirePermission("team.view");
   return prisma.group.findMany({
     include: {
       members: { select: { id: true, name: true, email: true } },
@@ -39,7 +43,7 @@ const groupSchema = z.object({
 });
 
 export async function createGroup(input: z.infer<typeof groupSchema>) {
-  await requireAdmin();
+  await requirePermission("team.manage");
   const data = groupSchema.parse(input);
 
   const existing = await prisma.group.findUnique({ where: { name: data.name } });
@@ -59,7 +63,7 @@ export async function createGroup(input: z.infer<typeof groupSchema>) {
 }
 
 export async function updateGroup(id: string, input: z.infer<typeof groupSchema>) {
-  await requireAdmin();
+  await requirePermission("team.manage");
   const data = groupSchema.parse(input);
 
   await prisma.group.update({
@@ -75,7 +79,7 @@ export async function updateGroup(id: string, input: z.infer<typeof groupSchema>
 }
 
 export async function deleteGroup(id: string) {
-  await requireAdmin();
+  await requirePermission("team.manage");
   await prisma.group.delete({ where: { id } });
   revalidatePath("/agents");
 }

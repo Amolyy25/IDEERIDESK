@@ -34,7 +34,14 @@ import { cn } from "@/lib/utils";
 const ALL_CATEGORIES = "__all__";
 type StatusFilter = "ALL" | "DRAFT" | "PUBLISHED";
 
-export function ArticlesTable({ articles }: { articles: KnowledgeArticleListItem[] }) {
+export function ArticlesTable({
+  articles,
+  canManage,
+}: {
+  articles: KnowledgeArticleListItem[];
+  /** Sans « kb.manage », la liste se lit mais rien ne s'y crée ni ne s'y supprime. */
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState(ALL_CATEGORIES);
@@ -79,12 +86,14 @@ export function ArticlesTable({ articles }: { articles: KnowledgeArticleListItem
             Documentez une première réponse récurrente pour la retrouver rapidement.
           </p>
         </div>
-        <Button size="sm" asChild className="mt-1">
-          <Link href="/knowledge-base/new">
-            <Plus className="h-4 w-4" />
-            Nouvel article
-          </Link>
-        </Button>
+        {canManage && (
+            <Button size="sm" asChild className="mt-1">
+              <Link href="/knowledge-base/new">
+                <Plus className="h-4 w-4" />
+                Nouvel article
+              </Link>
+            </Button>
+        )}
       </div>
     );
   }
@@ -140,12 +149,14 @@ export function ArticlesTable({ articles }: { articles: KnowledgeArticleListItem
           ))}
         </div>
 
-        <Button size="sm" asChild className="ml-auto">
-          <Link href="/knowledge-base/new">
-            <Plus className="h-4 w-4" />
-            Nouvel article
-          </Link>
-        </Button>
+        {canManage && (
+            <Button size="sm" asChild className="ml-auto">
+              <Link href="/knowledge-base/new">
+                <Plus className="h-4 w-4" />
+                Nouvel article
+              </Link>
+            </Button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -163,12 +174,16 @@ export function ArticlesTable({ articles }: { articles: KnowledgeArticleListItem
               )}
             >
               <div className="min-w-0 flex-1">
-                <Link
-                  href={`/knowledge-base/${article.id}`}
-                  className="text-sm font-medium hover:underline"
-                >
-                  {article.title}
-                </Link>
+                {canManage ? (
+                  <Link
+                    href={`/knowledge-base/${article.id}`}
+                    className="text-sm font-medium hover:underline"
+                  >
+                    {article.title}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-medium">{article.title}</p>
+                )}
                 {article.excerpt && (
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {article.excerpt}
@@ -193,29 +208,31 @@ export function ArticlesTable({ articles }: { articles: KnowledgeArticleListItem
                 {formatDateTime(article.updatedAt)}
               </span>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="shrink-0 opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Supprimer cet article ?</AlertDialogTitle>
-                    <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleDelete(article.id)}>
-                      Supprimer
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              {canManage && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0 opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Supprimer cet article ?</AlertDialogTitle>
+                      <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDelete(article.id)}>
+                        Supprimer
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           ))}
         </div>

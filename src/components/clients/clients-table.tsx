@@ -28,7 +28,14 @@ import type { Client } from "@/generated/prisma/client";
 
 type ClientWithTicketCount = Client & { _count: { tickets: number } };
 
-export function ClientsTable({ clients }: { clients: ClientWithTicketCount[] }) {
+export function ClientsTable({
+  clients,
+  canDelete,
+}: {
+  clients: ClientWithTicketCount[];
+  /** Sans la permission, la colonne d'actions disparaît plutôt que d'offrir un bouton qui refuse. */
+  canDelete: boolean;
+}) {
   const router = useRouter();
 
   async function handleDelete(id: string) {
@@ -51,13 +58,13 @@ export function ClientsTable({ clients }: { clients: ClientWithTicketCount[] }) 
             <TableHead>Société</TableHead>
             <TableHead>Téléphone</TableHead>
             <TableHead className="text-right">Tickets</TableHead>
-            <TableHead className="w-12 text-right">Actions</TableHead>
+            {canDelete && <TableHead className="w-12 text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {clients.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={canDelete ? 6 : 5} className="h-32 text-center text-muted-foreground">
                 Aucun client pour le moment.
               </TableCell>
             </TableRow>
@@ -71,30 +78,32 @@ export function ClientsTable({ clients }: { clients: ClientWithTicketCount[] }) 
                 <TableCell className="text-right text-muted-foreground">
                   {client._count.tickets}
                 </TableCell>
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="icon" variant="ghost">
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Supprimer ce client ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Cette action est irréversible. Impossible si des tickets lui sont
-                          associés.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(client.id)}>
-                          Supprimer
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </TableCell>
+                {canDelete && (
+                  <TableCell className="text-right">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer ce client ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Cette action est irréversible. Impossible si des tickets lui sont
+                            associés.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(client.id)}>
+                            Supprimer
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                )}
               </TableRow>
             ))
           )}

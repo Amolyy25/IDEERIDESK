@@ -1,4 +1,5 @@
-import { auth } from "@/auth";
+import { requirePageAccess } from "@/lib/require-page-access";
+import { can } from "@/lib/permissions";
 import { getTickets, getTicketQueueStats } from "@/lib/actions/tickets";
 import { getTicketStatuses } from "@/lib/actions/statuses";
 import { getTicketPriorities } from "@/lib/actions/priorities";
@@ -29,8 +30,10 @@ export default async function TicketsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [session, params] = await Promise.all([auth(), searchParams]);
+  const [session, params] = await Promise.all([requirePageAccess("tickets.view"), searchParams]);
   const page = Number(params.page ?? "1") || 1;
+
+  const canRespond = can(session.user.permissions, "tickets.respond");
 
   const hasManualFilter = Boolean(
     params.search || params.statusId || params.priorityId || params.categoryId || params.assigneeId
@@ -72,7 +75,10 @@ export default async function TicketsPage({
       getTicketPriorities(),
       getTicketCategories(),
       getAgents(),
-      getClients(),
+      // Le répertoire n'alimente que le sélecteur « Client » du formulaire de
+      // création, où il est facultatif : sans la permission, la liste est vide
+      // et le reste de la page fonctionne à l'identique.
+      can(session.user.permissions, "clients.view") ? getClients() : Promise.resolve([]),
     ]);
 
   const pageCount = Math.max(Math.ceil(total / pageSize), 1);
@@ -87,12 +93,14 @@ export default async function TicketsPage({
           <h1 className="text-lg font-semibold tracking-tight">Tickets</h1>
           <p className="text-sm text-muted-foreground">Suivez et traitez les demandes entrantes.</p>
         </div>
-        <NewTicketDialog
-          statuses={statuses}
-          priorities={priorities}
-          categories={categories}
-          clients={clients}
-        />
+        {canRespond && (
+          <NewTicketDialog
+            statuses={statuses}
+            priorities={priorities}
+            categories={categories}
+            clients={clients}
+          />
+        )}
       </div>
 
       {/* Un seul objet plutôt que trois blocs flottants : vues, filtres, file et

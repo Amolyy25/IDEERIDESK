@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 import { runAutomations } from "@/lib/automations";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -14,7 +14,7 @@ export type AutomationRuleWithStatuses = Prisma.AutomationRuleGetPayload<{
 }>;
 
 export async function getAutomationRules() {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   return prisma.automationRule.findMany({ include: ruleInclude, orderBy: { createdAt: "asc" } });
 }
 
@@ -42,14 +42,14 @@ const ruleSchema = z
   });
 
 export async function createAutomationRule(input: z.infer<typeof ruleSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const data = ruleSchema.parse(input);
   await prisma.automationRule.create({ data: { ...data, emailContent: data.emailContent || null } });
   revalidatePath("/settings/automations");
 }
 
 export async function updateAutomationRule(id: string, input: z.infer<typeof ruleSchema>) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const data = ruleSchema.parse(input);
   await prisma.automationRule.update({
     where: { id },
@@ -59,13 +59,13 @@ export async function updateAutomationRule(id: string, input: z.infer<typeof rul
 }
 
 export async function deleteAutomationRule(id: string) {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   await prisma.automationRule.delete({ where: { id } });
   revalidatePath("/settings/automations");
 }
 
 export async function runAutomationsNow() {
-  await requireAdmin();
+  await requirePermission("settings.workspace");
   const result = await runAutomations();
   revalidatePath("/settings/automations");
   return result;
