@@ -341,16 +341,25 @@ export async function scanTicketForDuplicates(
   }
 
   const candidates = await findLexicalCandidates(ticket);
-  if (candidates.length === 0) {
+
+  // Dernière porte avant l'appel facturé, et la plus rentable : un candidat déjà
+  // rapproché de ce ticket a déjà son verdict en base. Le resoumettre ferait
+  // payer deux fois le même jugement.
+  const alreadyJudged = await knownCounterparts(ticketId);
+  const fresh = candidates.filter((candidate) => !alreadyJudged.has(candidate.id));
+
+  if (fresh.length === 0) {
     // Passage à vide enregistré comme un autre : c'est justement le cas le plus
     // fréquent, et celui qu'il faut éviter de recalculer à chaque ouverture.
+    // Un candidat déjà jugé compte pour un passage à vide — il n'y a rien de
+    // nouveau à demander au modèle.
     await markScanned(ticketId);
-    return { suggestions: [], skippedReason: null };
+    return { suggestions: await getPendingDuplicateSuggestions(ticketId), skippedReason: null };
   }
 
   let scored: ScoredDuplicate[];
   try {
-    scored = await scoreWithAi(ticket, candidates);
+    scored = await scoreWithAi(ticket, fresh);
   } catch (error) {
     if (error instanceof AiProviderError) {
       return { suggestions: await getPendingDuplicateSuggestions(ticketId), skippedReason: error.message };
@@ -362,15 +371,58 @@ export async function scanTicketForDuplicates(
     // `upsert` et non `create` : le même rapprochement peut ressortir d'un
     // passage à l'autre. Un rapprochement déjà tranché par un agent (écarté ou
     // fusionné) garde son statut — seul le score est rafraîchi.
-    await prisma.ticketDuplicateSuggestion.upsert({
-      where: { ticketId_candidateId: { ticketId, candidateId: match.id } },
-      update: { score: match.score, reason: match.reason },
-      create: { ticketId, candidateId: match.id, score: match.score, reason: match.reason },
-    });
+    try {
+      await prisma.ticketDuplicateSuggestion.upsert({
+        where: { ticketId_candidateId: { ticketId, candidateId: match.id } },
+        update: { score: match.score, reason: match.reason },
+        create: { ticketId, candidateId: match.id, score: match.score, reason: match.reason },
+      });
+    } catch (error) {
+      // Le couple vient d'être enregistré dans l'autre sens par un passage
+      // concurrent (deux agents ouvrant les deux fiches en même temps) : l'index
+      // d'unicité sur le couple non ordonné refuse le miroir, et c'est ce qu'on
+      // veut. Le rapprochement existe, il n'y a rien à signaler à l'agent.
+      if (!isPairConflict(error)) throw error;
+    }
   }
 
   await markScanned(ticketId);
   return { suggestions: await getPendingDuplicateSuggestions(ticketId), skippedReason: null };
+}
+
+/**
+ * Tickets déjà rapprochés de celui-ci, DANS UN SENS COMME DANS L'AUTRE.
+ *
+ * Le sens compte pour l'affichage (qui se rattache à qui) mais pas pour la
+ * question « ce couple a-t-il déjà été jugé ? ». Les regarder à sens unique
+ * était le défaut : un ticket dont le doublon avait déjà été détecté depuis
+ * l'autre fiche repassait au modèle, puis s'ajoutait en miroir — le même
+ * rapprochement s'affichait alors deux fois sur la même fiche, avec deux scores
+ * différents.
+ *
+ * Les rapprochements ÉCARTÉS comptent aussi, et c'est essentiel : une
+ * proposition refusée par un agent ne doit pas revenir par l'autre bout du
+ * couple. C'est la promesse faite dans le commentaire de
+ * `TicketDuplicateSuggestion`, qui ne tenait que dans un seul sens.
+ */
+async function knownCounterparts(ticketId: string): Promise<Set<string>> {
+  const rows = await prisma.ticketDuplicateSuggestion.findMany({
+    where: { OR: [{ ticketId }, { candidateId: ticketId }] },
+    select: { ticketId: true, candidateId: true },
+  });
+
+  return new Set(
+    rows.map((row) => (row.ticketId === ticketId ? row.candidateId : row.ticketId)),
+  );
+}
+
+/** Violation de l'unicité du couple (index `ticket_duplicate_suggestions_pair_key`). */
+function isPairConflict(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }
 
 async function markScanned(ticketId: string) {

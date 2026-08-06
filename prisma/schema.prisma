@@ -456,6 +456,13 @@ enum DuplicateSuggestionStatus {
 // `ticket` est le plus récent des deux — celui qu'un agent est en train de
 // lire — et `candidate` le plus ancien : la fusion va donc, par défaut, dans le
 // sens ticket → candidate, l'antériorité fixant le dossier de référence.
+//
+// Le `@@unique` ci-dessous ne porte que sur le couple ORDONNÉ. L'unicité du
+// rapprochement lui-même — (A, B) et (B, A) désignent le même — est garantie par
+// un index sur expression que Prisma ne sait pas décrire dans un schéma,
+// installé par la migration
+// `20260806120000_duplicate_suggestion_unordered_pair`. Insérer le miroir d'un
+// rapprochement existant lève donc une erreur d'unicité : c'est voulu.
 model TicketDuplicateSuggestion {
   id String @id @default(cuid())
 
