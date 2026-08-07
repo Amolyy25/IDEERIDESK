@@ -37,6 +37,14 @@ model Agent {
   approvalStatus AgentApprovalStatus @default(PENDING)
   approvalDecidedAt DateTime?
 
+  // Voir `Client.anonymizedAt` : même geste, sur un compte de l'équipe. Le
+  // compte survit à son identité parce que le journal d'audit s'y rattache par
+  // `actorId` — le détruire ferait perdre le regroupement des traces d'une même
+  // personne, alors que le journal doit être conservé. Un compte anonymisé est
+  // aussi désactivé et refusé : son email n'existe plus, une reconnexion Google
+  // créerait de toute façon un nouveau compte, ce qui est le comportement voulu.
+  anonymizedAt DateTime?
+
   // Permissions fines : les clés du registre `src/lib/permissions.ts` accordées
   // à ce compte (« tickets.respond », « audit.view »…). Volontairement des
   // chaînes libres et non un enum Postgres — ajouter une permission ne doit
@@ -109,6 +117,14 @@ model Client {
   company   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Date à laquelle l'identité de ce contact a été remplacée par un pseudonyme
+  // (droit à l'effacement, art. 17). La fiche RESTE : ses tickets, leur
+  // historique et le journal continuent de se lire, seul le « qui » a disparu.
+  // Renseignée = ne plus jamais présenter cette fiche comme un contact
+  // joignable, et ne pas la proposer au rapprochement par email (l'adresse
+  // stockée est en `.invalid`, donc inatteignable par construction).
+  anonymizedAt DateTime?
 
   tickets Ticket[]
 
@@ -626,6 +642,13 @@ enum AuditAction {
   AGENT_ACCESS_GRANTED // demande d'accès approuvée
   AGENT_ACCESS_DENIED // demande d'accès refusée
   AGENT_PERMISSIONS_UPDATED // rôle, activation ou permissions fines modifiés
+  // Réponses aux droits d'une personne concernée (RGPD). Ce sont les gestes qui
+  // DOIVENT être traçables en priorité : remettre le dossier d'une personne,
+  // effacer son identité ou sa fiche sont exactement ce qu'un contrôle demande
+  // de prouver. Ils sont donc journalisés comme le reste, sans exception.
+  SUBJECT_DATA_EXPORTED // dossier remis à la personne concernée (art. 15 / 20)
+  SUBJECT_ANONYMIZED // identité remplacée par un pseudonyme (art. 17)
+  SUBJECT_DELETED // fiche supprimée
 }
 
 // Une ligne du journal, en AJOUT SEUL — un journal réinscriptible ne prouve rien.
@@ -637,6 +660,13 @@ enum AuditAction {
 // commentaire. Les seules exceptions, et leurs raisons, sont documentées dans le
 // SQL de cette migration : le dénouage d'un lien par `onDelete: SetNull`, et une
 // purge de conservation qui doit se déclarer explicitement.
+//
+// La migration `20260807120100_privacy_subject_rights` en ouvre une troisième,
+// aussi étroite : la PSEUDONYMISATION d'une personne concernée, qui remplace son
+// identité (`actorName`, `actorEmail`, et ses mentions dans `summary`/`changes`)
+// par une forme anonyme sans toucher au reste. C'est ce qui permet d'honorer un
+// droit à l'effacement tout en conservant le journal : ce qui a été fait, quand
+// et sur quel ticket reste immuable, y compris sous ce drapeau.
 //
 // Conséquence à connaître avant d'écrire du code sur cette table : un
 // `prisma.auditLog.update()` ou `.delete()` lèvera une erreur Postgres. C'est

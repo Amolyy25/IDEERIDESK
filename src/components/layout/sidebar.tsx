@@ -7,6 +7,7 @@ import {
   BookOpen,
   ScrollText,
   ShieldCheck,
+  ShieldUser,
   Settings,
   Ticket,
   Users,
@@ -36,6 +37,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/agents": UsersRound,
   "/knowledge-base": BookOpen,
   "/audit": ScrollText,
+  "/privacy": ShieldUser,
 };
 
 const SETTINGS_ITEM = { label: "Paramètres", href: "/settings" };
@@ -142,7 +144,9 @@ export function Sidebar({
   const showSettings = canAny(permissions, SETTINGS_PERMISSIONS);
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    // `app-sidebar` porte le fond : la couleur opaque et les voiles de dégradé
+    // qui la sculptent sont décrits ensemble dans globals.css.
+    <aside className="app-sidebar flex h-full w-60 flex-col border-r border-sidebar-border text-sidebar-foreground">
       <div className="flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
         {/* Le logo est un JPEG sur fond blanc : le cadrage circulaire épouse le
             rond de la marque et fait disparaître les coins blancs. */}

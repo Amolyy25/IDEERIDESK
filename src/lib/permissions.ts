@@ -52,6 +52,7 @@ export const PERMISSION_KEYS = [
   "kb.manage",
   // Supervision
   "audit.view",
+  "privacy.manage",
   // Paramètres
   "settings.tickets",
   "settings.email",
@@ -237,6 +238,17 @@ export const PERMISSIONS: Record<PermissionKey, PermissionMeta> = {
     group: "supervision",
     denial: "Vous n'avez pas accès au journal d'audit.",
     sensitive: true,
+  },
+  "privacy.manage": {
+    label: "Répondre aux demandes RGPD",
+    description:
+      "Exporter le dossier complet d'une personne, effacer son identité ou supprimer sa fiche. C'est le geste le plus lourd de l'application : il extrait en un fichier tout ce qu'on sait d'un client ou d'un collègue, et l'effacement ne se défait pas.",
+    group: "supervision",
+    denial: "Vous n'avez pas la permission de traiter les demandes RGPD.",
+    sensitive: true,
+    // Sans le journal, l'écran ne peut pas dire honnêtement ce qui subsistera
+    // après un effacement — et le dossier exporté contient le journal.
+    requires: "audit.view",
   },
 
   "settings.tickets": {

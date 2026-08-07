@@ -51,7 +51,15 @@ export const NAV_GROUPS: NavGroup[] = [
     // l'outil de conformité deviendrait un outil de surveillance entre collègues
     // — d'où une permission distincte, marquée sensible dans le registre.
     label: "Supervision",
-    items: [{ label: "Journal d'audit", href: "/audit", permission: "audit.view" }],
+    items: [
+      { label: "Journal d'audit", href: "/audit", permission: "audit.view" },
+      // Volontairement une entrée à part et non un onglet du journal : on n'y
+      // vient pas pour lire mais pour répondre à une demande nominative
+      // (« exportez-moi mes données », « effacez-moi »), et les deux gestes
+      // d'effacement sont irréversibles. Les mélanger à un écran de consultation
+      // ferait cliquer par ricochet.
+      { label: "Données personnelles", href: "/privacy", permission: "privacy.manage" },
+    ],
   },
 ];
 

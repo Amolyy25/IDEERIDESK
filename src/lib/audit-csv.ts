@@ -1,4 +1,9 @@
-import { auditActionFamily, auditActionLabel, parseAuditChanges } from "@/lib/audit-actions";
+import {
+  auditActionFamily,
+  auditActionLabel,
+  parseAuditChanges,
+  type AuditFamily,
+} from "@/lib/audit-actions";
 import type { AuditLogEntry } from "@/lib/audit-query";
 
 /**
@@ -35,11 +40,12 @@ export const AUDIT_CSV_HEADERS = [
   "Détail",
 ] as const;
 
-const FAMILY_LABELS = {
+const FAMILY_LABELS: Record<AuditFamily, string> = {
   CONSULTATION: "Consultation",
   REPONSE: "Réponse",
   MODIFICATION: "Modification",
-} as const;
+  CONFORMITE: "Conformité",
+};
 
 const readableDate = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",

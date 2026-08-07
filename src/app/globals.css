@@ -87,6 +87,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.795 0.173 87.5);
+  /* Voiles colorés de la barre latérale (voir `.app-sidebar`). Deux dilutions
+     de la couleur de marque, écrites en toutes lettres comme les jetons
+     ci-dessus. */
+  --sidebar-glow: oklch(0.795 0.173 87.5 / 13%);
+  --sidebar-glow-soft: oklch(0.795 0.173 87.5 / 7%);
 }
 
 .dark {
@@ -121,6 +126,59 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.795 0.173 87.5);
+  --sidebar-glow: oklch(0.795 0.173 87.5 / 13%);
+  --sidebar-glow-soft: oklch(0.795 0.173 87.5 / 7%);
+}
+
+/* ---------------------------------------------------------------------------
+   Barre latérale : dégradés de profondeur
+   ---------------------------------------------------------------------------
+   Une barre de navigation d'un seul aplat très sombre paraît plate à côté du
+   contenu, qui est clair et porte des cartes ombrées. Trois voiles la sculptent
+   sans la colorer :
+
+     1. un halo chaud dans le coin haut-gauche, ancré derrière le logo — c'est
+        le seul rappel de la couleur de marque sur toute la hauteur ;
+     2. une remontée de lumière en haut, qui donne au bandeau du logo l'air
+        d'être éclairé par le dessus ;
+     3. un retour ténu de la même teinte chaude en pied, qui referme la barre
+        sous le bloc du compte connecté.
+
+   Les deux dilutions de la couleur de marque passent par les jetons
+   `--sidebar-glow` / `--sidebar-glow-soft`, et NON par un
+   `color-mix(… var(--sidebar-primary) …)` : Lightning CSS ne sait pas calculer
+   un `color-mix` dont un terme est une variable, il en émet donc une version de
+   repli où le mélange disparaît — le halo retombe sur la couleur de marque à
+   PLEINE opacité, un aplat jaune vif là où on voulait un voile à 13 %. Un jeton
+   en `oklch(… / 13%)` se replie, lui, sur la bonne couleur.
+
+   La couleur de fond opaque reste posée séparément : les dégradés sont des
+   voiles translucides, ils ne doivent jamais laisser transparaître la page.
+
+   Une classe plutôt qu'un empilement d'utilitaires Tailwind sur le composant :
+   trois `background-image` superposés avec des positions et des arrêts précis
+   deviennent illisibles en valeurs arbitraires. */
+
+.app-sidebar {
+  background-color: var(--sidebar);
+  background-image:
+    radial-gradient(130% 55% at 0% -8%, var(--sidebar-glow) 0%, transparent 62%),
+    linear-gradient(
+      to bottom,
+      oklch(1 0 0 / 6%) 0%,
+      oklch(1 0 0 / 2%) 22%,
+      transparent 48%
+    ),
+    linear-gradient(to top, var(--sidebar-glow-soft) 0%, transparent 30%);
+}
+
+/* Demande explicite de contraste renforcé : les voiles retombent à plat. Ils
+   servent la profondeur, jamais la lisibilité — rien n'est perdu à les retirer,
+   et le texte gagne un fond parfaitement uniforme. */
+@media (prefers-contrast: more) {
+  .app-sidebar {
+    background-image: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

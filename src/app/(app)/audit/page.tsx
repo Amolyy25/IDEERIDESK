@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { requirePageAccess } from "@/lib/require-page-access";
+import { can } from "@/lib/permissions";
 import { getAuditLog, getAuditActors } from "@/lib/actions/audit-log";
 import { AuditToolbar } from "@/components/audit/audit-toolbar";
 import { AuditTable } from "@/components/audit/audit-table";
@@ -26,7 +28,7 @@ type SearchParams = Promise<{
 export default async function AuditPage({ searchParams }: { searchParams: SearchParams }) {
   // La donnée est protégée par « audit.view » dans les actions — pas par cette
   // garde, qui ne protège que l'affichage.
-  const [, params] = await Promise.all([requirePageAccess("audit.view"), searchParams]);
+  const [session, params] = await Promise.all([requirePageAccess("audit.view"), searchParams]);
 
   const page = Number(params.page ?? "1") || 1;
 
@@ -54,6 +56,18 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
           en écriture seule : aucune entrée ne peut être corrigée ni effacée depuis
           l&apos;application.
         </p>
+        {/* Le journal est l'écran où l'on se trouve quand la question devient
+            « et si cette personne demande l'effacement de ses données ? ». Le
+            renvoi est posé ici pour cette raison, et seulement pour qui peut
+            réellement traiter la demande. */}
+        {can(session.user.permissions, "privacy.manage") && (
+          <p className="pt-1 text-sm text-muted-foreground">
+            Une demande d&apos;accès ou d&apos;effacement à traiter ?{" "}
+            <Link href="/privacy" className="text-primary underline">
+              Données personnelles
+            </Link>
+          </p>
+        )}
       </div>
 
       {/* Même cadre que la file de tickets : filtres, données et pagination dans

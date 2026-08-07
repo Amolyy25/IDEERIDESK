@@ -18,12 +18,17 @@ import type { AuditAction } from "@/generated/prisma/client";
  * pose un audit : qui a seulement REGARDÉ un dossier, qui a PARLÉ au client,
  * qui a TOUCHÉ à la donnée.
  */
-export type AuditFamily = "CONSULTATION" | "REPONSE" | "MODIFICATION";
+export type AuditFamily = "CONSULTATION" | "REPONSE" | "MODIFICATION" | "CONFORMITE";
 
 export const AUDIT_FAMILIES: { value: AuditFamily; label: string }[] = [
   { value: "CONSULTATION", label: "Consultation" },
   { value: "REPONSE", label: "Réponse" },
   { value: "MODIFICATION", label: "Modification" },
+  // Quatrième nature, ajoutée avec les droits d'une personne concernée : ces
+  // gestes ne portent pas sur un ticket mais sur une personne, et ce sont les
+  // seuls qu'on vienne chercher en bloc (« qu'a-t-on fait des demandes RGPD de
+  // l'année ? »). Rangés parmi les modifications, ils seraient introuvables.
+  { value: "CONFORMITE", label: "Conformité" },
 ];
 
 type AuditActionMeta = {
@@ -48,6 +53,9 @@ export const AUDIT_ACTIONS: Record<AuditAction, AuditActionMeta> = {
   AGENT_ACCESS_GRANTED: { label: "Accès approuvé", family: "MODIFICATION" },
   AGENT_ACCESS_DENIED: { label: "Accès refusé", family: "MODIFICATION" },
   AGENT_PERMISSIONS_UPDATED: { label: "Permissions modifiées", family: "MODIFICATION" },
+  SUBJECT_DATA_EXPORTED: { label: "Dossier personnel exporté", family: "CONFORMITE" },
+  SUBJECT_ANONYMIZED: { label: "Personne anonymisée", family: "CONFORMITE" },
+  SUBJECT_DELETED: { label: "Fiche supprimée", family: "CONFORMITE" },
 };
 
 /** Actions listées dans l'ordre du registre, pour le filtre déroulant. */

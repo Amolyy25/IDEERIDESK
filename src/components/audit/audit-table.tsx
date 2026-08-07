@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Eye, PencilLine, MessageSquare } from "lucide-react";
+import { ArrowRight, Eye, PencilLine, MessageSquare, ShieldUser } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -51,6 +51,14 @@ const FAMILY_STYLE: Record<
     icon: PencilLine,
     badge: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
     label: "Modification",
+  },
+  // Le violet tranche avec les trois autres, et c'est voulu : ces lignes sont
+  // rares et se cherchent (une demande RGPD par an, peut-être), elles doivent
+  // sauter aux yeux dans une page qui en compte cinquante.
+  CONFORMITE: {
+    icon: ShieldUser,
+    badge: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    label: "Conformité",
   },
 };
 

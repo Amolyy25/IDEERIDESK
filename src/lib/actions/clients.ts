@@ -41,7 +41,13 @@ export async function deleteClient(id: string) {
   await requirePermission("clients.delete");
   const ticketCount = await prisma.ticket.count({ where: { clientId: id } });
   if (ticketCount > 0) {
-    throw new Error("Ce client a des tickets associés et ne peut pas être supprimé.");
+    // Refus maintenu ici, et renvoi vers l'écran qui sait quoi en faire : la
+    // suppression d'un contact qui porte des tickets n'est pas un geste de tenue
+    // du répertoire, c'est une réponse à un droit à l'effacement — elle laisse
+    // des tickets sans demandeur et doit s'annoncer comme telle.
+    throw new Error(
+      "Ce client a des tickets associés. Pour répondre à une demande d'effacement, passez par Supervision → Données personnelles : l'anonymisation conserve le dossier support.",
+    );
   }
 
   await prisma.client.delete({ where: { id } });
