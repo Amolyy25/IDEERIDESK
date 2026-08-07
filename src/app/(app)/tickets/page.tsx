@@ -128,6 +128,9 @@ export default async function TicketsPage({
           <TicketsTable
             tickets={tickets}
             priorities={priorities}
+            categories={categories}
+            agents={agents}
+            canEdit={canRespond}
             hasActiveFilters={hasManualFilter}
           />
         </div>

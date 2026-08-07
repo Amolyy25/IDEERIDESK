@@ -6,10 +6,12 @@ import { Merge } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SortableHeader } from "@/components/tickets/sortable-header";
 import { RelativeTime } from "@/components/tickets/relative-time";
+import { InlineAttribute, type InlineOption } from "@/components/tickets/inline-attribute";
+import { updateTicketAttributes } from "@/lib/actions/tickets";
 import { ticketSourceLabels } from "@/lib/ticket-source";
 import { cn, initials } from "@/lib/utils";
 import type { TicketListItem } from "@/lib/actions/tickets";
-import type { TicketPriority } from "@/generated/prisma/client";
+import type { Agent, TicketCategory, TicketPriority } from "@/generated/prisma/client";
 
 /**
  * File de tickets.
@@ -24,11 +26,19 @@ import type { TicketPriority } from "@/generated/prisma/client";
 export function TicketsTable({
   tickets,
   priorities,
+  categories,
+  agents,
+  canEdit,
   hasActiveFilters,
 }: {
   tickets: TicketListItem[];
   /** Priorités configurées : sert à savoir ce qui dépasse la priorité normale. */
   priorities: TicketPriority[];
+  /** Produits et agents assignables : alimentent les menus des deux colonnes. */
+  categories: TicketCategory[];
+  agents: Agent[];
+  /** Permission « tickets.respond » : sans elle, les trois colonnes redeviennent du texte. */
+  canEdit: boolean;
   /** Change le message affiché quand la liste est vide. */
   hasActiveFilters: boolean;
 }) {
@@ -43,6 +53,37 @@ export function TicketsTable({
   if (defaultPriority) {
     normalOrder = defaultPriority.order;
   }
+
+  // Un ENSEMBLE d'identifiants et non une comparaison sur le ticket : la cellule
+  // affiche la priorité choisie avant que le serveur ne l'ait confirmée, moment où
+  // l'on ne connaît que son identifiant. Sans cet ensemble, passer un ticket en
+  // « Urgent » l'aurait laissé en gris jusqu'au rechargement.
+  const elevatedPriorityIds = new Set(
+    priorities.filter((priority) => priority.order > normalOrder).map((priority) => priority.id),
+  );
+
+  // Construites une fois pour toute la file, et non par ligne : trois listes
+  // identiques recréées cinquante fois seraient cinquante fois plus de travail au
+  // rendu, pour le même menu.
+  const priorityOptions: InlineOption[] = priorities.map((priority) => ({
+    value: priority.id,
+    label: priority.name,
+    color: priority.color,
+  }));
+
+  const categoryOptions: InlineOption[] = [
+    { value: null, label: "Aucun produit" },
+    ...categories.map((category) => ({
+      value: category.id,
+      label: category.name,
+      color: category.color,
+    })),
+  ];
+
+  const assigneeOptions: InlineOption[] = [
+    { value: null, label: "Non assigné" },
+    ...agents.map((agent) => ({ value: agent.id, label: agent.name })),
+  ];
 
   return (
     <table className="w-full text-sm">
@@ -136,16 +177,47 @@ export function TicketsTable({
             </Td>
 
             <Td>
-              <PriorityLabel
-                name={ticket.priority.name}
-                isElevated={ticket.priority.order > normalOrder}
+              <InlineAttribute
+                ariaLabel={`Priorité du ticket #${ticket.number}`}
+                value={ticket.priorityId}
+                options={priorityOptions}
+                disabled={!canEdit}
+                onChange={(next) =>
+                  // `next` ne peut pas être nul ici : la liste des priorités n'a pas
+                  // d'entrée « aucune », un ticket en porte toujours une.
+                  updateTicketAttributes(ticket.id, { priorityId: next ?? ticket.priorityId })
+                }
+                renderValue={(option) => (
+                  <PriorityLabel
+                    name={option?.label ?? ticket.priority.name}
+                    isElevated={elevatedPriorityIds.has(option?.value ?? ticket.priorityId)}
+                  />
+                )}
               />
             </Td>
 
-            <Td className="truncate text-muted-foreground">{categoryLabel(ticket)}</Td>
+            <Td className="truncate text-muted-foreground">
+              <InlineAttribute
+                ariaLabel={`Produit concerné du ticket #${ticket.number}`}
+                value={ticket.categoryId}
+                options={categoryOptions}
+                disabled={!canEdit}
+                onChange={(next) => updateTicketAttributes(ticket.id, { categoryId: next })}
+                renderValue={(option) => (
+                  <span className="truncate">{option?.value ? option.label : "—"}</span>
+                )}
+              />
+            </Td>
 
             <Td>
-              <Assignee name={ticket.assignee?.name ?? null} />
+              <InlineAttribute
+                ariaLabel={`Agent assigné au ticket #${ticket.number}`}
+                value={ticket.assigneeId}
+                options={assigneeOptions}
+                disabled={!canEdit}
+                onChange={(next) => updateTicketAttributes(ticket.id, { assigneeId: next })}
+                renderValue={(option) => <Assignee name={option?.value ? option.label : null} />}
+              />
             </Td>
 
             <Td className="truncate text-muted-foreground">{ticketSourceLabels[ticket.source]}</Td>
@@ -158,11 +230,6 @@ export function TicketsTable({
       </tbody>
     </table>
   );
-}
-
-function categoryLabel(ticket: TicketListItem) {
-  if (ticket.category) return ticket.category.name;
-  return "—";
 }
 
 function PriorityLabel({ name, isElevated }: { name: string; isElevated: boolean }) {
