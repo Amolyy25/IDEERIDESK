@@ -20,7 +20,12 @@ export default async function ClientsPage() {
         {can(session.user.permissions, "clients.manage") && <NewClientDialog />}
       </div>
 
-      <ClientsTable clients={clients} canDelete={can(session.user.permissions, "clients.delete")} />
+      <ClientsTable
+        clients={clients}
+        canDelete={can(session.user.permissions, "clients.delete")}
+        canViewTickets={can(session.user.permissions, "tickets.view")}
+        canExportPersonalData={can(session.user.permissions, "privacy.manage")}
+      />
     </div>
   );
 }
