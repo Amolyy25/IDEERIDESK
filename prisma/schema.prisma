@@ -79,6 +79,8 @@ model Agent {
 
   auditEntries AuditLog[]
 
+  presences TicketPresence[]
+
   // Admin ayant approuvé/refusé ce compte (null pour les comptes créés avant
   // le workflow d'approbation).
   approvalDecidedBy   Agent?  @relation("AgentApprovalDecidedBy", fields: [approvalDecidedById], references: [id])
@@ -446,6 +448,8 @@ model Ticket {
   duplicateSuggestions   TicketDuplicateSuggestion[] @relation("DuplicateSuggestionTicket")
   duplicateCandidateFor  TicketDuplicateSuggestion[] @relation("DuplicateSuggestionCandidate")
 
+  presences TicketPresence[]
+
   @@index([mergedIntoId])
   @@index([formSourceId])
   @@index([statusId])
@@ -572,6 +576,56 @@ model Message {
   @@index([ticketId])
   @@index([approvalStatus])
   @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Présence sur une fiche ticket (détection de collision)
+// ---------------------------------------------------------------------------
+
+// Qui a ce ticket ouvert en ce moment, et qui y rédige une réponse.
+//
+// Le problème que ça résout : deux agents ouvrent le même dossier, rédigent
+// chacun leur réponse, et le client en reçoit deux — parfois contradictoires. Rien
+// dans l'application ne le laissait voir, chaque onglet ignorant tout des autres.
+//
+// Pourquoi une TABLE et pas un état en mémoire du serveur : l'application peut
+// tourner en plusieurs instances (et redémarre à chaque déploiement), or une
+// présence gardée en mémoire serait invisible d'une instance à l'autre et perdue
+// à chaque redémarrage. La base est le seul endroit que tous les onglets
+// partagent. Il n'y a pas de canal temps réel dans ce projet — voir
+// `use-background-sync.ts` — la présence est donc relevée par battements
+// réguliers, comme le reste de l'arrière-plan.
+//
+// DEUX HORODATAGES et aucun booléen, c'est le point important : un `isComposing`
+// laissé à `true` par un onglet fermé brutalement afficherait « X rédige une
+// réponse » indéfiniment, et ce faux positif est exactement ce qui décrédibilise
+// ce genre d'indicateur. Une présence n'est vraie que si elle est RÉCENTE ; les
+// lignes périmées sont supprimées au passage des battements suivants.
+model TicketPresence {
+  id String @id @default(cuid())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId String
+
+  /// Dernier battement reçu : l'agent avait la fiche ouverte à cet instant.
+  seenAt DateTime @default(now())
+
+  /// Dernier battement pendant lequel son champ de réponse n'était pas vide.
+  /// Nul dès qu'il vide son brouillon — c'est le battement qui l'efface, pas
+  /// l'expiration, pour que l'alerte disparaisse vite chez le collègue.
+  composingAt DateTime?
+
+  // Une ligne par agent et par ticket : c'est un état courant, pas un historique.
+  // L'historique des consultations, lui, est déjà tenu par le journal d'audit.
+  @@unique([ticketId, agentId])
+  @@index([ticketId, seenAt])
+  // Le ménage porte sur `seenAt` seul (toutes fiches confondues) : sans cet
+  // index, il balaierait la table entière à chaque battement.
+  @@index([seenAt])
+  @@map("ticket_presences")
 }
 
 // ---------------------------------------------------------------------------

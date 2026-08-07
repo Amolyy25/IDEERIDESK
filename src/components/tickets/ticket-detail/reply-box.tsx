@@ -10,6 +10,8 @@ import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn, plural } from "@/lib/utils";
 import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-textarea";
 import { CannedResponsePicker } from "@/components/tickets/ticket-detail/canned-response-picker";
+import { PresenceStrip } from "@/components/tickets/ticket-detail/presence-strip";
+import { useTicketPresence } from "@/components/tickets/ticket-detail/use-ticket-presence";
 import type { MentionableAgent } from "@/lib/mentions";
 import type { TicketCannedResponses } from "@/lib/canned-responses";
 
@@ -91,6 +93,21 @@ export function ReplyBox({
 
   const isEmpty = !content.trim();
   const status = metaLine({ isPrivate, currentAgentName, requiresApproval });
+
+  /**
+   * Qui d'autre est sur ce dossier en ce moment.
+   *
+   * « Rédiger » se mesure sur un brouillon NON VIDE et non sur le fait d'avoir le
+   * champ sous les yeux : c'est la présence d'un texte en cours qui annonce une
+   * réponse imminente, pas le curseur. Une note interne compte aussi — deux
+   * agents qui écrivent en même temps ont de toute façon à se parler.
+   *
+   * Le champ pré-rempli par une réponse type ne déclenche rien tant qu'il n'a pas
+   * été touché : annoncer « il rédige » à l'ouverture d'une fiche, sans que
+   * personne n'ait tapé quoi que ce soit, discréditerait l'indicateur.
+   */
+  const composing = !isEmpty && content !== autoInserted?.body;
+  const others = useTicketPresence({ ticketId, composing });
 
   // L'avion part, puis revient se poser. Deux étapes enchaînées par ce seul
   // effet, pour que l'état ne puisse pas rester bloqué « en vol ».
@@ -213,8 +230,13 @@ export function ReplyBox({
 
   if (!canRespond) {
     return (
-      <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-        Accès en lecture seule — vous ne pouvez pas répondre à ce ticket.
+      <div className="space-y-2">
+        {/* Montrée même en lecture seule : savoir qu'un collègue rédige explique
+            pourquoi il ne faut pas aller le chercher pour ce dossier. */}
+        <PresenceStrip others={others} className="rounded-lg border" />
+        <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          Accès en lecture seule — vous ne pouvez pas répondre à ce ticket.
+        </div>
       </div>
     );
   }
@@ -248,6 +270,10 @@ export function ReplyBox({
           {recipientLine({ isPrivate, clientEmail, mergedRecipientCount })}
         </p>
       </div>
+
+      {/* Entre l'en-tête et le champ : le dernier endroit que l'œil traverse
+          avant de se poser sur le texte à écrire. */}
+      <PresenceStrip others={others} className="border-b" />
 
       <div className="space-y-2 p-3">
         {/* Pourquoi il y a déjà du texte dans le champ. L'avis disparaît à la
