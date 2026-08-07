@@ -18,30 +18,36 @@ function formatSize(bytes: number) {
 const SCAN_DISPLAY = {
   CLEAN: {
     Icon: ShieldCheck,
-    label: "Analysé par l'antivirus",
-    className: "text-emerald-600 dark:text-emerald-400",
+    label: "Vérifié par l'antivirus",
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
   },
   PENDING: {
     Icon: ShieldQuestion,
-    label: "Analyse antivirus en attente",
-    className: "text-amber-600 dark:text-amber-400",
+    label: "Analyse en attente",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200",
   },
   INFECTED: {
     Icon: ShieldAlert,
-    label: "Mis en quarantaine par l'antivirus",
-    className: "text-destructive",
+    label: "Mis en quarantaine",
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
   },
 } as const;
 
 function ScanBadge({ status }: { status: TicketAttachment["scanStatus"] }) {
   const { Icon, label, className } = SCAN_DISPLAY[status];
   return (
-    // Le libellé n'est pas seulement dans `title` : une infobulle native est
-    // hors de portée au clavier et sur mobile. `sr-only` le rend disponible aux
-    // lecteurs d'écran, l'icône seule ne portant aucun sens.
-    <span className={cn("flex items-center", className)} title={label}>
-      <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span className="sr-only">{label}</span>
+    // Libellé écrit en clair et non porté par une infobulle : `title` est hors
+    // de portée au clavier et sur mobile, et une icône seule ne dit pas si le
+    // fichier est vérifié ou simplement pas encore analysé — c'est précisément
+    // la distinction que l'agent doit pouvoir lire d'un coup d'œil.
+    <span
+      className={cn(
+        "flex items-center gap-1 rounded-full border px-1.5 py-0.5 whitespace-nowrap",
+        className,
+      )}
+    >
+      <Icon className="size-3 shrink-0" aria-hidden />
+      {label}
     </span>
   );
 }
