@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { pingAntivirus } from "@/lib/antivirus";
 import { rescanPendingFiles } from "@/lib/antivirus-rescan";
 import { hasValidCronSecret } from "@/lib/cron-secret";
 
@@ -20,6 +21,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
   }
 
+  // L'état du scanner est rapporté même quand il n'y a rien à analyser. Sans
+  // lui, une file vide et un scanner mort rendent tous les deux `scanned: 0` :
+  // une fois l'arriéré écoulé, c'est l'état permanent, et on ne saurait plus
+  // distinguer « tout est à jour » de « plus rien n'est vérifié depuis des
+  // semaines ». C'est le champ sur lequel brancher une alerte.
+  const antivirus = await pingAntivirus();
   const report = await rescanPendingFiles();
-  return NextResponse.json(report);
+
+  return NextResponse.json({ antivirus, ...report });
 }
