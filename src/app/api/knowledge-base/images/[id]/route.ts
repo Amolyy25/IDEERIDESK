@@ -40,6 +40,12 @@ export async function GET(
     return NextResponse.json({ error: "Image introuvable." }, { status: 404 });
   }
 
+  // Rattrapée par un rescan : octets déjà purgés. Même réponse qu'une image
+  // absente, cette route étant ouverte aux visiteurs anonymes.
+  if (image.scanStatus === "INFECTED") {
+    return NextResponse.json({ error: "Image introuvable." }, { status: 404 });
+  }
+
   const isPublic = await isPubliclyReferenced(id);
   if (!isPublic) {
     const session = await auth();

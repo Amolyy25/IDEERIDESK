@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma, TicketSource } from "@/generated/prisma/client";
-import { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
+import {
+  ALLOWED_ATTACHMENT_TYPES,
+  ATTACHMENT_SIZE_ERROR,
+  ATTACHMENT_TYPE_ERROR,
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_SIZE,
+} from "@/lib/attachment-rules";
+import { inspectUploadedFile, type ScanColumns } from "@/lib/upload-inspection";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 
 export { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
@@ -40,6 +47,8 @@ export type WidgetAttachmentInput = {
   mimeType: string;
   size: number;
   buffer: Uint8Array<ArrayBuffer>;
+  /** Verdict de `inspectUploadedFile`, reporté tel quel sur la ligne créée. */
+  scan: ScanColumns;
 };
 
 function isEmptyValue(value: unknown) {
@@ -133,6 +142,7 @@ export async function createWidgetTicket(
           mimeType: file.mimeType,
           size: file.size,
           data: file.buffer,
+          ...file.scan,
         })),
       },
     },
@@ -199,12 +209,30 @@ export async function parseWidgetFormRequest(formData: FormData): Promise<Parsed
     };
   }
 
+  // Seul chemin de dépôt de fichier ouvert à des tiers non authentifiés : c'est
+  // ici que le contrôle de contenu compte le plus. `inspectUploadedFile` refuse
+  // ce qui n'est pas réellement une image et ce que le scanner reconnaît comme
+  // malveillant ; un scanner injoignable laisse passer en « à rescanner »
+  // plutôt que de bloquer la création de tickets.
   const attachments: WidgetAttachmentInput[] = [];
   for (const file of files) {
-    const error = validateAttachmentFile(file);
-    if (error) return { ok: false, error, status: 400 };
-    const buffer = new Uint8Array(await file.arrayBuffer()).slice();
-    attachments.push({ filename: file.name, mimeType: file.type, size: file.size, buffer });
+    const inspection = await inspectUploadedFile(file, {
+      allowedTypes: ALLOWED_ATTACHMENT_TYPES,
+      maxSize: MAX_ATTACHMENT_SIZE,
+      typeError: ATTACHMENT_TYPE_ERROR,
+      sizeError: ATTACHMENT_SIZE_ERROR,
+      origin: "ticket-public",
+    });
+    if (!inspection.ok) {
+      return { ok: false, error: inspection.error, status: inspection.status };
+    }
+    attachments.push({
+      filename: file.name,
+      mimeType: file.type,
+      size: inspection.buffer.byteLength,
+      buffer: inspection.buffer,
+      scan: inspection.scan,
+    });
   }
 
   return { ok: true, data: parsed.data, attachments };

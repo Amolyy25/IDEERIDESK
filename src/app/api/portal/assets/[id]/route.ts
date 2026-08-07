@@ -14,6 +14,13 @@ export async function GET(
     return NextResponse.json({ error: "Visuel introuvable." }, { status: 404 });
   }
 
+  // Rattrapé par un rescan : octets déjà purgés. Un 404 plutôt qu'un message —
+  // la route est publique, et le visiteur d'un portail n'a rien à faire de la
+  // raison pour laquelle un logo ne s'affiche pas.
+  if (asset.scanStatus === "INFECTED") {
+    return NextResponse.json({ error: "Visuel introuvable." }, { status: 404 });
+  }
+
   return new NextResponse(new Uint8Array(asset.data), {
     headers: {
       "Content-Type": asset.mimeType,

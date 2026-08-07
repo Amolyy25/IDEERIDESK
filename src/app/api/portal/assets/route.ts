@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
+import { inspectUploadedFile } from "@/lib/upload-inspection";
 import { revalidatePath } from "next/cache";
 
 export const MAX_PORTAL_ASSET_SIZE = 1024 * 1024; // 1 Mo
@@ -37,28 +38,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Fichier manquant." }, { status: 400 });
   }
 
-  const allowed = kind === "logo" ? ALLOWED_LOGO_TYPES : ALLOWED_FAVICON_TYPES;
-  if (!allowed.includes(file.type)) {
-    return NextResponse.json(
-      {
-        error:
-          kind === "logo"
-            ? "Format non supporté. Utilisez un PNG, JPEG ou WEBP."
-            : "Format non supporté. Utilisez un PNG, ICO ou WEBP.",
-      },
-      { status: 400 },
-    );
-  }
-  if (file.size > MAX_PORTAL_ASSET_SIZE) {
-    return NextResponse.json({ error: "Fichier trop volumineux (1 Mo maximum)." }, { status: 400 });
+  const inspection = await inspectUploadedFile(file, {
+    allowedTypes: kind === "logo" ? ALLOWED_LOGO_TYPES : ALLOWED_FAVICON_TYPES,
+    maxSize: MAX_PORTAL_ASSET_SIZE,
+    typeError:
+      kind === "logo"
+        ? "Format non supporté. Utilisez un PNG, JPEG ou WEBP."
+        : "Format non supporté. Utilisez un PNG, ICO ou WEBP.",
+    sizeError: "Fichier trop volumineux (1 Mo maximum).",
+    origin: `portal-${kind}`,
+  });
+  if (!inspection.ok) {
+    return NextResponse.json({ error: inspection.error }, { status: inspection.status });
   }
 
   const asset = await prisma.portalAsset.create({
     data: {
       filename: file.name,
       mimeType: file.type,
-      size: file.size,
-      data: new Uint8Array(await file.arrayBuffer()).slice(),
+      size: inspection.buffer.byteLength,
+      data: inspection.buffer,
+      ...inspection.scan,
     },
   });
 

@@ -38,6 +38,16 @@ export async function GET(
     return NextResponse.json({ error: "Fichier introuvable." }, { status: 404 });
   }
 
+  // Fichier rattrapé par un rescan : ses octets ont déjà été purgés, mais on
+  // répond explicitement plutôt que de servir un fichier vide — l'agent doit
+  // comprendre pourquoi la pièce jointe ne s'ouvre pas.
+  if (attachment.scanStatus === "INFECTED") {
+    return NextResponse.json(
+      { error: "Ce fichier a été mis en quarantaine par l'analyse antivirus." },
+      { status: 403 },
+    );
+  }
+
   // Seules les images de la liste blanche s'affichent dans l'onglet ; tout le
   // reste est téléchargé, jamais interprété par le navigateur.
   const isSafeInline = ALLOWED_ATTACHMENT_TYPES.includes(attachment.mimeType);

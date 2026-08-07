@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
-import { validateAttachmentFile } from "@/lib/attachment-rules";
+import {
+  ALLOWED_ATTACHMENT_TYPES,
+  ATTACHMENT_SIZE_ERROR,
+  ATTACHMENT_TYPE_ERROR,
+  MAX_ATTACHMENT_SIZE,
+} from "@/lib/attachment-rules";
+import { inspectUploadedFile } from "@/lib/upload-inspection";
 
 export async function POST(request: NextRequest) {
   // Dépôt de fichier en base : réservé aux agents habilités à rédiger, pas à
@@ -18,18 +24,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Fichier manquant." }, { status: 400 });
   }
 
-  const error = validateAttachmentFile(file);
-  if (error) {
-    return NextResponse.json({ error }, { status: 400 });
+  const inspection = await inspectUploadedFile(file, {
+    allowedTypes: ALLOWED_ATTACHMENT_TYPES,
+    maxSize: MAX_ATTACHMENT_SIZE,
+    typeError: ATTACHMENT_TYPE_ERROR,
+    sizeError: ATTACHMENT_SIZE_ERROR,
+    origin: "kb-image",
+  });
+  if (!inspection.ok) {
+    return NextResponse.json({ error: inspection.error }, { status: inspection.status });
   }
 
-  const buffer = new Uint8Array(await file.arrayBuffer()).slice();
   const image = await prisma.knowledgeArticleImage.create({
     data: {
       filename: file.name,
       mimeType: file.type,
-      size: file.size,
-      data: buffer,
+      size: inspection.buffer.byteLength,
+      data: inspection.buffer,
+      ...inspection.scan,
     },
   });
 

@@ -508,6 +508,25 @@ model TicketDuplicateSuggestion {
   @@map("ticket_duplicate_suggestions")
 }
 
+// État de l'analyse antivirus d'un fichier stocké (voir `src/lib/antivirus.ts`).
+//
+// PENDING est la valeur par défaut parce qu'un fichier entre en base même quand
+// le scanner est injoignable : refuser le téléversement ferait tomber la
+// création de tickets du portail public à chaque redémarrage du démon. La
+// contrepartie est que PENDING doit être repris — c'est le rôle de
+// /api/cron/antivirus.
+//
+// INFECTED n'est jamais posé à l'entrée : à l'entrée, un fichier reconnu
+// malveillant est refusé et n'est pas stocké. Ce statut ne peut donc venir que
+// d'un rescan, quand une signature publiée après coup rattrape un fichier déjà
+// en base. Les octets sont alors purgés (voir `antivirus-rescan.ts`) : la ligne
+// ne survit que comme trace, jamais comme charge utile.
+enum FileScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+}
+
 model Attachment {
   id        String   @id @default(cuid())
   filename  String
@@ -515,6 +534,10 @@ model Attachment {
   size      Int
   data      Bytes
   createdAt DateTime @default(now())
+
+  scanStatus    FileScanStatus @default(PENDING)
+  scanSignature String?
+  scannedAt     DateTime?
 
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   ticketId String
@@ -528,6 +551,10 @@ model Attachment {
 
   @@index([ticketId])
   @@index([messageId])
+  // Lecture du cron de rescan : « quels fichiers restent à analyser ? », toutes
+  // fiches confondues. Sans cet index il balaierait la table entière, qui porte
+  // les octets des pièces jointes.
+  @@index([scanStatus])
   @@map("attachments")
 }
 
@@ -965,6 +992,11 @@ model PortalAsset {
   data      Bytes
   createdAt DateTime @default(now())
 
+  scanStatus    FileScanStatus @default(PENDING)
+  scanSignature String?
+  scannedAt     DateTime?
+
+  @@index([scanStatus])
   @@map("portal_assets")
 }
 
@@ -1042,6 +1074,11 @@ model KnowledgeArticleImage {
   data      Bytes
   createdAt DateTime @default(now())
 
+  scanStatus    FileScanStatus @default(PENDING)
+  scanSignature String?
+  scannedAt     DateTime?
+
+  @@index([scanStatus])
   @@map("knowledge_article_images")
 }
 

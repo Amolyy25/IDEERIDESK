@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
+import { inspectUploadedFile } from "@/lib/upload-inspection";
 
 export const MAX_SOURCE_ASSET_SIZE = 1024 * 1024; // 1 Mo
 
@@ -27,22 +28,25 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Fichier manquant." }, { status: 400 });
   }
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return NextResponse.json(
-      { error: "Format non supporté. Utilisez un PNG, JPEG ou WEBP." },
-      { status: 400 },
-    );
-  }
-  if (file.size > MAX_SOURCE_ASSET_SIZE) {
-    return NextResponse.json({ error: "Fichier trop volumineux (1 Mo maximum)." }, { status: 400 });
+
+  const inspection = await inspectUploadedFile(file, {
+    allowedTypes: ALLOWED_TYPES,
+    maxSize: MAX_SOURCE_ASSET_SIZE,
+    typeError: "Format non supporté. Utilisez un PNG, JPEG ou WEBP.",
+    sizeError: "Fichier trop volumineux (1 Mo maximum).",
+    origin: "source-asset",
+  });
+  if (!inspection.ok) {
+    return NextResponse.json({ error: inspection.error }, { status: inspection.status });
   }
 
   const asset = await prisma.portalAsset.create({
     data: {
       filename: file.name,
       mimeType: file.type,
-      size: file.size,
-      data: new Uint8Array(await file.arrayBuffer()).slice(),
+      size: inspection.buffer.byteLength,
+      data: inspection.buffer,
+      ...inspection.scan,
     },
   });
 

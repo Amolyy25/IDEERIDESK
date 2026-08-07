@@ -2,6 +2,8 @@ import type { gmail_v1 } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { getAuthenticatedGmailClient } from "@/lib/google-oauth";
 import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_SIZE } from "@/lib/attachment-rules";
+import { checkFileSignature } from "@/lib/file-signature";
+import { scanForStorage, type ScanColumns } from "@/lib/upload-inspection";
 import { reopenClosedTicket } from "@/lib/ticket-reopen";
 import { resolveMergeRoot } from "@/lib/ticket-merge";
 import { readInboundTicketCreationEnabled } from "@/lib/email-account";
@@ -198,12 +200,12 @@ async function downloadAttachments(
   gmailMessageId: string,
   parts: AttachmentPart[]
 ) {
-  const attachments: {
+  const attachments: ({
     filename: string;
     mimeType: string;
     size: number;
     data: Uint8Array<ArrayBuffer>;
-  }[] = [];
+  } & ScanColumns)[] = [];
 
   for (const part of parts) {
     let buffer: Buffer;
@@ -228,11 +230,28 @@ async function downloadAttachments(
     if (!ALLOWED_ATTACHMENT_TYPES.includes(part.mimeType)) continue;
     if (buffer.byteLength > MAX_ATTACHMENT_SIZE) continue;
 
+    const bytes = toBytesField(buffer);
+
+    // Le contenu doit être l'image que l'en-tête MIME annonce. Contrairement
+    // aux téléversements, la liste blanche ci-dessus porte sur le `Content-Type`
+    // de la partie MIME, choisi par l'expéditeur : c'est la signature qui
+    // tranche réellement.
+    if (!checkFileSignature(bytes, part.mimeType).ok) continue;
+
+    // Google analyse déjà les pièces jointes de la boîte support, donc ce scan
+    // est une seconde barrière et non la première. Il est conservé parce qu'il
+    // ne coûte rien ici et qu'il couvre ce que le filtre amont laisse passer :
+    // une charge trop récente pour être connue de Google au moment de la
+    // réception, et le jour où la boîte entrante ne sera plus Gmail.
+    const scan = await scanForStorage(bytes, "email-entrant");
+    if (!scan) continue;
+
     attachments.push({
       filename: part.filename,
       mimeType: part.mimeType,
       size: buffer.byteLength,
-      data: toBytesField(buffer),
+      data: bytes,
+      ...scan,
     });
   }
 
