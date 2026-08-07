@@ -176,6 +176,13 @@ export function ReplyBox({
 
       if (!isPrivate) {
         announceReply(result);
+        // Annonce distincte, et non fondue dans le message ci-dessus : le ticket
+        // vient de changer de main sans que l'agent l'ait demandé. Un changement
+        // qu'on n'a pas décidé soi-même doit se voir, sinon il se découvre plus
+        // tard dans la file, sans explication.
+        if (result.selfAssigned) {
+          toast.info("Ticket pris en charge : il vous est maintenant assigné");
+        }
       }
 
       router.refresh();
@@ -477,6 +484,8 @@ type ReplyOutcome = {
   emailSkippedReason: string | null;
   alsoSentTo: number;
   pendingApproval: boolean;
+  /** Le ticket n'était assigné à personne : répondre vient de le confier à l'agent. */
+  selfAssigned: boolean;
 };
 
 /**

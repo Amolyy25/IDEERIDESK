@@ -771,6 +771,36 @@ async function deliverToMergedTickets({
   return delivered;
 }
 
+/**
+ * Le premier agent qui répond à un ticket que personne n'a pris en devient
+ * l'assigné.
+ *
+ * Répondre EST la prise en charge : jusqu'ici un ticket pouvait recevoir trois
+ * réponses de trois agents en restant « non assigné », si bien que la file ne
+ * distinguait plus les dossiers dont personne ne s'occupait de ceux qui étaient
+ * déjà en cours de traitement — et deux agents pouvaient répondre en parallèle
+ * au même client sans le savoir. Le bouton « Prendre en charge » reste utile
+ * pour se réserver un dossier AVANT d'y répondre.
+ *
+ * `updateMany` et non `update`, et c'est tout l'intérêt de cette fonction : la
+ * condition « personne n'est assigné » vit DANS la requête, donc dans l'UPDATE
+ * lui-même. Deux agents qui répondent au même instant à un ticket libre
+ * exécutent deux UPDATE dont un seul trouve encore `assigneeId` à NULL : le
+ * premier arrivé garde le dossier. Un `findUnique` suivi d'un `update` donnerait
+ * au contraire le ticket au DERNIER des deux, en écrasant silencieusement
+ * l'assignation qu'il venait de lire comme nulle.
+ *
+ * Renvoie `true` seulement si c'est bien cet appel qui a pris le dossier — ce qui
+ * conditionne la trace au journal et ce qu'on annonce à l'agent.
+ */
+async function claimOnFirstReply(ticketId: string, agentId: string): Promise<boolean> {
+  const { count } = await prisma.ticket.updateMany({
+    where: { id: ticketId, assigneeId: null },
+    data: { assigneeId: agentId },
+  });
+  return count > 0;
+}
+
 export async function addTicketMessage(
   ticketId: string,
   input: z.infer<typeof addMessageSchema>
@@ -795,6 +825,16 @@ export async function addTicketMessage(
       approvalStatus: needsApproval ? "PENDING" : null,
     },
   });
+  // Seules les réponses publiques prennent le dossier. Une note interne sert
+  // souvent à faire l'inverse — « @Camille c'est pour toi » : s'attribuer le
+  // ticket en la déposant contredirait le geste qu'on est en train de faire.
+  //
+  // Une réponse retenue en attente de validation le prend aussi : elle est
+  // écrite, son auteur travaille bien ce dossier, et c'est lui qui devra le
+  // reprendre si elle est refusée.
+  const selfAssigned =
+    isPublicAgentReply && agentId ? await claimOnFirstReply(ticketId, agentId) : false;
+
   const auditTicket = await prisma.ticket.update({
     where: { id: ticketId },
     data: { updatedAt: new Date() },
@@ -802,6 +842,18 @@ export async function addTicketMessage(
   });
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
+
+  // Avant la trace de la réponse : les deux gestes sont simultanés, mais le
+  // journal se lit dans l'ordre où ils se sont produits — on prend le dossier,
+  // puis on répond.
+  if (selfAssigned) {
+    await recordAudit({
+      session,
+      action: "TICKET_CLAIMED",
+      ticket: auditTicket,
+      summary: "Prise en charge automatique : premier agent à répondre à ce ticket non assigné.",
+    });
+  }
 
   if (!isPublicAgentReply) {
     // Les pings « @Prénom Nom » ne valent que pour une note interne : une
@@ -833,6 +885,8 @@ export async function addTicketMessage(
       alsoSentTo: 0,
       pendingApproval: false,
       mentionedNames,
+      // Toujours faux ici : une note interne ne prend pas le dossier.
+      selfAssigned: false,
     };
   }
 
@@ -849,6 +903,7 @@ export async function addTicketMessage(
       alsoSentTo: 0,
       pendingApproval: true,
       mentionedNames: [] as string[],
+      selfAssigned,
     };
   }
 
@@ -861,7 +916,7 @@ export async function addTicketMessage(
     summary: replySummary(sendResult),
   });
 
-  return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[] };
+  return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[], selfAssigned };
 }
 
 /**
