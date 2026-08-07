@@ -429,8 +429,27 @@ export async function claimTicket(id: string) {
   revalidatePath("/tickets");
 }
 
-export async function closeTicket(id: string) {
+const closeTicketSchema = z.object({
+  /**
+   * Clôture SILENCIEUSE : le ticket se ferme sans qu'aucun email de clôture ne
+   * parte, ni au client, ni aux clients des tickets fusionnés.
+   *
+   * Le cas qui la réclame est courant et n'avait pas de geste : un doublon
+   * involontaire, un test de l'équipe, une demande réglée au téléphone une heure
+   * plus tôt, un dossier ouvert par erreur par un formulaire public. Envoyer
+   * « votre demande est résolue » à quelqu'un qui n'a rien demandé, ou qui a déjà
+   * été servi de vive voix, ne l'informe pas : ça le rappelle à un échange dont
+   * il n'attend plus rien.
+   *
+   * Le drapeau passe par le réseau comme le reste : il est donc validé, et non
+   * lu tel quel.
+   */
+  silent: z.boolean().optional(),
+});
+
+export async function closeTicket(id: string, options: z.infer<typeof closeTicketSchema> = {}) {
   const session = await requirePermission("tickets.respond");
+  const { silent = false } = closeTicketSchema.parse(options);
 
   const closeStatus = await prisma.ticketStatus.findFirst({ where: { isCloseDefault: true } });
   if (!closeStatus) {
@@ -452,10 +471,26 @@ export async function closeTicket(id: string) {
   // L'email de clôture est optionnel : sans modèle configuré, le ticket se
   // ferme silencieusement (comportement demandé — pas de spam si l'équipe n'a
   // pas encore rédigé de message de clôture).
-  const template = await prisma.ticketClosureTemplate.findFirst();
+  const template = silent ? null : await prisma.ticketClosureTemplate.findFirst();
   let emailSent = false;
   let emailSkippedReason: string | null = null;
   let alsoSentTo = 0;
+
+  if (silent) {
+    // Note interne, et pas seulement une ligne au journal : c'est dans le fil que
+    // le prochain agent cherchera pourquoi ce dossier est clos sans qu'aucune
+    // réponse n'en soit partie. Sans elle, l'absence d'email se lit comme un
+    // oubli, ou comme une panne d'envoi.
+    await prisma.message.create({
+      data: {
+        ticketId: id,
+        content:
+          "Clôture silencieuse : le ticket a été fermé sans email de clôture, à la demande de l'agent. Le client n'a pas été prévenu.",
+        authorType: "SYSTEM",
+        isPrivate: true,
+      },
+    });
+  }
 
   if (template?.bodyHtml) {
     const { senderName } = await readEmailAccountStatus();
@@ -523,6 +558,12 @@ export async function closeTicket(id: string) {
     ticket,
     summary: [
       `Statut passé à « ${closeStatus.name} ».`,
+      // Le fait le plus important à tracer d'une clôture silencieuse : que
+      // PERSONNE n'a été prévenu, et que c'était voulu. C'est ce qui répond, des
+      // mois plus tard, au client qui affirme n'avoir jamais eu de nouvelles.
+      silent
+        ? "Clôture silencieuse demandée par l'agent : aucun email envoyé, ni au client, ni aux clients des tickets fusionnés."
+        : null,
       emailSent ? "Email de clôture envoyé au client." : null,
       emailSkippedReason ? `Email de clôture non envoyé : ${emailSkippedReason}` : null,
       alsoSentTo > 0
@@ -537,7 +578,7 @@ export async function closeTicket(id: string) {
 
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
-  return { emailSent, emailSkippedReason, alsoSentTo };
+  return { emailSent, emailSkippedReason, alsoSentTo, silent };
 }
 
 export async function deleteTicket(id: string) {

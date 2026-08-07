@@ -4,9 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Lock, Merge, UserPlus } from "lucide-react";
+import { ArrowLeft, BellOff, CheckCircle2, ChevronDown, Lock, Merge, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SourceBadge } from "@/components/tickets/source-badge";
 import { formatDateTime } from "@/lib/format-date";
 import { claimTicket, closeTicket } from "@/lib/actions/tickets";
@@ -66,10 +72,10 @@ export function TicketHeader({
     }
   }
 
-  async function handleClose() {
+  async function handleClose(silent = false) {
     setIsClosing(true);
     try {
-      const result = await closeTicket(ticket.id);
+      const result = await closeTicket(ticket.id, { silent });
       toast.success(closeMessage(result));
       router.refresh();
     } catch (error) {
@@ -141,11 +147,56 @@ export function TicketHeader({
               Fusionner
             </Button>
           )}
+          {/* Bouton scindé : le geste courant reste à un clic, la variante vit
+              dans le menu. L'inverse — un menu pour les deux — aurait fait payer
+              un clic supplémentaire à la clôture normale, qui est la règle, pour
+              rendre accessible l'exception. */}
           {canRespond && !ticket.closedAt && (
-            <Button variant="outline" size="sm" onClick={handleClose} disabled={isClosing}>
-              <CheckCircle2 />
-              {isClosing ? "Clôture…" : "Clore"}
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-r-none"
+                onClick={() => handleClose()}
+                disabled={isClosing}
+              >
+                <CheckCircle2 />
+                {isClosing ? "Clôture…" : "Clore"}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    // `-ml-px` : les deux bordures se superposent au lieu de
+                    // former un trait deux fois plus épais entre les moitiés.
+                    className="-ml-px rounded-l-none px-2"
+                    disabled={isClosing}
+                    aria-label="Autres façons de clore ce ticket"
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  <DropdownMenuItem
+                    className="items-start gap-2 py-2"
+                    onSelect={() => handleClose(true)}
+                  >
+                    <BellOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span className="space-y-0.5">
+                      <span className="block font-medium">Clore sans prévenir le client</span>
+                      {/* Dit en entier : c'est la seule chose qui distingue les
+                          deux gestes, et elle est invisible une fois faite. */}
+                      <span className="block text-xs leading-snug text-muted-foreground">
+                        Aucun email de clôture ne part, ni au client, ni à ceux des tickets
+                        fusionnés. Pour un doublon, un test, ou une demande déjà réglée de vive
+                        voix. La clôture reste inscrite au journal d&apos;audit et dans le fil.
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>
@@ -169,7 +220,11 @@ export function TicketHeader({
  * de clôture part aussi aux clients des doublons, et « email envoyé au client »
  * laisserait croire qu'un seul l'a reçu.
  */
-function closeMessage(result: { emailSent: boolean; alsoSentTo: number }) {
+function closeMessage(result: { emailSent: boolean; alsoSentTo: number; silent: boolean }) {
+  // En premier : quand rien n'est parti, c'est CE fait qu'il faut confirmer. Un
+  // simple « Ticket clos » laisserait douter de ce que le client a reçu.
+  if (result.silent) return "Ticket clos sans prévenir le client";
+
   const extra = result.alsoSentTo;
 
   if (result.emailSent && extra === 0) return "Ticket clos, email envoyé au client";
