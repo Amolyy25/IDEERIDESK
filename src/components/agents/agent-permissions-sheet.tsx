@@ -37,6 +37,9 @@ export type EditableAgent = {
   isActive: boolean;
   requiresApproval: boolean;
   permissions: string[];
+  notifyOnAssignment: boolean;
+  notifyOnNewTicket: boolean;
+  notifyOnSlaWarning: boolean;
 };
 
 type SharedProps = {
@@ -99,6 +102,9 @@ function PermissionsForm({
   const [role, setRole] = useState<AgentRole>(agent.role);
   const [isActive, setIsActive] = useState(agent.isActive);
   const [requiresApproval, setRequiresApproval] = useState(agent.requiresApproval);
+  const [notifyOnAssignment, setNotifyOnAssignment] = useState(agent.notifyOnAssignment);
+  const [notifyOnNewTicket, setNotifyOnNewTicket] = useState(agent.notifyOnNewTicket);
+  const [notifyOnSlaWarning, setNotifyOnSlaWarning] = useState(agent.notifyOnSlaWarning);
   const [granted, setGranted] = useState<PermissionKey[]>(() =>
     normalizePermissions(agent.permissions),
   );
@@ -146,6 +152,9 @@ function PermissionsForm({
           isActive,
           requiresApproval,
           permissions: granted,
+          notifyOnAssignment,
+          notifyOnNewTicket,
+          notifyOnSlaWarning,
         });
         // Pas de mise à jour optimiste de la liste : l'action revalide
         // `/agents`, le tableau se redessine avec ce que la base contient
@@ -195,6 +204,50 @@ function PermissionsForm({
             onChange={setRequiresApproval}
             disabled={isPending}
           />
+        </section>
+
+        <Separator />
+
+        {/* Hors du bloc des permissions, et visible aussi pour un
+            administrateur : ce ne sont ni des droits ni des contraintes, mais ce
+            que l'intéressé accepte de recevoir dans sa boîte. Les mentions
+            « @Prénom » n'y figurent pas — citer quelqu'un nommément est une
+            adresse directe, pas une diffusion, et ça ne se coupe pas. */}
+        <section className="space-y-3">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-medium">Emails reçus</h3>
+            <p className="text-xs text-muted-foreground">
+              Ce qui lui est envoyé par email en plus des mentions. La cloche de
+              l&apos;application, elle, continue de tout afficher.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Row
+              id="notify-assignment"
+              label="Ticket qui lui est assigné"
+              description="Quand un collègue lui confie un dossier. Ne part pas quand il se l'attribue lui-même."
+              checked={notifyOnAssignment}
+              onChange={setNotifyOnAssignment}
+              disabled={isPending}
+            />
+            <Row
+              id="notify-new-ticket"
+              label="Nouveau ticket dans sa file"
+              description="À l'arrivée d'un ticket portant un produit couvert par l'un de ses groupes. Un ticket sans produit ne prévient personne."
+              checked={notifyOnNewTicket}
+              onChange={setNotifyOnNewTicket}
+              disabled={isPending}
+            />
+            <Row
+              id="notify-sla"
+              label="Échéance SLA imminente"
+              description="Peu avant l'expiration d'un délai, sur les tickets qui lui sont assignés — et sur ceux de sa file que personne n'a pris."
+              checked={notifyOnSlaWarning}
+              onChange={setNotifyOnSlaWarning}
+              disabled={isPending}
+            />
+          </div>
         </section>
 
         <Separator />

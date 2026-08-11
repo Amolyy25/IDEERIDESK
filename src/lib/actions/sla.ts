@@ -4,8 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
-import { applyStatusPauseFlagChange, readSlaCalendar } from "@/lib/sla-store";
-import { SLA_SETTING_KEYS, formatTimeOfDay, parseTimeOfDay } from "@/lib/sla";
+import { applyStatusPauseFlagChange, readSlaCalendar, readSlaWarningMinutes } from "@/lib/sla-store";
+import {
+  SLA_SETTING_KEYS,
+  formatTimeOfDay,
+  parseSlaWarningMinutes,
+  parseTimeOfDay,
+} from "@/lib/sla";
 
 /**
  * Réglages des engagements de délai : Paramètres > SLA.
@@ -21,8 +26,9 @@ import { SLA_SETTING_KEYS, formatTimeOfDay, parseTimeOfDay } from "@/lib/sla";
 export async function getSlaSettings() {
   await requirePermission("settings.tickets");
 
-  const [calendar, priorities, statuses] = await Promise.all([
+  const [calendar, warningMinutes, priorities, statuses] = await Promise.all([
     readSlaCalendar(),
+    readSlaWarningMinutes(),
     prisma.ticketPriority.findMany({
       orderBy: { order: "asc" },
       select: {
@@ -39,7 +45,7 @@ export async function getSlaSettings() {
     }),
   ]);
 
-  return { calendar, priorities, statuses };
+  return { calendar, warningMinutes, priorities, statuses };
 }
 
 export type SlaSettings = Awaited<ReturnType<typeof getSlaSettings>>;
@@ -98,6 +104,23 @@ export async function updateSlaCalendar(input: z.infer<typeof calendarSchema>) {
 
   revalidatePath("/settings/sla");
   revalidatePath("/tickets");
+}
+
+/**
+ * Préavis de l'email d'alerte, en minutes. 0 coupe l'alerte pour tout le monde,
+ * sans avoir à décocher la case de chaque agent.
+ */
+export async function updateSlaWarningMinutes(minutes: number) {
+  await requirePermission("settings.tickets");
+  const value = String(parseSlaWarningMinutes(String(minutes)));
+
+  await prisma.globalSetting.upsert({
+    where: { key: SLA_SETTING_KEYS.warningMinutes },
+    update: { value },
+    create: { key: SLA_SETTING_KEYS.warningMinutes, value, label: SLA_SETTING_KEYS.warningMinutes },
+  });
+
+  revalidatePath("/settings/sla");
 }
 
 /**

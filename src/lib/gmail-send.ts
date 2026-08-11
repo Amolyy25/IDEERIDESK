@@ -14,6 +14,10 @@ import {
   renderTicketAcknowledgementEmailText,
   renderTicketAssignedEmailHtml,
   renderTicketAssignedEmailText,
+  renderNewQueueTicketEmailHtml,
+  renderNewQueueTicketEmailText,
+  renderSlaWarningEmailHtml,
+  renderSlaWarningEmailText,
   type EmailHistoryEntry,
 } from "@/lib/email-template";
 import { getEmailLayoutHtml } from "@/lib/email-layout-store";
@@ -393,6 +397,125 @@ export async function sendTicketAssignedEmail({
       subject: `Ticket #${ticket.number} vous a été assigné par ${actorName.replace(/[\r\n]+/g, " ")}`,
       text: renderTicketAssignedEmailText(payload),
       html: renderTicketAssignedEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/**
+ * Prévient un agent qu'un ticket est tombé dans sa file (un produit couvert par
+ * l'un de ses groupes). Email interne, comme la mention et l'assignation : ni
+ * `threadId` ni `In-Reply-To`, ce n'est pas une conversation client.
+ */
+export async function sendNewQueueTicketEmail({
+  to,
+  recipientName,
+  ticket,
+}: {
+  to: string;
+  recipientName: string;
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+    productName: string;
+    priorityName: string;
+    clientLabel: string;
+    description: string;
+  };
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const ticketUrl = process.env.APP_URL ? `${process.env.APP_URL}/tickets/${ticket.id}` : null;
+  const payload = {
+    recipientName,
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    productName: ticket.productName,
+    priorityName: ticket.priorityName,
+    clientLabel: ticket.clientLabel,
+    description: ticket.description,
+    ticketUrl,
+  };
+  const layoutHtml = await getEmailLayoutHtml();
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      // Objet aplati sur une ligne : il vient du client (formulaire public ou
+      // email entrant), donc d'un tiers non authentifié — même précaution
+      // d'injection d'en-tête que pour les noms d'agents.
+      subject: `Nouveau ticket #${ticket.number} · ${ticket.subject.replace(/[\r\n]+/g, " ")}`,
+      text: renderNewQueueTicketEmailText(payload),
+      html: renderNewQueueTicketEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+/** Prévient qu'une échéance SLA arrive à terme. Email interne, comme ci-dessus. */
+export async function sendSlaWarningEmail({
+  to,
+  recipientName,
+  ticket,
+}: {
+  to: string;
+  recipientName: string;
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+    targetLabel: string;
+    remainingLabel: string;
+    dueLabel: string;
+    priorityName: string;
+    assigneeLabel: string;
+  };
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const ticketUrl = process.env.APP_URL ? `${process.env.APP_URL}/tickets/${ticket.id}` : null;
+  const payload = {
+    recipientName,
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    targetLabel: ticket.targetLabel,
+    remainingLabel: ticket.remainingLabel,
+    dueLabel: ticket.dueLabel,
+    priorityName: ticket.priorityName,
+    assigneeLabel: ticket.assigneeLabel,
+    ticketUrl,
+  };
+  const layoutHtml = await getEmailLayoutHtml();
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      subject: `Échéance dans ${ticket.remainingLabel} · Ticket #${ticket.number} — ${ticket.subject.replace(/[\r\n]+/g, " ")}`,
+      text: renderSlaWarningEmailText(payload),
+      html: renderSlaWarningEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
     });
 
     const raw = toBase64Url(await mail.compile().build());

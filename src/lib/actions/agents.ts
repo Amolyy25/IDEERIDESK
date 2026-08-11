@@ -141,6 +141,11 @@ const permissionsSchema = z.object({
   isActive: z.boolean(),
   requiresApproval: z.boolean(),
   permissions: z.array(z.string()),
+  // Emails d'équipe reçus par cet agent. Ni des droits ni des contraintes :
+  // simplement ce qu'il accepte de recevoir dans sa boîte.
+  notifyOnAssignment: z.boolean(),
+  notifyOnNewTicket: z.boolean(),
+  notifyOnSlaWarning: z.boolean(),
 });
 
 /**
@@ -200,6 +205,9 @@ export async function updateAgentPermissions(
       isActive: data.isActive,
       requiresApproval: data.requiresApproval,
       permissions: stored,
+      notifyOnAssignment: data.notifyOnAssignment,
+      notifyOnNewTicket: data.notifyOnNewTicket,
+      notifyOnSlaWarning: data.notifyOnSlaWarning,
     },
   });
 
@@ -285,6 +293,9 @@ type AgentAccess = {
   isActive: boolean;
   requiresApproval: boolean;
   permissions: string[];
+  notifyOnAssignment: boolean;
+  notifyOnNewTicket: boolean;
+  notifyOnSlaWarning: boolean;
 };
 
 /**
@@ -311,6 +322,25 @@ function diffAgentAccess(before: AgentAccess, after: AgentAccess): AuditChange[]
       from: yesNo(before.requiresApproval),
       to: yesNo(after.requiresApproval),
     });
+  }
+
+  // Tracées comme le reste : couper les alertes SLA de quelqu'un a des
+  // conséquences visibles sur les délais, et le journal doit pouvoir dire qui
+  // l'a fait et quand.
+  const emailPreferences = [
+    { key: "notifyOnAssignment", label: "Email · ticket qui lui est assigné" },
+    { key: "notifyOnNewTicket", label: "Email · nouveau ticket dans sa file" },
+    { key: "notifyOnSlaWarning", label: "Email · échéance SLA imminente" },
+  ] as const;
+
+  for (const preference of emailPreferences) {
+    if (before[preference.key] !== after[preference.key]) {
+      changes.push({
+        label: preference.label,
+        from: yesNo(before[preference.key]),
+        to: yesNo(after[preference.key]),
+      });
+    }
   }
 
   // Comparaison sur les permissions EFFECTIVES : une promotion en

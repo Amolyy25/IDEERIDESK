@@ -39,7 +39,14 @@ export async function notifyTicketAssigned({
       }),
       prisma.agent.findUnique({
         where: { id: assigneeId },
-        select: { id: true, name: true, email: true, isActive: true, approvalStatus: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          approvalStatus: true,
+          notifyOnAssignment: true,
+        },
       }),
       prisma.agent.findUnique({ where: { id: actorId }, select: { name: true } }),
     ]);
@@ -61,6 +68,12 @@ export async function notifyTicketAssigned({
         ticketId: ticket.id,
       },
     });
+
+    // La ligne de cloche part toujours ; seul l'EMAIL se coupe depuis la fiche
+    // de l'agent. Les deux ne jouent pas le même rôle : la cloche se consulte
+    // quand on est dans l'application, l'email va chercher quelqu'un qui n'y est
+    // pas. Couper le second ne doit pas priver l'intéressé du premier.
+    if (!assignee.notifyOnAssignment) return;
 
     const result = await sendTicketAssignedEmail({
       to: assignee.email,

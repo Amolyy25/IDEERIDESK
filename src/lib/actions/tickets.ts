@@ -20,6 +20,7 @@ import {
   slaFieldsForReopen,
   slaFieldsForStatusChange,
 } from "@/lib/sla-store";
+import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 import { getMergedRecipients } from "@/lib/ticket-merge";
 import {
   diffTicketSnapshots,
@@ -352,6 +353,10 @@ export async function createTicket(input: z.infer<typeof createTicketSchema>) {
     ticket,
     summary: "Créé à la main depuis le back-office.",
   });
+
+  // Les agents dont un groupe couvre ce produit, sauf celui qui vient de le
+  // saisir : il n'a pas besoin qu'on lui annonce son propre geste.
+  await notifyQueueOnNewTicket({ ticketId: ticket.id, actorId: session.user.id });
 
   revalidatePath("/tickets");
   return ticket;

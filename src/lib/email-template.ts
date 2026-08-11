@@ -433,6 +433,195 @@ ${statusName} · priorité ${priorityName}${cta}
 Email automatique — répondez depuis le ticket, pas par email.`;
 }
 
+/**
+ * Nouveau ticket tombé dans la file d'un agent (un produit couvert par l'un de
+ * ses groupes).
+ *
+ * L'objet du client est repris dans l'encadré plutôt que résumé : c'est ce qui
+ * permet de décider s'il faut ouvrir tout de suite, sans quitter sa boîte.
+ */
+export function renderNewQueueTicketEmailHtml({
+  layoutHtml,
+  recipientName,
+  ticketNumber,
+  ticketSubject,
+  productName,
+  priorityName,
+  clientLabel,
+  description,
+  ticketUrl,
+  logoUrl,
+  origin,
+}: {
+  layoutHtml: string;
+  recipientName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  productName: string;
+  priorityName: string;
+  clientLabel: string;
+  description: string;
+  ticketUrl: string | null;
+  logoUrl?: string | null;
+  origin?: string;
+}) {
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+    <p style="margin:0 0 16px;">
+      Un nouveau ticket est arrivé sur <strong>${escapeHtml(productName)}</strong> :
+      #${ticketNumber} — ${escapeHtml(ticketSubject)}.
+    </p>
+    ${renderInfoBox({
+      label: "Demande",
+      body: escapeHtml(description),
+    })}
+    ${renderInfoBox({
+      label: "État",
+      body: `Non assigné · priorité ${escapeHtml(priorityName)} · ${escapeHtml(clientLabel)}`,
+    })}
+    ${renderButton({ url: ticketUrl, label: "Prendre en charge" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: `Nouveau ticket dans votre file · #${ticketNumber}`,
+    content,
+    footer: "Email automatique — répondez depuis le ticket, pas par email.",
+  }, origin);
+}
+
+export function renderNewQueueTicketEmailText({
+  recipientName,
+  ticketNumber,
+  ticketSubject,
+  productName,
+  priorityName,
+  clientLabel,
+  description,
+  ticketUrl,
+}: {
+  recipientName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  productName: string;
+  priorityName: string;
+  clientLabel: string;
+  description: string;
+  ticketUrl: string | null;
+}) {
+  let cta = "";
+  if (ticketUrl) {
+    cta = `\n\nPrendre en charge : ${ticketUrl}`;
+  }
+
+  return `Bonjour ${recipientName},
+
+Un nouveau ticket est arrivé sur ${productName} : #${ticketNumber} — ${ticketSubject}.
+
+Demande
+${description}
+
+État
+Non assigné · priorité ${priorityName} · ${clientLabel}${cta}
+
+—
+Email automatique — répondez depuis le ticket, pas par email.`;
+}
+
+/**
+ * Échéance SLA sur le point d'être dépassée.
+ *
+ * L'email dit CE QU'IL RESTE À FAIRE (« aucune réponse n'est encore partie »)
+ * et non seulement qu'une horloge tourne : un agent qui reçoit ça au milieu
+ * d'autre chose doit pouvoir décider en une ligne s'il lâche ce qu'il fait.
+ */
+export function renderSlaWarningEmailHtml({
+  layoutHtml,
+  recipientName,
+  ticketNumber,
+  ticketSubject,
+  targetLabel,
+  remainingLabel,
+  dueLabel,
+  priorityName,
+  assigneeLabel,
+  ticketUrl,
+  logoUrl,
+  origin,
+}: {
+  layoutHtml: string;
+  recipientName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  /** « Première réponse » ou « Résolution ». */
+  targetLabel: string;
+  remainingLabel: string;
+  dueLabel: string;
+  priorityName: string;
+  assigneeLabel: string;
+  ticketUrl: string | null;
+  logoUrl?: string | null;
+  origin?: string;
+}) {
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+    <p style="margin:0 0 16px;">
+      Le délai de <strong>${escapeHtml(targetLabel.toLowerCase())}</strong> du ticket
+      #${ticketNumber} — ${escapeHtml(ticketSubject)} expire dans
+      <strong>${escapeHtml(remainingLabel)}</strong>.
+    </p>
+    ${renderInfoBox({
+      label: "Échéance",
+      body: `${escapeHtml(dueLabel)} · priorité ${escapeHtml(priorityName)} · ${escapeHtml(assigneeLabel)}`,
+    })}
+    ${renderButton({ url: ticketUrl, label: "Ouvrir le ticket" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: `Échéance dans ${remainingLabel} · #${ticketNumber}`,
+    content,
+    footer: "Email automatique — répondez depuis le ticket, pas par email.",
+  }, origin);
+}
+
+export function renderSlaWarningEmailText({
+  recipientName,
+  ticketNumber,
+  ticketSubject,
+  targetLabel,
+  remainingLabel,
+  dueLabel,
+  priorityName,
+  assigneeLabel,
+  ticketUrl,
+}: {
+  recipientName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  targetLabel: string;
+  remainingLabel: string;
+  dueLabel: string;
+  priorityName: string;
+  assigneeLabel: string;
+  ticketUrl: string | null;
+}) {
+  let cta = "";
+  if (ticketUrl) {
+    cta = `\n\nOuvrir le ticket : ${ticketUrl}`;
+  }
+
+  return `Bonjour ${recipientName},
+
+Le délai de ${targetLabel.toLowerCase()} du ticket #${ticketNumber} — ${ticketSubject} expire dans ${remainingLabel}.
+
+Échéance
+${dueLabel} · priorité ${priorityName} · ${assigneeLabel}${cta}
+
+—
+Email automatique — répondez depuis le ticket, pas par email.`;
+}
+
 export function renderAgentMentionEmailText({
   recipientName,
   actorName,

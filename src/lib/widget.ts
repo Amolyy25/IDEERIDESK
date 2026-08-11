@@ -11,6 +11,7 @@ import {
 import { inspectUploadedFile, type ScanColumns } from "@/lib/upload-inspection";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 import { slaDueDatesForNewTicket } from "@/lib/sla-store";
+import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 
 export { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 
@@ -156,6 +157,10 @@ export async function createWidgetTicket(
   // `sendTicketAcknowledgement` ne lève pas, le ticket reste créé même si Gmail
   // n'est pas connecté ou si aucun modèle n'est configuré.
   await sendTicketAcknowledgement(ticket.id);
+
+  // Puis l'équipe : les agents dont un groupe couvre le produit du ticket. Après
+  // l'accusé de réception, dans l'ordre des priorités — le client d'abord.
+  await notifyQueueOnNewTicket({ ticketId: ticket.id });
 
   return ticket;
 }

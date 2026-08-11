@@ -16,10 +16,12 @@
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_SLA_CALENDAR,
+  DEFAULT_SLA_WARNING_MINUTES,
   SLA_SETTING_KEYS,
   addSlaDuration,
   computeSlaDueDates,
   parseSlaCalendar,
+  parseSlaWarningMinutes,
   slaDurationBetween,
   type SlaCalendar,
   type SlaDueDates,
@@ -39,6 +41,19 @@ export async function readSlaCalendar(): Promise<SlaCalendar> {
     return parseSlaCalendar(Object.fromEntries(rows.map((row) => [row.key, row.value])));
   } catch {
     return DEFAULT_SLA_CALENDAR;
+  }
+}
+
+/** Combien de minutes avant l'échéance l'email d'alerte part. 0 = pas d'alerte. */
+export async function readSlaWarningMinutes(): Promise<number> {
+  try {
+    const row = await prisma.globalSetting.findUnique({
+      where: { key: SLA_SETTING_KEYS.warningMinutes },
+      select: { value: true },
+    });
+    return parseSlaWarningMinutes(row?.value);
+  } catch {
+    return DEFAULT_SLA_WARNING_MINUTES;
   }
 }
 
@@ -101,7 +116,12 @@ export async function recomputeSlaAfterPriorityChange(ticketId: string): Promise
       alreadyPausedMs: ticket.slaPausedMs,
     });
 
-    await prisma.ticket.update({ where: { id: ticketId }, data: due });
+    // Alertes réarmées avec les échéances : ce sont de nouvelles dates, et le
+    // « plus que 30 minutes » déjà envoyé ne parlait pas de celles-là.
+    await prisma.ticket.update({
+      where: { id: ticketId },
+      data: { ...due, firstResponseWarnedAt: null, resolutionWarnedAt: null },
+    });
   } catch (error) {
     console.error(`[sla] recalcul impossible sur le ticket ${ticketId}`, error);
   }
@@ -133,6 +153,8 @@ export async function slaFieldsForStatusChange({
   slaPausedMs?: number;
   firstResponseDueAt?: Date | null;
   resolutionDueAt?: Date | null;
+  firstResponseWarnedAt?: Date | null;
+  resolutionWarnedAt?: Date | null;
 }> {
   try {
     const [ticket, nextStatus] = await Promise.all([
@@ -166,6 +188,11 @@ export async function slaFieldsForStatusChange({
       slaPausedMs: ticket.slaPausedMs + pausedMs,
       firstResponseDueAt: shift(ticket.firstResponseDueAt, pausedMs, calendar),
       resolutionDueAt: shift(ticket.resolutionDueAt, pausedMs, calendar),
+      // Les échéances viennent de reculer : l'alerte doit pouvoir repartir sur
+      // les nouvelles, sinon un ticket suspendu puis relancé n'avertirait plus
+      // jamais personne.
+      firstResponseWarnedAt: null,
+      resolutionWarnedAt: null,
     };
   } catch (error) {
     console.error(`[sla] suspension non appliquée sur le ticket ${ticketId}`, error);
@@ -287,6 +314,8 @@ export async function slaFieldsForReopen({
   firstRespondedAt?: Date | null;
   slaPausedAt?: Date | null;
   slaPausedMs?: number;
+  firstResponseWarnedAt?: Date | null;
+  resolutionWarnedAt?: Date | null;
 }> {
   try {
     const ticket = await prisma.ticket.findUnique({
@@ -300,6 +329,8 @@ export async function slaFieldsForReopen({
       firstRespondedAt: null,
       slaPausedAt: null,
       slaPausedMs: 0,
+      firstResponseWarnedAt: null,
+      resolutionWarnedAt: null,
     };
   } catch (error) {
     console.error(`[sla] horloge non réarmée à la réouverture du ticket ${ticketId}`, error);
@@ -328,7 +359,14 @@ export async function restartSlaOnReopen(ticketId: string, at: Date = new Date()
 
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { ...due, firstRespondedAt: null, slaPausedAt: null, slaPausedMs: 0 },
+      data: {
+        ...due,
+        firstRespondedAt: null,
+        slaPausedAt: null,
+        slaPausedMs: 0,
+        firstResponseWarnedAt: null,
+        resolutionWarnedAt: null,
+      },
     });
   } catch (error) {
     console.error(`[sla] horloge non réarmée à la réouverture du ticket ${ticketId}`, error);

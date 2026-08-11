@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   updateSlaCalendar,
   updateSlaTargets,
+  updateSlaWarningMinutes,
   updateStatusPausesSla,
   type SlaSettings,
 } from "@/lib/actions/sla";
@@ -42,6 +43,7 @@ export function SlaSettingsForm({ settings }: { settings: SlaSettings }) {
     <div className="space-y-6">
       <CalendarCard calendar={settings.calendar} />
       <TargetsCard priorities={settings.priorities} />
+      <WarningCard minutes={settings.warningMinutes} />
       <PauseCard statuses={settings.statuses} />
     </div>
   );
@@ -324,6 +326,71 @@ function HoursInput({
 }
 
 // ---------------------------------------------------------------------------
+
+function WarningCard({ minutes }: { minutes: number }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [value, setValue] = useState(String(minutes));
+
+  const isDirty = value.trim() !== String(minutes);
+
+  function save() {
+    startTransition(async () => {
+      try {
+        await updateSlaWarningMinutes(Number(value.replace(",", ".")) || 0);
+        toast.success("Préavis enregistré");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Une erreur est survenue");
+      }
+    });
+  }
+
+  return (
+    <Card
+      title="Alerte par email avant échéance"
+      hint={
+        <>
+          Un email part peu avant l&apos;expiration d&apos;un délai, à l&apos;agent qui tient le
+          dossier — ou, si personne ne l&apos;a pris, aux membres des groupes couvrant son produit.
+          Un seul envoi par échéance. Mettez 0 pour couper l&apos;alerte pour toute
+          l&apos;équipe.
+        </>
+      }
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="sla-warning" className="text-xs text-muted-foreground">
+            Prévenir (minutes avant l&apos;échéance)
+          </Label>
+          <Input
+            id="sla-warning"
+            type="number"
+            min={0}
+            step={5}
+            inputMode="numeric"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className="h-9 w-28"
+          />
+        </div>
+        {isDirty && (
+          <Button size="sm" onClick={save} disabled={isPending}>
+            {isPending ? "Enregistrement…" : "Enregistrer"}
+          </Button>
+        )}
+      </div>
+
+      {/* Sans ordonnanceur branché sur cette route, aucun email d'alerte ne
+          partira jamais — et rien dans l'écran ne le laisserait deviner. */}
+      <p className="mt-4 text-xs text-muted-foreground">
+        Nécessite un appel planifié de <code className="font-mono">POST /api/cron/sla</code>{" "}
+        (en-tête <code className="font-mono">x-cron-secret</code>), toutes les 5 minutes environ. La
+        cadence borne la précision de l&apos;alerte.
+      </p>
+    </Card>
+  );
+}
 
 function PauseCard({ statuses }: { statuses: SlaSettings["statuses"] }) {
   // Les statuts de clôture n'ont pas à figurer ici : sur un ticket clos les deux

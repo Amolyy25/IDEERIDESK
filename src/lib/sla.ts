@@ -22,7 +22,19 @@ export const SLA_SETTING_KEYS = {
   businessDays: "sla_business_days",
   businessStart: "sla_business_start",
   businessEnd: "sla_business_end",
+  warningMinutes: "sla_warning_minutes",
 } as const;
+
+/** Combien de temps avant l'échéance l'email d'alerte part. 0 = pas d'alerte. */
+export const DEFAULT_SLA_WARNING_MINUTES = 30;
+
+export function parseSlaWarningMinutes(value: string | undefined): number {
+  const minutes = Number((value ?? "").trim());
+  if (!Number.isFinite(minutes) || minutes < 0) return DEFAULT_SLA_WARNING_MINUTES;
+  // Une semaine : au-delà, « imminent » ne veut plus rien dire, et une valeur
+  // aberrante saisie par erreur alerterait sur toute la file d'un coup.
+  return Math.min(Math.round(minutes), 7 * 24 * 60);
+}
 
 /**
  * `calendar` : l'horloge tourne 24 h/24. Un ticket urgent (2 h) déposé vendredi

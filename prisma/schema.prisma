@@ -63,6 +63,19 @@ model Agent {
   // registre.
   requiresApproval Boolean @default(false)
 
+  // --- Emails d'équipe reçus par cet agent ---
+  // Activés par défaut : un agent qu'on ajoute doit être au courant de ce qui
+  // arrive sur ses dossiers sans avoir à réclamer un réglage. Ils se coupent
+  // depuis sa fiche, un par un — couper l'ensemble d'un coup reviendrait à
+  // pousser l'intéressé à filtrer l'expéditeur dans sa boîte, et à ne plus rien
+  // lire du tout, y compris les mentions.
+  //
+  // Les mentions « @Prénom » ne sont volontairement PAS débrayables : citer
+  // quelqu'un nommément est une adresse directe, pas une diffusion.
+  notifyOnAssignment Boolean @default(true)
+  notifyOnNewTicket  Boolean @default(true)
+  notifyOnSlaWarning Boolean @default(true)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -446,6 +459,17 @@ model Ticket {
   // cumul, un ticket suspendu deux fois perdrait la première pause.
   slaPausedAt DateTime?
   slaPausedMs Int       @default(0)
+
+  // Anti-rejeu de l'alerte « échéance imminente » : le balayage tourne toutes
+  // les quelques minutes et retrouverait le même ticket à chaque passage. Un
+  // horodatage PAR HORLOGE, et non un seul drapeau : sans ça, un ticket alerté
+  // sur sa première réponse ne le serait jamais sur sa résolution.
+  //
+  // Remis à zéro quand l'échéance correspondante est recalculée (changement de
+  // priorité, réouverture) : c'est une nouvelle échéance, elle mérite son
+  // avertissement.
+  firstResponseWarnedAt DateTime?
+  resolutionWarnedAt    DateTime?
 
   // Threading email : identifiant de conversation Gmail et Message-ID RFC822 du
   // dernier tour (entrant ou sortant), utilisé pour l'en-tête In-Reply-To de la

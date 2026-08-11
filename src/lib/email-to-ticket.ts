@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { EMAIL_METADATA_KEY, type InboundEmailMetadata } from "@/lib/inbound-email-metadata";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 import { slaDueDatesForNewTicket } from "@/lib/sla-store";
+import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 
 /**
  * Création de ticket à partir d'un email entrant qui ne répond à aucun ticket
@@ -150,6 +151,12 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
   // ce même fil Gmail, donc elle est rattachée au ticket comme un message de
   // plus, jamais transformée en nouveau ticket.
   await sendTicketAcknowledgement(ticket.id);
+
+  // Un email entrant n'arrive avec aucun produit : cet appel ne préviendra donc
+  // personne tant qu'un agent ne lui en a pas attribué un. Il est là quand même,
+  // pour le jour où le tri à l'arrivée saura en poser un — et pour qu'il n'y ait
+  // pas un point de création qui notifie et un autre qui non.
+  await notifyQueueOnNewTicket({ ticketId: ticket.id });
 
   return ticket;
 }
