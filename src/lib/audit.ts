@@ -156,8 +156,10 @@ export const auditTicketSelect = {
   subject: true,
   metadata: true,
   // Brut en plus du nom : l'appelant compare des identifiants (« a-t-il changé
-  // de main ? »), le journal affiche des libellés.
+  // de main ? », « le délai SLA à tenir a-t-il changé ? »), le journal affiche
+  // des libellés.
   assigneeId: true,
+  priorityId: true,
   status: { select: { name: true } },
   priority: { select: { name: true } },
   category: { select: { name: true } },

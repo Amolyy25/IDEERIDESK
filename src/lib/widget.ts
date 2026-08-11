@@ -10,6 +10,7 @@ import {
 } from "@/lib/attachment-rules";
 import { inspectUploadedFile, type ScanColumns } from "@/lib/upload-inspection";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
+import { slaDueDatesForNewTicket } from "@/lib/sla-store";
 
 export { MAX_ATTACHMENTS, validateAttachmentFile } from "@/lib/attachment-rules";
 
@@ -132,6 +133,9 @@ export async function createWidgetTicket(
       statusId: defaultStatus.id,
       priorityId: defaultPriority.id,
       clientId: client.id,
+      // Horloge SLA : le délai court depuis l'envoi du formulaire, pas depuis le
+      // moment où un agent ouvre la file.
+      ...(await slaDueDatesForNewTicket(defaultPriority.id)),
       metadata: {
         ...fieldValues,
         _papairis: input.papairisContext ?? {},

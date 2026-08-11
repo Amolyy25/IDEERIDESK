@@ -154,6 +154,13 @@ model TicketStatus {
   // le statut `isDefault` : un client qui relance ne doit jamais rester bloqué
   // derrière un ticket fermé que personne ne rouvre.
   isReopenDefault Boolean @default(false)
+
+  // Suspend l'horloge SLA tant que le ticket porte ce statut (typiquement « En
+  // attente du client »). Désactivé partout par défaut : c'est le réglage le
+  // plus lisible — l'échéance affichée est alors la vraie échéance, posée à la
+  // création et jamais déplacée. Voir src/lib/sla.ts.
+  pausesSla Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -171,6 +178,21 @@ model TicketPriority {
   color     String   @default("#71717a")
   order     Int      @default(0)
   isDefault Boolean  @default(false)
+
+  // --- Engagements de délai (SLA) ---
+  // Deux délais distincts, en minutes, comptés depuis l'arrivée du ticket :
+  // le temps qu'on se donne pour ADRESSER un premier mot au client, et celui
+  // qu'on se donne pour CLORE son dossier. C'est la priorité qui les porte —
+  // « urgent en 2 h, faible en 2 jours » est la formulation même de l'engagement.
+  //
+  // `null` = aucun engagement à ce niveau de priorité : le ticket n'aura pas
+  // d'échéance et ne pourra jamais apparaître en retard. C'est la valeur de
+  // départ de toutes les priorités, y compris celles déjà en base : tant qu'un
+  // administrateur n'a rien saisi dans Paramètres > SLA, l'application
+  // n'invente aucun engagement à la place de l'équipe.
+  firstResponseMinutes Int?
+  resolutionMinutes    Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -397,6 +419,34 @@ model Ticket {
   // "lu" par agent individuel, volontairement, pour rester simple).
   hasUnreadActivity Boolean @default(false)
 
+  // --- Horloge SLA ---
+  // Une horloge PAR TICKET, et non une statistique de fin de mois : les deux
+  // échéances sont calculées à la création, à partir de la priorité et du
+  // calendrier configuré, puis stockées. Stockées, et non recalculées à
+  // l'affichage, pour deux raisons : la liste « SLA en retard » se filtre alors
+  // en SQL (`firstResponseDueAt < now()`) au lieu de charger toute la file en
+  // mémoire, et l'engagement pris à l'arrivée du ticket ne se réécrit pas tout
+  // seul quand les réglages changent trois mois plus tard.
+  //
+  // `null` = aucun engagement (priorité sans délai configuré, ou ticket créé
+  // avant la mise en service du SLA) : ce ticket n'apparaîtra jamais en retard.
+  firstResponseDueAt DateTime?
+  resolutionDueAt    DateTime?
+
+  // Premier message public d'un agent au client. C'est ce qui ARRÊTE l'horloge
+  // de première réponse — ni l'accusé de réception automatique ni une note
+  // interne ne comptent, aucun des deux n'étant une réponse d'un agent au
+  // client. La date de résolution, elle, est déjà portée par `closedAt`.
+  firstRespondedAt DateTime?
+
+  // Suspension de l'horloge (statuts marqués `pausesSla`). Deux champs et non
+  // un : `slaPausedAt` dit depuis quand l'horloge est arrêtée — un ticket en
+  // pause n'est jamais compté en retard — et `slaPausedMs` accumule le temps
+  // déjà gelé, dont les échéances sont décalées à chaque reprise. Sans ce
+  // cumul, un ticket suspendu deux fois perdrait la première pause.
+  slaPausedAt DateTime?
+  slaPausedMs Int       @default(0)
+
   // Threading email : identifiant de conversation Gmail et Message-ID RFC822 du
   // dernier tour (entrant ou sortant), utilisé pour l'en-tête In-Reply-To de la
   // prochaine réponse sortante.
@@ -458,6 +508,10 @@ model Ticket {
   @@index([assigneeId])
   @@index([clientId])
   @@index([gmailThreadId])
+  // Lecture de la vue « SLA en retard » et de son compteur, rejouée à chaque
+  // affichage de la file : sans index, chaque passage balaierait toute la table.
+  @@index([firstResponseDueAt])
+  @@index([resolutionDueAt])
   @@map("tickets")
 }
 

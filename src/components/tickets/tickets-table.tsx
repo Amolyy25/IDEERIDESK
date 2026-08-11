@@ -6,6 +6,7 @@ import { Merge } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SortableHeader } from "@/components/tickets/sortable-header";
 import { RelativeTime } from "@/components/tickets/relative-time";
+import { SlaBadge } from "@/components/tickets/sla-badge";
 import { InlineAttribute, type InlineOption } from "@/components/tickets/inline-attribute";
 import { updateTicketAttributes } from "@/lib/actions/tickets";
 import { ticketSourceLabels } from "@/lib/ticket-source";
@@ -100,6 +101,7 @@ export function TicketsTable({
           <Th className="w-40">Produit</Th>
           <Th className="w-44">Assigné</Th>
           <Th className="w-32">Source</Th>
+          <Th className="w-24">SLA</Th>
           <Th className="w-28 pr-4 text-right">
             <span className="flex justify-end">
               <SortableHeader sortKey="updatedAt" label="Mis à jour" />
@@ -221,6 +223,10 @@ export function TicketsTable({
             </Td>
 
             <Td className="truncate text-muted-foreground">{ticketSourceLabels[ticket.source]}</Td>
+
+            <Td>
+              <SlaBadge ticket={ticket} />
+            </Td>
 
             <Td className="pr-4 text-right whitespace-nowrap">
               <RelativeTime date={ticket.updatedAt} />

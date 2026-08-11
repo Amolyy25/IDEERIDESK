@@ -11,7 +11,15 @@ import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
-import { UNASSIGNED_FILTER } from "@/lib/ticket-filters";
+import { SLA_BREACHED_FILTER, UNASSIGNED_FILTER } from "@/lib/ticket-filters";
+import { breachedSlaWhere } from "@/lib/sla";
+import {
+  markSlaFirstResponse,
+  recomputeSlaAfterPriorityChange,
+  slaDueDatesForNewTicket,
+  slaFieldsForReopen,
+  slaFieldsForStatusChange,
+} from "@/lib/sla-store";
 import { getMergedRecipients } from "@/lib/ticket-merge";
 import {
   diffTicketSnapshots,
@@ -107,6 +115,8 @@ export type TicketListFilters = {
   assigneeId?: string;
   sortBy?: "number" | "subject" | "createdAt" | "updatedAt";
   sortDir?: "asc" | "desc";
+  /** `SLA_BREACHED_FILTER` pour ne garder que les tickets dont un délai est dépassé. */
+  sla?: string;
   /** Filtre auto (produits couverts par les groupes de l'agent) — ignoré si `categoryId` est aussi fourni (un filtre manuel prime toujours). */
   categoryIds?: string[];
 };
@@ -123,6 +133,8 @@ export type TicketQueueStats = {
   unassigned: number;
   mine: number;
   unread: number;
+  /** Tickets dont un délai est dépassé, horloge en marche (voir `breachedSlaWhere`). */
+  breached: number;
 };
 
 /**
@@ -146,10 +158,13 @@ export async function getTicketQueueStats({
     scope.categoryId = { in: categoryIds };
   }
 
-  const [open, unassigned, unread] = await Promise.all([
+  const [open, unassigned, unread, breached] = await Promise.all([
     prisma.ticket.count({ where: scope }),
     prisma.ticket.count({ where: { ...scope, assigneeId: null } }),
     prisma.ticket.count({ where: { ...scope, hasUnreadActivity: true } }),
+    // `AND` et non un étalement : `breachedSlaWhere` porte son propre `OR`
+    // (première réponse ou résolution), qu'une fusion à plat écraserait.
+    prisma.ticket.count({ where: { ...scope, AND: [breachedSlaWhere()] } }),
   ]);
 
   let mine = 0;
@@ -157,7 +172,7 @@ export async function getTicketQueueStats({
     mine = await prisma.ticket.count({ where: { ...scope, assigneeId: agentId } });
   }
 
-  return { open, unassigned, mine, unread };
+  return { open, unassigned, mine, unread, breached };
 }
 
 export async function getTickets(filters: TicketListFilters = {}) {
@@ -185,6 +200,18 @@ export async function getTickets(filters: TicketListFilters = {}) {
       filters.assigneeId === UNASSIGNED_FILTER ? null : filters.assigneeId || undefined,
     ...(!filters.categoryId && filters.categoryIds?.length
       ? { categoryId: { in: filters.categoryIds } }
+      : {}),
+    // Dans `AND` : la condition « en retard » porte son propre `OR`, et la
+    // recherche plein texte en pose un autre juste en dessous. Deux `OR` au même
+    // niveau se remplaceraient l'un l'autre, et la vue montrerait alors des
+    // tickets à l'heure.
+    //
+    // `status.isClosed` en plus de `closedAt` : les deux ne disent pas toujours
+    // la même chose (une clôture par automatisation vers un statut fermé peut
+    // n'avoir que le statut), et cette vue ne doit lister que ce sur quoi il
+    // reste à agir.
+    ...(filters.sla === SLA_BREACHED_FILTER
+      ? { AND: [breachedSlaWhere(), { status: { isClosed: false } }] }
       : {}),
     ...(search
       ? {
@@ -313,6 +340,9 @@ export async function createTicket(input: z.infer<typeof createTicketSchema>) {
       statusId: data.statusId,
       priorityId: data.priorityId,
       metadata: (data.metadata ?? {}) as Prisma.InputJsonValue,
+      // Échéances SLA posées dans la création elle-même : un ticket n'existe
+      // jamais, même une fraction de seconde, sans son horloge.
+      ...(await slaDueDatesForNewTicket(data.priorityId)),
     },
   });
 
@@ -348,14 +378,32 @@ export async function updateTicketAttributes(
     closedAt = status?.isClosed ? new Date() : null;
   }
 
+  // Suspension ou reprise de l'horloge SLA, dans le MÊME `update` que le statut
+  // qui la provoque : deux écritures séparées laisseraient une fenêtre pendant
+  // laquelle le ticket est « en attente du client » avec une horloge qui tourne
+  // encore. Vide quand le statut ne change pas de camp (le cas courant).
+  const slaFields = data.statusId
+    ? await slaFieldsForStatusChange({ ticketId: id, nextStatusId: data.statusId })
+    : {};
+
+  // Réouverture à la main : un ticket clos qu'on renvoie vers un statut ouvert
+  // repart sur une horloge neuve, comme lorsqu'un client relance par email.
+  // Après `slaFields` dans le `data` ci-dessous : les deux peuvent porter les
+  // mêmes champs, et c'est la réouverture qui doit l'emporter.
+  const reopenFields =
+    data.statusId && closedAt === null
+      ? await slaFieldsForReopen({ ticketId: id, priorityId: data.priorityId })
+      : {};
+
   const nextAssigneeId = data.assigneeId === undefined ? undefined : data.assigneeId || null;
 
-  // État complet relu avant l'écriture, pour deux usages :
+  // État complet relu avant l'écriture, pour trois usages :
   //
   // — l'assignation, sans quoi il est impossible de distinguer « ce ticket vient
   //   de changer de main » d'un simple renvoi de la même valeur par le panneau
   //   d'attributs (l'agent recevrait une notification à chaque changement de
   //   priorité) ;
+  // — le délai SLA, qui n'est recalculé que si la priorité a réellement changé ;
   // — le journal d'audit, qui doit dire QUOI a changé : « Statut : Nouveau → En
   //   cours » et non « ticket modifié », seule forme réellement vérifiable.
   const before = await readTicketSnapshot(id);
@@ -369,8 +417,21 @@ export async function updateTicketAttributes(
       assigneeId: nextAssigneeId,
       metadata: data.metadata as Prisma.InputJsonValue | undefined,
       closedAt,
+      ...slaFields,
+      ...reopenFields,
     },
   });
+
+  // Après l'écriture, pour que le recalcul lise bien la NOUVELLE priorité — et
+  // seulement si elle a changé : l'engagement pris à l'arrivée du ticket ne se
+  // réécrit pas parce qu'un agent a rouvert le panneau d'attributs.
+  //
+  // Jamais sur une réouverture : le recalcul repartirait de la date d'arrivée du
+  // ticket et effacerait l'horloge neuve qu'on vient de lui donner.
+  const isReopening = Object.keys(reopenFields).length > 0;
+  if (!isReopening && data.priorityId && before && data.priorityId !== before.priorityId) {
+    await recomputeSlaAfterPriorityChange(id);
+  }
 
   if (nextAssigneeId && before && nextAssigneeId !== before.assigneeId) {
     await notifyTicketAssigned({
@@ -412,6 +473,13 @@ export async function claimTicket(id: string) {
     data: {
       assigneeId: agentId,
       ...(inProgressStatus ? { statusId: inProgressStatus.id } : {}),
+      // Prendre en charge fait aussi changer de statut : si l'équipe a marqué
+      // celui-ci (ou celui qu'on quitte) comme suspendant l'horloge SLA, le
+      // geste doit la suspendre ou la relancer comme n'importe quel autre
+      // changement de statut.
+      ...(inProgressStatus
+        ? await slaFieldsForStatusChange({ ticketId: id, nextStatusId: inProgressStatus.id })
+        : {}),
     },
     select: auditRefSelect(),
   });
@@ -677,6 +745,17 @@ async function sendApprovedTicketReply(
   if (!ticket) {
     return { emailSent: false as const, emailSkippedReason: "Ticket introuvable.", alsoSentTo: 0 };
   }
+
+  // Arrêt de l'horloge de première réponse. Ici et pas à la création du message,
+  // parce que c'est ici que passent les DEUX chemins d'une réponse publique :
+  // l'envoi direct et le relâchement d'une réponse validée. Une réponse retenue
+  // en attente de validation n'a rien adressé au client, l'horloge tourne
+  // encore — c'est bien le point du workflow de validation.
+  //
+  // Indépendant du succès de l'envoi : l'agent a fait sa part. Un échec Gmail
+  // est un incident technique, tracé comme tel dans le fil, et le compter comme
+  // un manquement au délai brouillerait les deux sujets.
+  await markSlaFirstResponse(ticketId);
 
   const { senderName } = await readEmailAccountStatus();
   const signatureHtml = await resolveSignatureHtmlForAgent(agentId);

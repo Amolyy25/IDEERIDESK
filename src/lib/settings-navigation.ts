@@ -58,6 +58,14 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         description: "Les niveaux d'urgence que les agents peuvent attribuer.",
       },
       {
+        href: "/settings/sla",
+        permission: "settings.tickets",
+        label: "SLA",
+        title: "Engagements de délai (SLA)",
+        description:
+          "Le temps qu'on se donne pour répondre à un client et pour clore son dossier, selon la priorité. Une horloge par ticket, visible dans la file — pas un rapport de fin de mois.",
+      },
+      {
         href: "/settings/categories",
         permission: "settings.tickets",
         label: "Produits",

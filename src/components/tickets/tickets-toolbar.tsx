@@ -72,7 +72,9 @@ export function TicketsToolbar({
   }
 
   // Ce que l'agent a posé lui-même, et qu'il doit pouvoir retirer d'un geste.
-  const filterKeys = ["search", "statusId", "priorityId", "categoryId", "assigneeId"];
+  // `sla` en fait partie : la vue « SLA en retard » restreint la liste comme
+  // n'importe quel filtre, elle doit se quitter par le même bouton.
+  const filterKeys = ["search", "statusId", "priorityId", "categoryId", "assigneeId", "sla"];
   const hasActiveFilters = filterKeys.some((key) => searchParams.get(key));
 
   /** Un filtre posé se voit sur son propre contrôle, pas seulement dans la liste. */

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { EMAIL_METADATA_KEY, type InboundEmailMetadata } from "@/lib/inbound-email-metadata";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
+import { slaDueDatesForNewTicket } from "@/lib/sla-store";
 
 /**
  * Création de ticket à partir d'un email entrant qui ne répond à aucun ticket
@@ -114,6 +115,8 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
       statusId: defaultStatus.id,
       priorityId: defaultPriority.id,
       clientId: client.id,
+      // Horloge SLA : le délai court depuis l'arrivée de l'email.
+      ...(await slaDueDatesForNewTicket(defaultPriority.id)),
       // `gmailMessageId` est unique : c'est lui qui empêche un même email de
       // créer deux tickets si la synchro relit la boîte (curseur d'historique
       // expiré, relance manuelle).

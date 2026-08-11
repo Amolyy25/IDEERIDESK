@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { sendTicketReplyEmail } from "@/lib/gmail-send";
 import { readEmailAccountStatus } from "@/lib/email-account";
+import { slaFieldsForStatusChange } from "@/lib/sla-store";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -48,6 +49,14 @@ export async function runAutomations() {
         data: {
           statusId: rule.actionStatusId,
           closedAt: rule.actionStatus.isClosed ? new Date() : null,
+          // Une règle qui déplace un ticket vers (ou hors d')un statut
+          // suspendant l'horloge SLA doit la suspendre ou la relancer comme le
+          // ferait un agent : le décompte ne dépend pas de qui a changé le
+          // statut.
+          ...(await slaFieldsForStatusChange({
+            ticketId: ticket.id,
+            nextStatusId: rule.actionStatusId,
+          })),
         },
       });
 

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { updateTicketAttributes, deleteTicket } from "@/lib/actions/tickets";
 import { CustomFieldInput } from "@/components/tickets/ticket-detail/custom-field-input";
+import { SlaSummary } from "@/components/tickets/ticket-detail/sla-summary";
 import type {
   Agent,
   CustomField,
@@ -184,6 +185,16 @@ export function AttributesPanel({
             </Select>
           </Field>
         </PanelBlock>
+
+        {/* Masqué quand le ticket ne porte aucune échéance : la priorité qui lui
+            a été attribuée n'a pas de délai configuré, ou il est antérieur à la
+            mise en service du SLA. Un bloc « aucun engagement / aucun
+            engagement » sur chaque fiche n'apprendrait rien à personne. */}
+        {(ticket.firstResponseDueAt || ticket.resolutionDueAt) && (
+          <PanelBlock title="Délais">
+            <SlaSummary ticket={ticket} />
+          </PanelBlock>
+        )}
 
         <PanelBlock title="Affectation">
           <Field label="Produit concerné">

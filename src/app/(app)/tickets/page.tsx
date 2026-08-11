@@ -23,6 +23,7 @@ type SearchParams = Promise<{
   sortBy?: string;
   sortDir?: string;
   scope?: string;
+  sla?: string;
 }>;
 
 export default async function TicketsPage({
@@ -36,7 +37,12 @@ export default async function TicketsPage({
   const canRespond = can(session.user.permissions, "tickets.respond");
 
   const hasManualFilter = Boolean(
-    params.search || params.statusId || params.priorityId || params.categoryId || params.assigneeId
+    params.search ||
+      params.statusId ||
+      params.priorityId ||
+      params.categoryId ||
+      params.assigneeId ||
+      params.sla
   );
   const wantsAllScope = params.scope === "all";
 
@@ -64,6 +70,7 @@ export default async function TicketsPage({
         categoryId: params.categoryId,
         categoryIds: autoCategoryIds,
         assigneeId: params.assigneeId,
+        sla: params.sla,
         sortBy: params.sortBy as never,
         sortDir: params.sortDir as never,
       }),
@@ -113,6 +120,7 @@ export default async function TicketsPage({
           stats={stats}
           currentAgentId={session?.user?.id ?? null}
           activeAssigneeId={params.assigneeId ?? null}
+          activeSla={params.sla ?? null}
           groupNames={groupNames}
         />
 

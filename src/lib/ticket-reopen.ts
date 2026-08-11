@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { restartSlaOnReopen } from "@/lib/sla-store";
 
 /**
  * Réouvre un ticket clos sur lequel le client vient de reprendre la parole.
@@ -47,6 +48,12 @@ export async function reopenClosedTicket(ticketId: string): Promise<boolean> {
     where: { id: ticketId },
     data: { statusId: target.id, closedAt: null },
   });
+
+  // Horloge SLA réarmée, plutôt que réveillée avec ses anciennes échéances : le
+  // ticket reviendrait sinon dans la file déjà en retard de plusieurs semaines,
+  // ce qui ne dirait rien de l'attente réelle du client. Il vient de relancer :
+  // le délai que l'équipe s'engage à tenir court à partir de maintenant.
+  await restartSlaOnReopen(ticketId);
 
   await prisma.message.create({
     data: {

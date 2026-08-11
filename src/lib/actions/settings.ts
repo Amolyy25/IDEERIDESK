@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
 import { AI_SETTING_KEYS } from "@/lib/ai-settings";
 import { INBOUND_CREATE_TICKETS_KEY } from "@/lib/email-account";
+import { SLA_SETTING_KEYS } from "@/lib/sla";
 
 /**
  * Réglages qui ont leur propre écran, et qui n'ont donc rien à faire dans la
@@ -15,10 +16,13 @@ import { INBOUND_CREATE_TICKETS_KEY } from "@/lib/email-account";
  * `getGlobalSettings` est appelable en HTTP par n'importe quel client et
  * renverrait la clé d'API en clair. Le réglage de création de tickets par email
  * est un booléen stocké en « 1 » / « 0 » : l'éditer comme du texte libre ici
- * n'aurait aucun sens.
+ * n'aurait aucun sens. Même raison pour le calendrier SLA, dont les valeurs sont
+ * un mode (« calendar » / « business ») et une liste de jours en chiffres :
+ * saisissables à la main, mais illisibles et faciles à casser.
  */
 const OWNED_BY_SECTION: Record<string, string> = {
   ...Object.fromEntries(Object.values(AI_SETTING_KEYS).map((key) => [key, "Assistant IA"])),
+  ...Object.fromEntries(Object.values(SLA_SETTING_KEYS).map((key) => [key, "SLA"])),
   [INBOUND_CREATE_TICKETS_KEY]: "Boîte de support",
 };
 
