@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { stripScriptTags } from "@/lib/strip-script-tags";
 import { VideoEmbed } from "@/components/editor/video-embed-extension";
 import { StyleBlock } from "@/components/editor/style-block-extension";
 import { ResizableImage } from "@/components/editor/resizable-image-extension";
@@ -247,7 +248,7 @@ export function RichTextEditor({
   // rendu — un filtrage fait uniquement ici se contournerait en appelant
   // l'action directement.
   function applyHtml() {
-    const safeHtml = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "");
+    const safeHtml = stripScriptTags(rawHtml);
     if (safeHtml.trim()) {
       if (needsHtmlSource(safeHtml)) {
         const base = mode === "html" ? htmlSource : editor!.getHTML();

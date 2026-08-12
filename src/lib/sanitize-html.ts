@@ -7,6 +7,7 @@ import {
   EMAIL_TAGS,
 } from "@/lib/sanitize-html-policy";
 import { sanitizeCssBlock, sanitizeInlineStyle } from "@/lib/sanitize-css";
+import { stripScriptTags } from "@/lib/strip-script-tags";
 
 /**
  * Assainissement du HTML riche (articles de la base de connaissances, modèles
@@ -55,6 +56,23 @@ function extractStyleBlocks(html: string): { html: string; css: string[] } {
 function withStyleBlocks(sanitizedHtml: string, css: string[]): string {
   if (css.length === 0) return sanitizedHtml;
   return `<style>${css.join("\n")}</style>${sanitizedHtml}`;
+}
+
+/**
+ * Prépare le HTML pour DOMPurify : scripts découpés au cordeau, blocs `<style>`
+ * mis de côté.
+ *
+ * Le retrait des scripts précède tout, et ce n'est pas une redondance avec
+ * `FORBID_TAGS`. Laisser DOMPurify s'en charger seul coûte tout le contenu qui
+ * SUIT un `<script>` mal fermé : le parseur HTML lit alors le reste du document
+ * comme le texte du script, et il part avec l'élément supprimé. Un article se
+ * retrouvait vidé pour une balise oubliée.
+ *
+ * `stripScriptTags` ne fait que supprimer, il ne peut pas fabriquer de balise,
+ * et sa sortie repasse de toute façon par DOMPurify — qui reste la barrière.
+ */
+function prepare(html: string) {
+  return extractStyleBlocks(stripScriptTags(html));
 }
 
 let hookInstalled = false;
@@ -115,14 +133,20 @@ function installHooks() {
  */
 export function sanitizeRichHtml(html: string): string {
   installHooks();
-  const extracted = extractStyleBlocks(html);
+  const extracted = prepare(html);
   const sanitized = DOMPurify.sanitize(extracted.html, {
     ALLOWED_TAGS: ARTICLE_TAGS,
     ALLOWED_ATTR: ARTICLE_ATTR,
     ALLOWED_URI_REGEXP: SAFE_URI_REGEXP,
-    // Une balise interdite est retirée avec son contenu : sans ça, le texte
-    // d'un `<script>` supprimé se retrouverait en clair dans l'article.
-    KEEP_CONTENT: false,
+    // Une balise refusée est dépliée, son contenu conservé. L'inverse
+    // (`KEEP_CONTENT: false`) emportait le texte avec la balise : un article
+    // enveloppé dans un `<center>`, un `<section>` ou un `<form>` — balisage
+    // courant dans du HTML collé — s'enregistrait entièrement vide.
+    //
+    // Le texte d'un `<script>` ne fuit pas pour autant : les scripts sont déjà
+    // retirés en amont, et `FORBID_CONTENTS` (script, style, noscript… par
+    // défaut dans DOMPurify) couvre ce qui aurait échappé.
+    KEEP_CONTENT: true,
     FORBID_TAGS: ["script", "noscript", "form", "input", "button", "object", "embed"],
     FORBID_ATTR: ["onerror", "onload", "srcdoc", "formaction"],
   });
@@ -148,12 +172,15 @@ export function sanitizeRichHtml(html: string): string {
  */
 export function sanitizeEmailHtml(html: string): string {
   installHooks();
-  const extracted = extractStyleBlocks(html);
+  const extracted = prepare(html);
   const sanitized = DOMPurify.sanitize(extracted.html, {
     ALLOWED_TAGS: EMAIL_TAGS,
     ALLOWED_ATTR: EMAIL_ATTR,
     ALLOWED_URI_REGEXP: SAFE_URI_REGEXP,
-    KEEP_CONTENT: false,
+    // Voir `sanitizeRichHtml` : déplier plutôt que supprimer avec le contenu.
+    // Enjeu plus fort encore ici, un gabarit d'email étant presque toujours
+    // enveloppé dans un `<center>` ou une table de mise en page.
+    KEEP_CONTENT: true,
     FORBID_TAGS: ["script", "noscript", "iframe", "form", "input", "button", "object", "embed"],
     FORBID_ATTR: ["onerror", "onload", "srcdoc", "formaction"],
   });

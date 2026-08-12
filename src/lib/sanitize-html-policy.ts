@@ -143,6 +143,7 @@ export const ARTICLE_POLICY: SanitizePolicy = {
     "<script> et les gestionnaires d'événements (onclick, onerror, onload…)",
     "les liens javascript: et data:",
     "les <iframe> autres que YouTube et Vimeo, et les objets embarqués",
+    "les balises absentes de la liste ci-dessus (<section>, <center>, <form>…) : seule la balise disparaît, le texte et les balises qu'elle contient sont conservés",
     "en CSS : @import, expression(), behavior:, -moz-binding et url(javascript:) — ce sont des façons d'exécuter du code, pas de mettre en forme",
   ],
 };
@@ -156,6 +157,7 @@ export const EMAIL_POLICY: SanitizePolicy = {
     "<script> et les gestionnaires d'événements (onclick, onerror…)",
     "les liens javascript: et data:",
     "les <iframe> et objets embarqués — aucun client mail ne les affiche",
+    "les balises absentes de la liste ci-dessus (<section>, <center>, <form>…) : seule la balise disparaît, le texte et les balises qu'elle contient sont conservés",
     "en CSS : @import, expression(), behavior: et -moz-binding",
   ],
 };
