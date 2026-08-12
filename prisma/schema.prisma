@@ -141,8 +141,31 @@ model Client {
   // stockée est en `.invalid`, donc inatteignable par construction).
   anonymizedAt DateTime?
 
+  // --- Fusion de fiches en doublon ---
+  // Fiche dans laquelle celle-ci a été fusionnée. Même modèle que la fusion de
+  // tickets, et pour la même raison : la fusion ne DÉTRUIT rien, elle est donc
+  // réversible. La fiche absorbée garde son nom, son adresse et sa date de
+  // création ; elle cesse simplement d'être un contact à part entière.
+  //
+  // Cette survivance n'est pas qu'une précaution : c'est ce qui fait tenir la
+  // fusion dans le temps. La personne continue d'écrire depuis l'adresse
+  // absorbée, et c'est cette fiche-là que la résolution d'un email entrant
+  // retrouve — elle suit alors le lien jusqu'au contact actif (voir
+  // `resolveTicketClient`). Sans elle, le prochain email recréerait la fiche que
+  // l'agent venait de faire disparaître.
+  //
+  // `SetNull` plutôt que `Cascade` : supprimer le contact actif (droit à
+  // l'effacement) ne doit pas emporter les fiches qu'il avait absorbées, qui
+  // portent l'identité d'une AUTRE personne le cas échéant — elles redeviennent
+  // simplement autonomes.
+  mergedInto    Client?   @relation("ClientMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedIntoId  String?
+  mergedClients Client[]  @relation("ClientMerge")
+  mergedAt      DateTime?
+
   tickets Ticket[]
 
+  @@index([mergedIntoId])
   @@map("clients")
 }
 
@@ -801,6 +824,11 @@ enum AuditAction {
   AGENT_ACCESS_GRANTED // demande d'accès approuvée
   AGENT_ACCESS_DENIED // demande d'accès refusée
   AGENT_PERMISSIONS_UPDATED // rôle, activation ou permissions fines modifiés
+  // Tenue du répertoire client. Tracé parce qu'irréversible : la fusion supprime
+  // des fiches et déplace des tickets d'un contact à l'autre, sans qu'aucun
+  // écran ne garde ensuite la moindre trace de l'état antérieur.
+  CLIENTS_MERGED // fiches contacts en doublon réunies en une seule
+  CLIENTS_UNMERGED // fiche détachée du contact qui l'avait absorbée
   // Réponses aux droits d'une personne concernée (RGPD). Ce sont les gestes qui
   // DOIVENT être traçables en priorité : remettre le dossier d'une personne,
   // effacer son identité ou sa fiche sont exactement ce qu'un contrôle demande

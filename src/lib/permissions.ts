@@ -44,6 +44,7 @@ export const PERMISSION_KEYS = [
   // Répertoire
   "clients.view",
   "clients.manage",
+  "clients.merge",
   "clients.delete",
   "team.view",
   "team.manage",
@@ -188,6 +189,18 @@ export const PERMISSIONS: Record<PermissionKey, PermissionMeta> = {
     denial: "Vous n'avez pas la permission de modifier une fiche client.",
     standard: true,
     requires: "clients.view",
+  },
+  "clients.merge": {
+    label: "Fusionner des fiches en doublon",
+    description:
+      "Réunir plusieurs fiches qui désignent la même personne en une seule, en arbitrant les coordonnées à conserver. Les fiches absorbées disparaissent et leurs tickets changent de contact : la fusion ne se défait pas.",
+    group: "directory",
+    denial: "Vous n'avez pas la permission de fusionner des fiches clients.",
+    // Rangée avec les gestes qui ne se défont pas, et non accordée d'office :
+    // contrairement à une fusion de tickets, celle-ci SUPPRIME des fiches et
+    // déplace des dossiers d'un contact à l'autre.
+    sensitive: true,
+    requires: "clients.manage",
   },
   "clients.delete": {
     label: "Supprimer un client",

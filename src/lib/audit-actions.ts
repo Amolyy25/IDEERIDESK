@@ -53,6 +53,12 @@ export const AUDIT_ACTIONS: Record<AuditAction, AuditActionMeta> = {
   AGENT_ACCESS_GRANTED: { label: "Accès approuvé", family: "MODIFICATION" },
   AGENT_ACCESS_DENIED: { label: "Accès refusé", family: "MODIFICATION" },
   AGENT_PERMISSIONS_UPDATED: { label: "Permissions modifiées", family: "MODIFICATION" },
+  // Modification et non conformité : la fusion est un geste de tenue du
+  // répertoire, pas la réponse à un droit d'une personne concernée. La ranger
+  // avec les gestes RGPD polluerait la seule question que la famille
+  // « Conformité » sert à poser.
+  CLIENTS_MERGED: { label: "Fiches contacts fusionnées", family: "MODIFICATION" },
+  CLIENTS_UNMERGED: { label: "Fiche contact détachée", family: "MODIFICATION" },
   SUBJECT_DATA_EXPORTED: { label: "Dossier personnel exporté", family: "CONFORMITE" },
   SUBJECT_ANONYMIZED: { label: "Personne anonymisée", family: "CONFORMITE" },
   SUBJECT_DELETED: { label: "Fiche supprimée", family: "CONFORMITE" },

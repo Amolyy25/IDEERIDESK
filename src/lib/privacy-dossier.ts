@@ -43,6 +43,12 @@ const clientSelect = {
   createdAt: true,
   updatedAt: true,
   anonymizedAt: true,
+  // Le rattachement de fusion. Une fiche absorbée n'est plus le contact actif,
+  // mais elle porte toujours une identité : le dossier doit dire vers qui elle
+  // renvoie, sinon la personne s'étonnerait à juste titre qu'il ne mentionne
+  // aucun de ses tickets — ils sont sur l'autre fiche.
+  mergedInto: { select: { name: true } },
+  mergedAt: true,
 } satisfies Prisma.ClientSelect;
 
 const agentSelect = {
@@ -334,6 +340,15 @@ async function readClientDossier(id: string): Promise<SubjectDossier | null> {
       { label: "Type de personne", value: SUBJECT_KIND_LABELS.CLIENT },
       { label: "Nom", value: client.name },
       { label: "Email", value: client.email },
+      // Lignes absentes quand la fiche n'est pas rattachée, plutôt que des cases
+      // vides : la majorité des fiches ne le sont pas, et « Fusionnée dans : — »
+      // ferait chercher un sens là où il n'y en a pas.
+      ...(client.mergedInto
+        ? [
+            { label: "Fiche rattachée au contact", value: client.mergedInto.name },
+            { label: "Rattachée le", value: client.mergedAt },
+          ]
+        : []),
       { label: "Téléphone", value: client.phone },
       { label: "Société", value: client.company },
       { label: "Fiche créée le", value: client.createdAt },

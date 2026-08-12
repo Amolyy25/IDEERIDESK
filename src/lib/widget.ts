@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENT_SIZE,
 } from "@/lib/attachment-rules";
 import { inspectUploadedFile, type ScanColumns } from "@/lib/upload-inspection";
+import { resolveTicketClient } from "@/lib/client-identity";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 import { slaDueDatesForNewTicket } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
@@ -117,10 +118,15 @@ export async function createWidgetTicket(
     }
   }
 
-  const client = await prisma.client.upsert({
-    where: { email: input.email },
-    update: input.name ? { name: input.name } : {},
-    create: { name: input.name ?? input.email, email: input.email },
+  // `trustName: true` : le nom vient d'être saisi dans le formulaire par la
+  // personne elle-même, il fait donc autorité sur celui déjà en base — à
+  // l'inverse du nom affiché d'un email entrant. La résolution passe par les
+  // alias : une adresse écartée par une fusion de fiches retrouve son contact au
+  // lieu d'en recréer un (voir `resolveTicketClient`).
+  const client = await resolveTicketClient({
+    email: input.email,
+    name: input.name,
+    trustName: true,
   });
 
   const ticket = await prisma.ticket.create({

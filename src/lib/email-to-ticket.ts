@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { EMAIL_METADATA_KEY, type InboundEmailMetadata } from "@/lib/inbound-email-metadata";
+import { resolveTicketClient } from "@/lib/client-identity";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 import { slaDueDatesForNewTicket } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
@@ -73,12 +74,14 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
 
   // Même règle que le formulaire public : la fiche client est la clé d'entrée
   // de tout l'historique, elle est créée à la volée si l'expéditeur est inconnu.
-  // Le nom déjà en base n'est jamais écrasé par le nom affiché d'un client mail,
-  // souvent moins fiable (« jean », « Compta »).
-  const client = await prisma.client.upsert({
-    where: { email: input.fromAddress },
-    update: {},
-    create: { name: input.fromName ?? input.fromAddress, email: input.fromAddress },
+  // `trustName: false` : le nom déjà en base n'est jamais écrasé par le nom
+  // affiché d'un client mail, souvent moins fiable (« jean », « Compta »).
+  // La résolution passe par les alias, donc une adresse écartée par une fusion de
+  // fiches retrouve le contact au lieu d'en recréer un — voir `resolveTicketClient`.
+  const client = await resolveTicketClient({
+    email: input.fromAddress,
+    name: input.fromName,
+    trustName: false,
   });
 
   // Tous les en-têtes utiles à un agent qui veut retrouver l'email d'origine :
