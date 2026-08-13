@@ -6,6 +6,7 @@ import {
   heartbeatTicketPresence,
   type TicketPresenceItem,
 } from "@/lib/actions/ticket-presence";
+import { isStaleDeployment, noticeStaleDeployment } from "@/lib/stale-deployment";
 
 /**
  * Cadence des battements.
@@ -47,6 +48,10 @@ export function useTicketPresence({
 
   useEffect(() => {
     let stopped = false;
+    // Déclaré avant `beat`, et non par le `const` qui le crée : le premier
+    // battement part immédiatement, donc AVANT cette création. Une référence à
+    // une liaison `const` pas encore initialisée lèverait dès ce premier appel.
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     async function beat() {
       // Onglet en arrière-plan : ni battement, ni lecture. Sans cette garde, un
@@ -55,16 +60,25 @@ export function useTicketPresence({
       // rend l'indicateur inutile.
       if (document.visibilityState === "hidden") return;
 
+      // Onglet resté sur une version qui n'est plus déployée : plus rien
+      // n'aboutira, et battre quatre fois par minute pour rien ne fait que
+      // remplir les logs de la plateforme.
+      if (isStaleDeployment()) {
+        if (interval) clearInterval(interval);
+        return;
+      }
+
       try {
         const present = await heartbeatTicketPresence({ ticketId, composing });
         if (!stopped) setOthers(present);
-      } catch {
+      } catch (error) {
         // Silencieux : le battement suivant réessaiera seul.
+        noticeStaleDeployment(error);
       }
     }
 
     beat();
-    const interval = setInterval(beat, BEAT_MS);
+    interval = setInterval(beat, BEAT_MS);
 
     // Retour sur l'onglet : on se réannonce sans attendre le prochain tour, sinon
     // l'agent reste invisible de ses collègues pendant quinze secondes alors qu'il
@@ -76,7 +90,7 @@ export function useTicketPresence({
 
     return () => {
       stopped = true;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [ticketId, composing]);

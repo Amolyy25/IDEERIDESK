@@ -19,6 +19,7 @@ import {
 import { ReplyEditor } from "@/components/editor/reply-editor";
 import { appendReplyHtml, isReplyHtmlEmpty, textToReplyHtml } from "@/lib/reply-html";
 import { htmlToText } from "@/lib/html-to-text";
+import { noticeStaleDeployment } from "@/lib/stale-deployment";
 import type { MentionableAgent } from "@/lib/mentions";
 import type { TicketCannedResponses } from "@/lib/canned-responses";
 
@@ -313,6 +314,13 @@ function ReplyComposer({
       else setHtml(sentHtml ?? "");
       setPlanePhase("idle");
       setMessageInFlight(null);
+
+      // Onglet resté sur une version qui n'est plus déployée : ce n'est pas la
+      // réponse qui a été refusée, c'est la page qui est périmée. « Impossible
+      // d'envoyer le message » enverrait l'agent réécrire ou relancer, alors que
+      // seul un rechargement peut y changer quelque chose — et le bandeau posé
+      // par `noticeStaleDeployment` le dit, lui.
+      if (noticeStaleDeployment(error)) return;
 
       let message = "Impossible d'envoyer le message";
       if (error instanceof Error) {

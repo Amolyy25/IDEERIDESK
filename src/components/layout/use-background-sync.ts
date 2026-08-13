@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { triggerManualGmailSync } from "@/lib/actions/gmail-sync";
+import { isStaleDeployment, noticeStaleDeployment } from "@/lib/stale-deployment";
 import {
   getMyNotifications,
   markAllNotificationsRead,
@@ -76,6 +77,15 @@ export function useBackgroundSync({
 
   useEffect(() => {
     const interval = setInterval(async () => {
+      // Onglet resté sur une version qui n'est plus déployée : ses appels ne
+      // peuvent plus aboutir. Ce cycle-ci était la principale source du « Failed
+      // to find Server Action » qui remplissait les logs — deux actions, une
+      // relance par minute, indéfiniment, sur chaque onglet laissé ouvert.
+      if (isStaleDeployment()) {
+        clearInterval(interval);
+        return;
+      }
+
       // Un cycle lent (envoi Gmail en cours) ne doit pas se superposer au
       // suivant : le tour est sauté, pas mis en file.
       if (isRunningRef.current) return;
@@ -112,17 +122,20 @@ export function useBackgroundSync({
             );
           }
         }
-      } catch {
+      } catch (error) {
         // Relève silencieuse : une erreur ponctuelle ne doit pas interrompre
-        // l'agent, le cycle suivant réessaiera seul.
+        // l'agent, le cycle suivant réessaiera seul. Sauf s'il n'y a plus de
+        // cycle suivant qui vaille — voir `noticeStaleDeployment`.
+        noticeStaleDeployment(error);
       }
 
       try {
         if (await refreshNotifications({ announce: true })) {
           shouldRefresh = true;
         }
-      } catch {
+      } catch (error) {
         // Idem : la cloche garde son contenu précédent.
+        noticeStaleDeployment(error);
       }
 
       isRunningRef.current = false;
