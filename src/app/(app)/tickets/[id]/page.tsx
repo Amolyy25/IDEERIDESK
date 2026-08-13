@@ -189,7 +189,13 @@ export default async function TicketDetailPage({
         <div className={cn("mx-auto w-full px-6 py-6", threadWidth(dossier.mergedTickets.length))}>
           {/* Le fil est celui du dossier, jamais celui de la seule porte
               d'entrée : c'est ce qui fait qu'un doublon et son ticket d'accueil
-              montrent exactement la même conversation. */}
+              montrent exactement la même conversation.
+
+              La zone de rédaction lui est confiée plutôt que posée à côté : elle
+              se range sous le dernier message, et lui seul sait lequel c'est.
+              Elle écrit sur le dossier, pas sur la porte d'entrée — répondre
+              depuis un doublon doit servir tout le monde, sinon la fusion
+              n'aurait tenu qu'à l'endroit d'où l'agent a cliqué. */}
           <TicketThread
             ticket={dossier}
             currentTicketId={ticket.id}
@@ -197,33 +203,27 @@ export default async function TicketDetailPage({
             canMerge={canMerge}
             agents={mentionableAgents}
             currentAgentId={session?.user?.id ?? null}
+            replyBox={
+              /* La clé attache la zone de rédaction à SON dossier : passer d'un
+                 ticket à l'autre remonte un champ neuf, au lieu de conserver
+                 l'état du précédent. Indispensable depuis le pré-remplissage —
+                 sans elle, le brouillon proposé pour un ticket pourrait survivre
+                 à la navigation et se retrouver sous les yeux du mauvais client. */
+              <ReplyBox
+                key={dossier.id}
+                ticketId={dossier.id}
+                currentAgentId={session.user.id}
+                currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
+                clientEmail={dossier.client?.email ?? null}
+                mergedRecipientCount={mergedRecipientCount}
+                canRespond={canRespond}
+                requiresApproval={session.user.requiresApproval}
+                signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
+                agents={mentionableAgents}
+                cannedResponses={cannedResponses}
+              />
+            }
           />
-
-          {/* Aligné sur les cartes du fil (largeur de la pastille + son écart) :
-              la zone de rédaction est le prochain tour de la conversation.
-              Elle écrit sur le dossier, pas sur la porte d'entrée — répondre
-              depuis un doublon doit servir tout le monde, sinon la fusion
-              n'aurait tenu qu'à l'endroit d'où l'agent a cliqué. */}
-          <div className="mt-4 pl-11">
-            {/* La clé attache la zone de rédaction à SON dossier : passer d'un
-                ticket à l'autre remonte un champ neuf, au lieu de conserver
-                l'état du précédent. Indispensable depuis le pré-remplissage —
-                sans elle, le brouillon proposé pour un ticket pourrait survivre
-                à la navigation et se retrouver sous les yeux du mauvais client. */}
-            <ReplyBox
-              key={dossier.id}
-              ticketId={dossier.id}
-              currentAgentId={session.user.id}
-              currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
-              clientEmail={dossier.client?.email ?? null}
-              mergedRecipientCount={mergedRecipientCount}
-              canRespond={canRespond}
-              requiresApproval={session.user.requiresApproval}
-              signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
-              agents={mentionableAgents}
-              cannedResponses={cannedResponses}
-            />
-          </div>
         </div>
       </div>
 

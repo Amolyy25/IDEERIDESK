@@ -26,6 +26,15 @@ type MergedMessage = MergedTicket["messages"][number];
 /**
  * Le fil du ticket, dans l'une de ses deux formes.
  *
+ * LE FIL SE LIT DU PLUS RÉCENT AU PLUS ANCIEN : le dernier tour de la
+ * conversation est en haut, la demande d'origine tout en bas. C'est ce qu'un
+ * agent vient chercher en ouvrant un ticket — ce qui vient d'arriver, pas ce
+ * qui s'est dit il y a trois semaines. Sur un dossier qui traîne, l'ordre
+ * chronologique obligeait à dérouler toute l'histoire pour atteindre la seule
+ * ligne encore d'actualité. Le temps descend donc à rebours, partout dans ce
+ * fichier : les tableaux sont triés du plus récent au plus ancien, et chaque
+ * bloc est rendu après ceux qui lui sont postérieurs.
+ *
  * Sans doublon fusionné : une seule colonne, la conversation avec un client.
  *
  * Avec doublons : chaque demande garde sa propre colonne — celle du ticket à
@@ -34,6 +43,8 @@ type MergedMessage = MergedTicket["messages"][number];
  * juste de ce qui s'est passé : deux personnes ont écrit séparément, sans se
  * connaître, puis l'équipe a répondu une fois pour les deux. Un fil unique
  * mélangeait leurs messages et laissait croire à une conversation à trois.
+ * L'inversion retourne ce dessin sans le défaire : la colonne commune occupe
+ * le haut, et les branches, plus anciennes, s'ouvrent en dessous.
  */
 export function TicketThread({
   ticket,
@@ -42,6 +53,7 @@ export function TicketThread({
   agents,
   currentAgentId,
   currentTicketId,
+  replyBox,
 }: {
   ticket: TicketWithMessages;
   canApprove: boolean;
@@ -49,6 +61,13 @@ export function TicketThread({
   canMerge: boolean;
   agents: MentionableAgent[];
   currentAgentId: string | null;
+  /**
+   * Zone de rédaction, posée dans le fil et non au-dessus : on répond au dernier
+   * message, elle a donc sa place juste sous lui. Le fil est seul à savoir
+   * lequel est le dernier — d'autant qu'avec des doublons fusionnés, il ne se
+   * trouve pas forcément dans la même colonne d'un ticket à l'autre.
+   */
+  replyBox: React.ReactNode;
   /**
    * Ticket dont l'agent a ouvert l'adresse. Différent de `ticket` quand il est
    * arrivé par un doublon : le fil affiché est alors celui du dossier entier, et
@@ -59,17 +78,28 @@ export function TicketThread({
   const merged = ticket.mergedTickets;
 
   if (merged.length === 0) {
-    return (
-      <Timeline>
-        <InitialRequest ticket={ticket} />
-        <MessageThread
-          messages={ticket.messages}
+    const entries: ThreadEntry[] = newestFirst(ticket.messages).map((message) => ({
+      isTurn: isConversationTurn(message),
+      node: (
+        <MessageTimelineItem
+          key={message.id}
+          message={message}
           canApprove={canApprove}
           agents={agents}
           currentAgentId={currentAgentId}
         />
-      </Timeline>
-    );
+      ),
+    }));
+
+    // La demande d'origine est un tour de parole, et le dernier qu'on puisse
+    // atteindre : c'est elle que la zone de rédaction rejoint sur un ticket sans
+    // réponse, comme sur un ticket dont toutes les réponses sont des notes.
+    entries.push({
+      isTurn: true,
+      node: <InitialRequest key="initial-request" ticket={ticket} />,
+    });
+
+    return <Timeline>{withReplyBox(entries, replyBox)}</Timeline>;
   }
 
   // Point de confluence : la première fusion. Tout ce qui précède appartient
@@ -100,10 +130,52 @@ export function TicketThread({
     }
   }
 
-  afterMerge.sort((a, b) => a.date.getTime() - b.date.getTime());
+  afterMerge.sort((a, b) => b.date.getTime() - a.date.getTime());
 
   return (
     <div>
+      {/* La colonne commune, en tête puisqu'elle porte les derniers échanges.
+          Son rail descend jusqu'en bas, sans le retrait habituel, pour rejoindre
+          sans rupture le raccord d'où repartent les branches. */}
+      <Timeline className="before:bottom-0">
+        {withReplyBox(
+          afterMerge.map((entry): ThreadEntry => {
+            if (entry.kind === "own") {
+              return {
+                isTurn: isConversationTurn(entry.message),
+                node: (
+                  <MessageTimelineItem
+                    key={entry.message.id}
+                    message={entry.message}
+                    canApprove={canApprove}
+                    agents={agents}
+                    currentAgentId={currentAgentId}
+                  />
+                ),
+              };
+            }
+
+            return {
+              // Ce qui remonte d'un doublon est toujours une réponse de client :
+              // les notes internes des branches ne sont même pas chargées (voir
+              // `ticketDetailInclude`), et le filtre plus haut écarte le reste.
+              isTurn: true,
+              node: (
+                <DuplicateMessage
+                  key={`${entry.duplicate.id}-${entry.message.id}`}
+                  message={entry.message}
+                  clientName={entry.duplicate.client?.name ?? null}
+                  origin={entry.duplicate.number}
+                />
+              ),
+            };
+          }),
+          replyBox
+        )}
+      </Timeline>
+
+      <ConfluenceBand branchCount={merged.length} />
+
       {/* Les branches. En dessous de `md` elles s'empilent : deux colonnes de
           200 px seraient illisibles. Le raccord disparaît alors avec elles — son
           tracé n'a de sens qu'en vis-à-vis. */}
@@ -117,24 +189,24 @@ export function TicketThread({
       >
         <BranchColumn
           align="left"
-          header={
+          footer={
             <OwnBranchHeader ticket={ticket} isCurrent={currentTicketId === ticket.id} />
           }
         >
-          <InitialRequest ticket={ticket} />
           <MessageThread
-            messages={beforeMerge}
+            messages={newestFirst(beforeMerge)}
             canApprove={canApprove}
             agents={agents}
             currentAgentId={currentAgentId}
           />
+          <InitialRequest ticket={ticket} />
         </BranchColumn>
 
         {merged.map((duplicate) => (
           <BranchColumn
             key={duplicate.id}
             align="right"
-            header={
+            footer={
               <DuplicateBranchHeader
                 duplicate={duplicate}
                 canMerge={canMerge}
@@ -142,51 +214,100 @@ export function TicketThread({
               />
             }
           >
+            {newestFirst(
+              duplicate.messages.filter(
+                (message) => message.createdAt.getTime() < mergedAtOf(duplicate).getTime()
+              )
+            ).map((message) => (
+              <DuplicateMessage
+                key={message.id}
+                message={message}
+                clientName={duplicate.client?.name ?? null}
+                align="right"
+              />
+            ))}
             <DuplicateInitialRequest duplicate={duplicate} />
-            {duplicate.messages
-              .filter((message) => message.createdAt.getTime() < mergedAtOf(duplicate).getTime())
-              .map((message) => (
-                <DuplicateMessage
-                  key={message.id}
-                  message={message}
-                  clientName={duplicate.client?.name ?? null}
-                  align="right"
-                />
-              ))}
           </BranchColumn>
         ))}
       </div>
-
-      <ConfluenceBand branchCount={merged.length} />
-
-      {/* La colonne commune. Son rail démarre en haut, sans le retrait habituel,
-          pour prolonger sans rupture le trait qui descend du raccord. */}
-      <Timeline className="before:top-0">
-        {afterMerge.map((entry) => {
-          if (entry.kind === "own") {
-            return (
-              <MessageTimelineItem
-                key={entry.message.id}
-                message={entry.message}
-                canApprove={canApprove}
-                agents={agents}
-                currentAgentId={currentAgentId}
-              />
-            );
-          }
-
-          return (
-            <DuplicateMessage
-              key={`${entry.duplicate.id}-${entry.message.id}`}
-              message={entry.message}
-              clientName={entry.duplicate.client?.name ?? null}
-              origin={entry.duplicate.number}
-            />
-          );
-        })}
-      </Timeline>
     </div>
   );
+}
+
+/** Une entrée du fil, et ce qu'elle pèse dans la recherche du dernier message. */
+type ThreadEntry = {
+  node: React.ReactNode;
+  /**
+   * Un tour de parole, par opposition à une note interne ou à un événement de
+   * service (accusé de réception, échec d'envoi). Seuls les tours de parole ont
+   * un destinataire : ce sont eux auxquels on répond.
+   */
+  isTurn: boolean;
+};
+
+/** Ce message a-t-il été adressé à quelqu'un hors de l'équipe ? */
+function isConversationTurn(message: Message) {
+  return message.authorType !== "SYSTEM" && !message.isPrivate;
+}
+
+/**
+ * Le fil, avec la zone de rédaction glissée sous le dernier tour de parole.
+ *
+ * Dans un fil qui se lit à rebours, le premier élément est le dernier message :
+ * la zone de réponse se retrouve donc là où l'on répond, collée au message
+ * auquel on répond, et tout l'historique la suit sans jamais la déplacer.
+ *
+ * Sauf que le premier élément n'est pas toujours ce à quoi on répond. Une note
+ * interne posée après coup — « je l'ai eu au téléphone », « à voir avec la
+ * compta » — est justement écrite POUR préparer la réponse : la glisser
+ * au-dessus de la zone de rédaction cacherait sous l'historique le message du
+ * client qu'elle commente. Tout ce qui n'est pas un tour de parole monte donc
+ * en tête avec le dernier vrai message, et la zone de rédaction se place sous
+ * l'ensemble : la note et ce qu'elle annote restent lisibles d'un seul regard,
+ * au-dessus du champ où l'on écrit.
+ *
+ * Le cas d'une colonne vide est réel et non défensif : un ticket peut être
+ * fusionné avant tout échange commun, et la zone de rédaction reste alors seule
+ * au-dessus du raccord, prête à ouvrir la conversation du dossier.
+ */
+function withReplyBox(entries: ThreadEntry[], replyBox: React.ReactNode) {
+  // Le point de coupe : après le premier tour de parole rencontré en
+  // descendant. Sans aucun tour de parole — colonne vide, ou fil ne contenant
+  // que des notes — la boucle sort au bout et la zone de rédaction ferme le fil.
+  let cut = 0;
+  while (cut < entries.length && !entries[cut].isTurn) cut++;
+  if (cut < entries.length) cut++;
+
+  const nodes = entries.map((entry) => entry.node);
+  return [
+    ...nodes.slice(0, cut),
+    <ReplySlot key="reply-box">{replyBox}</ReplySlot>,
+    ...nodes.slice(cut),
+  ];
+}
+
+/**
+ * L'emplacement de la zone de rédaction dans la ligne de temps.
+ *
+ * Un `<li>`, comme les messages : la ligne de temps est une liste ordonnée, un
+ * `<div>` glissé entre deux entrées n'y aurait pas sa place. Le retrait
+ * remplace la pastille d'auteur (sa largeur, plus l'écart) pour aligner le
+ * champ sur les cartes ; la ligne de temps passe derrière, sans interruption —
+ * la conversation n'est pas finie.
+ */
+function ReplySlot({ children }: { children: React.ReactNode }) {
+  return <li className="relative pl-11">{children}</li>;
+}
+
+/**
+ * Le fil, du plus récent au plus ancien.
+ *
+ * Trié, et non simplement retourné : l'ordre d'arrivée dépend de la requête qui
+ * a chargé le ticket, et un `reverse()` aurait donné un fil correct tant que
+ * cette requête ne changeait pas.
+ */
+function newestFirst<T extends { createdAt: Date }>(entries: T[]): T[] {
+  return [...entries].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 /** Une entrée de la colonne commune : écrite ici, ou remontée d'un doublon. */
@@ -206,24 +327,31 @@ function mergedAtOf(duplicate: MergedTicket): Date {
   return duplicate.createdAt;
 }
 
-/** Une conversation, de son ouverture jusqu'à la fusion. */
+/**
+ * Une conversation, de son ouverture jusqu'à la fusion.
+ *
+ * Le repère de colonne est en pied et non en tête : dans un fil qui se lit à
+ * rebours, une branche commence en bas. Le placer au-dessus l'aurait mis entre
+ * le raccord et le premier message de la colonne, coupant le rail à l'endroit
+ * précis où il doit se voir descendre d'une conversation vers l'autre.
+ */
 function BranchColumn({
   align,
-  header,
+  footer,
   children,
 }: {
   align: TimelineAlign;
-  header: React.ReactNode;
+  footer: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="min-w-0">
-      {header}
-      {/* `before:bottom-0` : le rail descend jusqu'au bas de la colonne pour
-          rejoindre le raccord, au lieu de s'arrêter au dernier message. */}
-      <Timeline align={align} className="mt-2 before:bottom-0">
+      {/* `before:top-0` : le rail part du haut de la colonne pour prolonger le
+          raccord, au lieu de commencer au premier message. */}
+      <Timeline align={align} className="mb-2 before:top-0">
         {children}
       </Timeline>
+      {footer}
     </div>
   );
 }
@@ -435,8 +563,13 @@ const BRANCH_GAP_REM = 1.5;
 const RAIL_INSET_REM = 1;
 
 /**
- * Le raccord : chaque branche de droite descend puis vire vers le rail de
- * gauche, qui poursuit seul en dessous.
+ * Le raccord : le rail unique de la colonne commune, en haut, se sépare en
+ * autant de branches qu'il y a de conversations d'origine en dessous.
+ *
+ * Le tracé suit le sens de lecture du fil, à rebours du temps : la fusion se lit
+ * donc de haut en bas comme une séparation. C'est le même événement vu par
+ * l'autre bout, et le seul dessin qui ne fasse pas remonter un trait à
+ * contresens du reste de la page.
  *
  * Tracé en bordures plutôt qu'en SVG : la position d'un rail dépend de la
  * largeur réelle des colonnes, que seul le navigateur connaît. Un `calc()` la
@@ -451,11 +584,14 @@ function ConfluenceBand({ branchCount }: { branchCount: number }) {
       {/* Le rail du ticket, qui traverse sans dévier : c'est le dossier qui reste. */}
       <span className="absolute top-0 bottom-0 left-4 w-px bg-border" />
 
+      {/* Bordures haute et droite : le trait quitte le rail de gauche à hauteur
+          du dernier message commun, file vers la colonne de la branche, puis
+          vire vers le bas pour y descendre. */}
       {Array.from({ length: branchCount }, (_, index) => (
         <span
           key={index}
           style={{ right: railOffsetFromRight(index + 1, columns) }}
-          className="absolute top-0 bottom-0 left-4 rounded-br-xl border-r border-b border-border"
+          className="absolute top-0 bottom-0 left-4 rounded-tr-xl border-t border-r border-border"
         />
       ))}
     </div>

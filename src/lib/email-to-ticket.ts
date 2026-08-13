@@ -5,6 +5,7 @@ import { resolveTicketClient } from "@/lib/client-identity";
 import { sendTicketAcknowledgement } from "@/lib/ticket-acknowledgement";
 import { slaDueDatesForNewTicket } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
+import { detectProductFromEmail } from "@/lib/product-detection";
 
 /**
  * Création de ticket à partir d'un email entrant qui ne répond à aucun ticket
@@ -111,6 +112,14 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
     description = truncate(rawBody, MAX_DESCRIPTION_LENGTH, TRUNCATION_NOTICE);
   }
 
+  // Tri à l'arrivée : le produit est déduit de ce que le client a écrit, faute
+  // d'une liste déroulante comme en ont le widget et le portail. Sur l'objet et
+  // le corps tels qu'ils seront enregistrés, et non sur le brut : ce qui a été
+  // coupé par la troncature n'est pas visible dans la fiche, il ne doit pas
+  // décider du classement non plus. Rien de reconnu = pas de produit, comme
+  // avant — voir `detectProductFromEmail`.
+  const product = await detectProductFromEmail({ subject, body: description });
+
   const ticket = await prisma.ticket.create({
     data: {
       subject,
@@ -118,6 +127,7 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
       source: "EMAIL",
       statusId: defaultStatus.id,
       priorityId: defaultPriority.id,
+      categoryId: product?.id ?? null,
       clientId: client.id,
       // Horloge SLA : le délai court depuis l'arrivée de l'email.
       ...(await slaDueDatesForNewTicket(defaultPriority.id)),
@@ -155,10 +165,10 @@ export async function createTicketFromInboundEmail(input: InboundEmailTicketInpu
   // plus, jamais transformée en nouveau ticket.
   await sendTicketAcknowledgement(ticket.id);
 
-  // Un email entrant n'arrive avec aucun produit : cet appel ne préviendra donc
-  // personne tant qu'un agent ne lui en a pas attribué un. Il est là quand même,
-  // pour le jour où le tri à l'arrivée saura en poser un — et pour qu'il n'y ait
-  // pas un point de création qui notifie et un autre qui non.
+  // Prévient la file du produit reconnu plus haut. Quand rien n'a été reconnu,
+  // le ticket n'a pas de produit et cet appel ne prévient personne : c'est la
+  // règle de `notifyQueueOnNewTicket`, pas un oubli — le ticket reste à trier
+  // dans l'onglet « Non assignés ».
   await notifyQueueOnNewTicket({ ticketId: ticket.id });
 
   return ticket;
