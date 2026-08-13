@@ -43,6 +43,7 @@ export function ReplyEditor({
   placeholder,
   autoFocus = false,
   minHeight = "150px",
+  overlay,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -54,6 +55,13 @@ export function ReplyEditor({
   placeholder?: string;
   autoFocus?: boolean;
   minHeight?: string;
+  /**
+   * Calque posé sur la zone de saisie, et sur elle seule — pas sur la barre
+   * d'outils. Sert à la copie du message qui s'envole à l'envoi : elle doit
+   * partir exactement d'où le texte se trouvait, marges et interlignage
+   * compris, faute de quoi on voit un texte sauter avant de monter.
+   */
+  overlay?: React.ReactNode;
 }) {
   const editor = useEditor({
     immediatelyRender: false,
@@ -179,7 +187,7 @@ export function ReplyEditor({
           document : un champ court n'oblige pas à viser la première ligne pour
           y placer le curseur. */}
       <div
-        className="cursor-text px-3 py-2"
+        className="relative cursor-text px-3 py-2"
         style={{ minHeight }}
         onMouseDown={(event) => {
           // Uniquement les clics sur le rembourrage : sur le texte, laisser
@@ -191,6 +199,7 @@ export function ReplyEditor({
         }}
       >
         <EditorContent editor={editor} />
+        {overlay}
       </div>
     </div>
   );

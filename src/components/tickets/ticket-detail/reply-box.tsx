@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Lock, PenLine, Reply, Save, Send, Sparkles, Wand2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Lock,
+  PenLine,
+  Reply,
+  Save,
+  Send,
+  Sparkles,
+  Wand2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn, plural } from "@/lib/utils";
@@ -17,6 +27,12 @@ import {
   type ReplyDraft,
 } from "@/components/tickets/ticket-detail/use-reply-draft";
 import { ReplyEditor } from "@/components/editor/reply-editor";
+import {
+  GameOverCurtain,
+  GAME_OVER_MS,
+} from "@/components/tickets/ticket-detail/game-over-curtain";
+import { findInsult } from "@/lib/insult-easter-egg";
+import { playGameOverJingle } from "@/lib/game-over-sound";
 import { appendReplyHtml, isReplyHtmlEmpty, textToReplyHtml } from "@/lib/reply-html";
 import { htmlToText } from "@/lib/html-to-text";
 import { noticeStaleDeployment } from "@/lib/stale-deployment";
@@ -24,16 +40,37 @@ import type { MentionableAgent } from "@/lib/mentions";
 import type { TicketCannedResponses } from "@/lib/canned-responses";
 
 /**
- * Durées du vol de l'avion, en millisecondes. Elles doivent rester alignées sur
- * les animations `send-plane-*` de globals.css : c'est un minuteur, et non la fin
+ * Durées de la séquence d'envoi, en millisecondes. Elles doivent rester alignées
+ * sur les animations `reply-*` de globals.css : c'est un minuteur, et non la fin
  * de l'animation, qui fait avancer les étapes — sous `prefers-reduced-motion`
  * l'animation n'existe pas et `animationend` ne se déclencherait jamais.
  */
-const PLANE_FLIGHT_MS = 560;
-const PLANE_RETURN_MS = 320;
+const LIFT_MS = 600;
+const RETURN_MS = 500;
 
-/** Étape du vol : au repos, en train de partir, ou de revenir se poser. */
-type PlanePhase = "idle" | "flying" | "landing";
+/**
+ * Combien de temps la coche reste affichée après un envoi réussi.
+ *
+ * Assez pour être vue en revenant du champ, trop court pour qu'on l'attende :
+ * le bouton est de toute façon inerte tant que rien n'est écrit, et la première
+ * frappe la fait disparaître avant l'heure.
+ */
+const CONFIRM_HOLD_MS = 1600;
+
+/**
+ * Étape de l'envoi.
+ *
+ * `sending` commence au clic, `sent` seulement au retour du serveur : ces deux
+ * étapes ne disent pas la même chose. La première constate que le message a
+ * quitté le champ, la seconde qu'il est parti au client — les confondre
+ * reviendrait à afficher une confirmation avant d'en avoir une.
+ *
+ * Le retour au repos a lui aussi deux formes, et pour la même raison :
+ * `returning` efface une coche affichée, `aborting` ramène un avion qui n'a
+ * jamais été confirmé. Un seul état pour les deux ferait passer une coche —
+ * fugace, mais lue — juste après un envoi refusé.
+ */
+type SendPhase = "idle" | "sending" | "sent" | "returning" | "aborting";
 
 /**
  * Zone de rédaction, en bas du fil : on écrit là où la conversation s'arrête.
@@ -145,10 +182,16 @@ function ReplyComposer({
   const [isPrivate, setIsPrivate] = useState(restoredDraft?.isPrivate ?? false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
-  const [planePhase, setPlanePhase] = useState<PlanePhase>("idle");
-  // Copie du message pendant son vol : le champ est vidé dès le clic, c'est
-  // cette copie qui s'envole par-dessus.
+  const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
+  // Copie du message pendant son départ : le champ est vidé dès le clic, c'est
+  // cette copie qui monte par-dessus.
   const [messageInFlight, setMessageInFlight] = useState<string | null>(null);
+  // Le mot qui vient d'interrompre un envoi, le temps du GAME OVER.
+  const [gameOverWord, setGameOverWord] = useState<string | null>(null);
+  // Les mots pour lesquels la blague a déjà été faite. Une référence et non un
+  // état : rien à l'écran n'en dépend, et la faire entrer dans le rendu ne
+  // servirait qu'à en déclencher un de plus.
+  const excusedInsults = useRef(new Set<string>());
 
   const isEmpty = isPrivate ? !note.trim() : isReplyHtmlEmpty(html);
   const status = metaLine({ isPrivate, currentAgentName, requiresApproval });
@@ -199,27 +242,44 @@ function ReplyComposer({
   const composing = !isEmpty && !untouchedPrefill;
   const others = useTicketPresence({ ticketId, composing });
 
-  // L'avion part, puis revient se poser. Deux étapes enchaînées par ce seul
-  // effet, pour que l'état ne puisse pas rester bloqué « en vol ».
+  // La copie du message se retire d'elle-même une fois montée. Son sort est
+  // détaché de celui du bouton : elle dure ce que dure son animation, quand le
+  // bouton, lui, attend le serveur — un aller-retour dont on ne connaît pas la
+  // durée. Les lier aurait laissé un texte figé sur le champ pendant une
+  // connexion lente.
   useEffect(() => {
-    if (planePhase === "idle") return;
-
-    let duration = PLANE_RETURN_MS;
-    let nextPhase: PlanePhase = "idle";
-    if (planePhase === "flying") {
-      duration = PLANE_FLIGHT_MS;
-      nextPhase = "landing";
-    }
-
-    const timer = setTimeout(() => {
-      setPlanePhase(nextPhase);
-      if (nextPhase === "landing") {
-        setMessageInFlight(null);
-      }
-    }, duration);
-
+    if (messageInFlight === null) return;
+    const timer = setTimeout(() => setMessageInFlight(null), LIFT_MS);
     return () => clearTimeout(timer);
-  }, [planePhase]);
+  }, [messageInFlight]);
+
+  // Le rideau se lève tout seul. Un minuteur et non la fin d'une animation :
+  // il y en a deux cent quarante qui se terminent à des instants différents, et
+  // aucune sous `prefers-reduced-motion`.
+  useEffect(() => {
+    if (gameOverWord === null) return;
+    const timer = setTimeout(() => setGameOverWord(null), GAME_OVER_MS);
+    return () => clearTimeout(timer);
+  }, [gameOverWord]);
+
+  // La coche confirme, puis rend la place à l'avion. Deux étapes enchaînées par
+  // ce seul effet, pour que le bouton ne puisse pas rester bloqué sur une
+  // confirmation.
+  useEffect(() => {
+    if (sendPhase === "idle" || sendPhase === "sending") return;
+
+    const isConfirming = sendPhase === "sent";
+    // La confirmation est écourtée dès que l'agent recommence à écrire : elle
+    // porte sur le message précédent, la laisser au-dessus du texte en cours la
+    // rendrait fausse.
+    const hold = isEmpty ? CONFIRM_HOLD_MS : 0;
+
+    const timer = setTimeout(
+      () => setSendPhase(isConfirming ? "returning" : "idle"),
+      isConfirming ? hold : RETURN_MS
+    );
+    return () => clearTimeout(timer);
+  }, [sendPhase, isEmpty]);
 
   /**
    * Insère une réponse type dans le champ.
@@ -267,14 +327,26 @@ function ReplyComposer({
     const sentHtml = isPrivate ? null : html;
     const sentContent = isPrivate ? note : htmlToText(html);
 
+    // Le contrôle passe AVANT tout le reste : le champ ne se vide pas, le
+    // brouillon n'est pas touché, rien ne part au serveur. Ce qui est écrit
+    // reste exactement où il est, prêt à être corrigé — ou renvoyé tel quel au
+    // clic suivant, car ce n'est pas une interdiction (voir `findInsult`).
+    const insult = findInsult(sentContent);
+    if (insult && !excusedInsults.current.has(insult)) {
+      excusedInsults.current.add(insult);
+      setGameOverWord(insult);
+      playGameOverJingle();
+      return;
+    }
+
     setIsSubmitting(true);
-    // Le champ se vide et le message décolle immédiatement : l'aller-retour
-    // serveur se joue pendant le vol, au lieu de laisser le texte figé dans le
-    // champ en attendant la réponse. En cas d'échec, il est rendu tel quel.
+    // Le champ se vide et le message part immédiatement : l'aller-retour serveur
+    // se joue pendant la montée, au lieu de laisser le texte figé dans le champ
+    // en attendant la réponse. En cas d'échec, il est rendu tel quel.
     if (isPrivate) setNote("");
     else setHtml("");
     setMessageInFlight(sentContent);
-    setPlanePhase("flying");
+    setSendPhase("sending");
 
     try {
       const result = await addTicketMessage(ticketId, {
@@ -286,6 +358,10 @@ function ReplyComposer({
       // Le brouillon a fini son office : le garder ferait réapparaître, à la
       // prochaine ouverture du ticket, une réponse déjà partie au client.
       clearDraft();
+
+      // C'est ici, et pas au clic, que la coche s'installe : elle ne confirme
+      // rien tant que le serveur n'a pas répondu.
+      setSendPhase("sent");
 
       if (isPrivate && result.mentionedNames.length > 0) {
         const names = result.mentionedNames;
@@ -312,7 +388,10 @@ function ReplyComposer({
       // pas été effacé — `clearDraft` n'est atteint qu'en cas de succès.
       if (isPrivate) setNote(sentContent);
       else setHtml(sentHtml ?? "");
-      setPlanePhase("idle");
+      // `aborting` et non `idle` : l'avion est parti, il doit revenir se poser.
+      // Le remettre d'un coup à sa place ferait un saut au moment précis où
+      // l'agent découvre que son envoi a échoué.
+      setSendPhase("aborting");
       setMessageInFlight(null);
 
       // Onglet resté sur une version qui n'est plus déployée : ce n'est pas la
@@ -348,7 +427,9 @@ function ReplyComposer({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border transition-colors",
+        // `relative` porte le rideau du GAME OVER, `overflow-hidden` retient les
+        // pixels qui tombent : ils quittent le bloc, pas la page.
+        "relative overflow-hidden rounded-lg border transition-colors",
         // Même code couleur que les notes internes du fil : impossible de se
         // tromper sur ce que le client verra.
         isPrivate ? "border-primary/40 bg-primary/5" : "bg-card"
@@ -406,32 +487,42 @@ function ReplyComposer({
               un @ dans une réponse publique ne notifie personne, proposer la liste
               de l'équipe y serait un piège. */}
           {isPrivate ? (
-            <MentionTextarea
-              value={note}
-              onChange={setNote}
-              agents={agents}
-              placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
-              rows={6}
-            />
+            <>
+              <MentionTextarea
+                value={note}
+                onChange={setNote}
+                agents={agents}
+                placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
+                rows={6}
+              />
+              {/* Cadre et rembourrage repris du `Textarea` qu'il recouvre, pour
+                  que ce soit le champ lui-même qui semble s'élever et non un
+                  rectangle apparu par-dessus. Le fond, lui, est volontairement
+                  opaque et non calqué sur celui du champ (transparent) : il doit
+                  masquer l'invite du champ vidé, qui transparaîtrait sinon à
+                  travers le texte en train de monter. */}
+              <MessageGhost className="rounded-lg border border-input bg-background px-3 py-2.5">
+                {messageInFlight}
+              </MessageGhost>
+            </>
           ) : (
             <ReplyEditor
               value={html}
               onChange={setHtml}
               onSubmit={handleSubmit}
               placeholder="Écrire la réponse…"
+              // Confié à l'éditeur plutôt que posé sur ce conteneur : le calque
+              // doit couvrir la zone de saisie et pas la barre d'outils, dont la
+              // hauteur ne se devine pas d'ici.
+              // Rembourrage identique à celui de la zone de saisie : le texte
+              // doit partir d'où il était, sans sauter d'abord de quelques
+              // pixels. `bg-background` est celui de l'éditeur, à l'identique.
+              overlay={
+                <MessageGhost className="bg-background px-3 py-2">
+                  {messageInFlight}
+                </MessageGhost>
+              }
             />
-          )}
-
-          {/* Le message qui s'envole, posé exactement sur le champ qu'il quitte.
-              Purement décoratif — le vrai texte est déjà parti au serveur — donc
-              masqué aux lecteurs d'écran et insensible au pointeur. */}
-          {messageInFlight !== null && (
-            <p
-              aria-hidden
-              className="send-message-liftoff pointer-events-none absolute inset-0 overflow-hidden rounded-lg border border-primary/40 bg-background px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
-            >
-              {messageInFlight}
-            </p>
           )}
         </div>
 
@@ -476,16 +567,32 @@ function ReplyComposer({
               onClick={handleSubmit}
               disabled={isSubmitting || isEmpty}
               size="sm"
+              className={cn(
+                // Le bouton est inerte pendant toute la séquence — l'envoi est
+                // en cours, puis le champ est vide — mais il ne doit pas
+                // s'éteindre pour autant : c'est lui qui porte la confirmation,
+                // et une coche à moitié effacée annonce mal une réussite.
+                sendPhase !== "idle" && "disabled:opacity-100"
+              )}
               // Le raccourci n'est branché que sur la réponse publique : la note
               // interne a son propre traitement du clavier pour les mentions.
               title={isPrivate ? undefined : "⌘ / Ctrl + Entrée"}
             >
-              <Send className={planeClass(planePhase)} />
-              {sendLabel({ isSubmitting, isPrivate, requiresApproval })}
+              <SendIcon phase={sendPhase} />
+              <SendLabel
+                phase={sendPhase}
+                isPrivate={isPrivate}
+                requiresApproval={requiresApproval}
+              />
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Posé en dernier et en `z-20` : il recouvre le formulaire entier, barre
+          de mode et bouton d'envoi compris. Un rideau qui laisserait le bouton
+          cliquable pendant qu'il annonce GAME OVER se ferait traverser. */}
+      {gameOverWord !== null && <GameOverCurtain word={gameOverWord} />}
     </div>
   );
 }
@@ -697,7 +804,17 @@ type ReplyOutcome = {
 };
 
 /**
- * Dit à l'agent ce qui vient réellement de partir.
+ * Dit à l'agent ce que la coche du bouton ne dit pas.
+ *
+ * Le cas nominal — une réponse partie à un client — ne produit plus de
+ * notification : elle serait la répétition de ce que le bouton vient d'annoncer.
+ * Ne restent ici que les envois qui ne se sont PAS passés comme prévu, ou pas
+ * comme on croit : une validation à obtenir, un email non parti, ou plusieurs
+ * destinataires là où on n'en visait qu'un.
+ *
+ * C'est ce tri qui rend les notifications restantes crédibles. À cinquante
+ * réponses par jour, une bannière verte systématique s'ignore — et emporte avec
+ * elle les avertissements qui, eux, demandaient une action.
  *
  * Le nombre de clients servis est annoncé explicitement : après une fusion, la
  * réponse part aussi aux clients des doublons, et un simple « envoyée par
@@ -712,10 +829,11 @@ function announceReply(result: ReplyOutcome) {
   const extra = result.alsoSentTo;
 
   if (result.emailSent) {
-    if (extra === 0) {
-      toast.success("Réponse envoyée par email");
-      return;
-    }
+    // Cas courant, et le seul qui n'annonce rien : la coche du bouton dit déjà
+    // que la réponse est partie. Une notification de plus par envoi, cinquante
+    // fois par jour, finit par se fermer sans être lue — y compris celles qui,
+    // plus bas, signalent un vrai problème.
+    if (extra === 0) return;
     toast.success(
       `Réponse envoyée par email · ${extra} client${plural(extra)} de ticket${plural(
         extra
@@ -739,32 +857,128 @@ function announceReply(result: ReplyOutcome) {
 }
 
 /**
- * Animation portée par l'avion du bouton. `size-4` reste posé par le bouton
- * lui-même : ici on ne décide que du mouvement.
+ * La copie du message, posée sur le champ qu'elle quitte.
+ *
+ * Purement décoratif — le vrai texte est déjà parti au serveur — donc masqué aux
+ * lecteurs d'écran et insensible au pointeur. Le fond opaque est laissé au point
+ * d'appel, parce qu'il dépend du champ recouvert, mais il n'est jamais
+ * facultatif : sans lui, l'invite du champ vidé (« Écrire la réponse… »)
+ * transparaîtrait à travers le texte qui s'élève.
+ *
+ * `overflow-hidden` borne le calque à la hauteur du champ : une réponse de
+ * trente lignes ne doit pas déborder sur la signature et le bouton en montant.
  */
-function planeClass(phase: PlanePhase) {
-  if (phase === "flying") return "send-plane-takeoff";
-  if (phase === "landing") return "send-plane-return";
+function MessageGhost({
+  className,
+  children,
+}: {
+  className?: string;
+  /** `null` quand rien n'est en vol : le calque n'existe alors pas du tout. */
+  children: string | null;
+}) {
+  if (children === null) return null;
+
+  return (
+    <p
+      aria-hidden
+      className={cn(
+        "reply-lift pointer-events-none absolute inset-0 overflow-hidden text-sm leading-relaxed whitespace-pre-wrap",
+        className
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+/**
+ * L'avion, et la coche qui prend sa place le temps de la confirmation.
+ *
+ * Les deux icônes occupent la MÊME case de grille, superposées : c'est ce qui
+ * permet de les échanger sans que le libellé à côté ne bouge d'un pixel. Une
+ * icône montée puis démontée aurait fait sauter le bouton à chaque envoi —
+ * cinquante fois par jour, c'est le genre de secousse qu'on finit par voir plus
+ * que l'animation elle-même.
+ */
+function SendIcon({ phase }: { phase: SendPhase }) {
+  return (
+    <span className="grid size-4 shrink-0 place-items-center">
+      <Send className={cn("size-4 col-start-1 row-start-1", planeClass(phase))} />
+      {(phase === "sent" || phase === "returning") && (
+        <Check
+          className={cn(
+            "size-4 col-start-1 row-start-1",
+            phase === "sent" ? "reply-check-in" : "reply-check-out"
+          )}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * Animation portée par l'avion. La classe est la même en `sending` et en
+ * `sent`, et ce n'est pas un raccourci : une classe inchangée ne relance pas
+ * l'animation, l'avion reste donc simplement sorti pendant que la coche occupe
+ * la case, au lieu de redécoller au retour du serveur.
+ */
+function planeClass(phase: SendPhase) {
+  if (phase === "sending" || phase === "sent") return "reply-plane-depart";
+  if (phase === "returning" || phase === "aborting") return "reply-plane-return";
   return "";
 }
 
 /**
- * Libellé du bouton d'envoi. Sorti du JSX : trois conditions imbriquées dans
- * l'attribut se relisaient mal.
+ * Libellé du bouton d'envoi.
+ *
+ * Les trois libellés possibles sont rendus l'un sur l'autre dans la même case de
+ * grille, et non échangés : le bouton prend ainsi la largeur du plus long une
+ * fois pour toutes. Sans cela, « Envoyer » → « Envoi… » → « Envoyé » redimensionne
+ * le bouton à chaque étape, et les boutons voisins glissent avec lui.
  */
-function sendLabel({
-  isSubmitting,
+function SendLabel({
+  phase,
   isPrivate,
   requiresApproval,
 }: {
-  isSubmitting: boolean;
+  phase: SendPhase;
   isPrivate: boolean;
   requiresApproval: boolean;
 }) {
-  if (isSubmitting) return "Envoi…";
-  if (isPrivate) return "Ajouter la note";
-  if (requiresApproval) return "Envoyer pour validation";
-  return "Envoyer";
+  const rest = isPrivate
+    ? "Ajouter la note"
+    : requiresApproval
+      ? "Envoyer pour validation"
+      : "Envoyer";
+  const busy = isPrivate ? "Ajout…" : "Envoi…";
+  const done = isPrivate ? "Note ajoutée" : requiresApproval ? "Transmise" : "Envoyé";
+
+  // Le retour au repos se fait dès `returning` : le libellé et l'icône
+  // redeviennent disponibles ensemble, plutôt qu'un texte encore triomphant
+  // au-dessus d'une coche déjà en train de s'effacer.
+  let active = rest;
+  if (phase === "sending") active = busy;
+  else if (phase === "sent") active = done;
+
+  return (
+    <span className="grid">
+      {[rest, busy, done].map((label, index) => (
+        <span
+          key={index}
+          // Les libellés inactifs restent dans le document pour tenir la
+          // largeur : masqués aux lecteurs d'écran, le nom accessible du bouton
+          // reste celui qu'on voit.
+          aria-hidden={label !== active}
+          className={cn(
+            "col-start-1 row-start-1 transition-opacity duration-300",
+            label === active ? "opacity-100" : "opacity-0"
+          )}
+        >
+          {label}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function ModeButton({

@@ -4,6 +4,7 @@ import { getUnreadTicketCount, countPendingApprovalMessages } from "@/lib/action
 import { countPendingAgents } from "@/lib/actions/agents";
 import { getMyNotifications } from "@/lib/actions/notifications";
 import { Sidebar } from "@/components/layout/sidebar";
+import { RetroMode } from "@/components/layout/retro-mode";
 import { getEmailAccountStatus } from "@/lib/actions/email-account";
 import { can } from "@/lib/permissions";
 import { defaultLandingPath } from "@/lib/app-navigation";
@@ -69,6 +70,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* `min-w-0` : sans ça, un contenu large (tableau, texte long) élargit
           `main` au-delà du viewport et le parent `overflow-hidden` le rogne. */}
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+
+      {/* Monté sur l'espace agent uniquement, jamais sur le portail ni le widget :
+          le mandant d'une agence n'a pas signé pour nos blagues. Ne rend rien
+          tant que la séquence n'a pas été jouée. */}
+      <RetroMode />
     </div>
   );
 }

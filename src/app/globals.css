@@ -182,43 +182,109 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Envoi d'une réponse : l'avion emporte le message.
+   Envoi d'une réponse : le message monte rejoindre le fil, le bouton confirme.
    ---------------------------------------------------------------------------
-   Deux éléments partent dans la même direction — l'avion du bouton, et une
-   copie du message posée sur le champ — ce qui se lit comme « le message est
-   emporté » plutôt que comme deux effets sans rapport.
+   Ces animations sont vues cinquante fois par jour. Tout y est donc réglé sur
+   la répétition plutôt que sur l'effet : aucune amplitude au-dessus de 26 px,
+   aucun déplacement en travers de l'écran, rien qui demande d'attendre la fin
+   avant de reprendre la frappe. Ce qui doit rester au bout de cinquante envois,
+   c'est un rythme reconnaissable — un départ, puis une confirmation — pas une
+   figure à regarder.
 
-   Uniquement `transform` et `opacity` : ces deux propriétés sont composées par
-   le GPU, sans recalcul de mise en page ni repeinture, donc l'animation tient
-   les 60 images par seconde même pendant l'aller-retour serveur. Aucune
-   propriété géométrique (top, width, margin) n'est animée, c'est ce qui rend le
-   mouvement fluide. `will-change` n'est posé que sur les classes appliquées
-   pendant le vol, jamais à demeure.
+   La direction porte le sens. Le message ne s'envole pas en diagonale vers un
+   ailleurs : il monte tout droit, vers le fil de conversation qui est juste
+   au-dessus du champ, et s'y dissout. C'est le trajet réel de la réponse dans
+   la page, ce qui évite d'avoir à l'expliquer.
 
-   Les fonctions de temps sont déclarées image par image : l'avion prend son
-   élan (léger recul), puis accélère et sort du cadre — c'est cette rupture de
-   rythme qui donne l'impression d'un décollage plutôt que d'un glissement. */
+   Le mouvement et la confirmation ne disent pas la même chose et n'arrivent pas
+   au même moment : le message part au clic (il est déjà hors du champ), la
+   coche n'apparaît qu'au retour du serveur. Une coche jouée au clic serait une
+   confirmation avancée — l'erreur qu'on ne peut pas rattraper, puisqu'elle est
+   déjà lue quand l'échec arrive.
 
-@keyframes send-plane-takeoff {
+   Uniquement `transform` et `opacity` : composées par le GPU, sans recalcul de
+   mise en page ni repeinture, l'animation tient donc les 60 images par seconde
+   pendant l'aller-retour serveur. `will-change` n'est posé que sur les classes
+   appliquées pendant la séquence, jamais à demeure.
+
+   Les fonctions de temps sont déclarées image par image. Le premier segment est
+   une anticipation — le message s'enfonce de 3 px, l'avion recule d'autant —
+   avant que le second reparte en décélération : c'est cette rupture de rythme,
+   et non la distance parcourue, qui fait lire un départ plutôt qu'un
+   glissement. */
+
+/* La copie du message, posée sur le champ qu'elle quitte. Le fondu est
+   volontairement en avance sur le déplacement (la décélération le concentre au
+   début) : on perçoit une dissolution vers le haut, pas un bloc de texte qu'on
+   aurait le temps de relire en train de glisser. */
+@keyframes reply-lift {
   0% {
-    transform: translate3d(0, 0, 0) rotate(0deg);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 1;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.75, 0.15);
   }
-  20% {
-    transform: translate3d(-3px, 2px, 0) rotate(8deg);
+  18% {
+    transform: translate3d(0, 3px, 0) scale(0.995);
     opacity: 1;
-    animation-timing-function: cubic-bezier(0.2, 0.6, 0.35, 1);
+    animation-timing-function: cubic-bezier(0.25, 0.6, 0.35, 1);
   }
   100% {
-    transform: translate3d(38px, -32px, 0) rotate(-26deg);
+    transform: translate3d(0, -26px, 0) scale(0.97);
     opacity: 0;
   }
 }
 
-@keyframes send-plane-return {
+/* L'avion sort par le nez : l'icône pointe vers le haut à droite, le
+   déplacement suit exactement cet axe. Un départ perpendiculaire au dessin se
+   verrait comme un glissement de l'icône, pas comme un envoi. */
+@keyframes reply-plane-depart {
   0% {
-    transform: translate3d(-14px, 12px, 0) rotate(10deg);
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.75, 0.15);
+  }
+  22% {
+    transform: translate3d(-2px, 2px, 0) rotate(6deg);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.35, 1);
+  }
+  100% {
+    transform: translate3d(18px, -15px, 0) rotate(-14deg);
+    opacity: 0;
+  }
+}
+
+/* Le seul dépassement de la séquence, et il est à sa place : la coche arrive
+   après l'attente, c'est le temps fort. 1,12 se sent sans se voir. */
+@keyframes reply-check-in {
+  0% {
+    transform: scale(0.55) translate3d(0, 2px, 0);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.12) translate3d(0, 0, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes reply-check-out {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+}
+
+@keyframes reply-plane-return {
+  0% {
+    transform: translate3d(-6px, 5px, 0) rotate(6deg);
     opacity: 0;
   }
   100% {
@@ -227,44 +293,525 @@
   }
 }
 
-@keyframes send-message-liftoff {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.9;
-    animation-timing-function: cubic-bezier(0.3, 0, 0.6, 1);
-  }
-  100% {
-    transform: translate3d(24px, -52px, 0) scale(0.96);
-    opacity: 0;
-  }
-}
-
-.send-plane-takeoff {
-  animation: send-plane-takeoff 560ms both;
+.reply-lift {
+  animation: reply-lift 600ms both;
   will-change: transform, opacity;
 }
 
-.send-plane-return {
-  animation: send-plane-return 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+.reply-plane-depart {
+  animation: reply-plane-depart 440ms both;
   will-change: transform, opacity;
 }
 
-.send-message-liftoff {
-  animation: send-message-liftoff 520ms both;
+.reply-check-in {
+  animation: reply-check-in 400ms cubic-bezier(0.25, 0.7, 0.3, 1) both;
   will-change: transform, opacity;
 }
 
-/* Mouvement désactivé quand le système le demande. La copie du message doit
-   rester invisible : elle est retirée par un minuteur, pas par la fin de
+.reply-check-out {
+  animation: reply-check-out 260ms cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform, opacity;
+}
+
+/* Le retard laisse la coche s'effacer avant que l'avion ne se repose : les deux
+   icônes occupent la même case, se croiser à mi-chemin ferait une bouillie. */
+.reply-plane-return {
+  animation: reply-plane-return 360ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both;
+  will-change: transform, opacity;
+}
+
+/* Mouvement désactivé quand le système le demande — mais pas l'information. La
+   coche reste affichée (c'est elle qui dit que la réponse est partie), seuls
+   les états que l'animation était chargée de rendre invisibles doivent l'être
+   explicitement : la copie du message, l'avion parti, la coche qui s'efface.
+   Chacun est retiré du document par un minuteur et non par la fin de
    l'animation — sans animation, `animationend` ne se déclencherait jamais. */
 @media (prefers-reduced-motion: reduce) {
-  .send-plane-takeoff,
-  .send-plane-return,
-  .send-message-liftoff {
+  .reply-lift,
+  .reply-plane-depart,
+  .reply-plane-return,
+  .reply-check-in,
+  .reply-check-out {
     animation: none;
   }
-  .send-message-liftoff {
+  .reply-lift,
+  .reply-plane-depart,
+  .reply-check-out {
     opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   GAME OVER : le formulaire se décompose (voir `GameOverCurtain`)
+   ---------------------------------------------------------------------------
+   Tout l'inverse de la séquence d'envoi ci-dessus, et volontairement. Celle-ci
+   est vue cinquante fois par jour et doit se faire oublier ; celle-là ne se
+   déclenche qu'en écrivant une insulte dans une réponse client, autant dire une
+   fois dans une carrière — elle a donc le droit de durer trois secondes, de
+   faire du bruit et de tout recouvrir.
+
+   La chute est en accélération franche (pas d'amorti en fin de course, le
+   pixel sort du cadre) : c'est ce qui la fait lire comme une gravité et non
+   comme un glissement. Les 620 px dépassent largement la hauteur du bloc, les
+   cases sont donc bien sorties avant la fin — le fondu des derniers 28 % n'est
+   qu'un filet de sécurité pour les écrans très hauts. */
+
+@keyframes reply-pixel-fall {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.5);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--pixel-drift, 0px), 620px, 0);
+    opacity: 0;
+  }
+}
+
+/* Apparition en clignotement plutôt qu'en fondu : un fondu produit des états
+   intermédiaires translucides, ce qui n'existe pas sur un écran d'arcade. Le
+   `steps(1, end)` posé sur la classe fait claquer chaque palier. */
+@keyframes reply-gameover-in {
+  0%,
+  22%,
+  46% {
+    opacity: 0;
+  }
+  11%,
+  34%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes reply-gameover-sub {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* La sortie, elle, est un vrai fondu : c'est le formulaire qui revient, et il
+   ne doit pas réapparaître d'un coup au milieu d'un écran noir. Le retard est
+   ce qui laisse le temps de lire. */
+@keyframes reply-curtain-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* 1,1 s par pixel. Long, et c'est le but : à 700 ms la chute se lisait comme
+   une vague qui balaie le bloc. Il faut pouvoir suivre UN pixel des yeux
+   pendant qu'il tombe, sinon le « 1 par 1 » n'existe pas. */
+.reply-pixel-fall {
+  animation: reply-pixel-fall 1100ms linear both;
+}
+
+/* Le titre arrive pendant que les dernières cases tombent encore. Attendre le
+   vide complet créerait un temps mort d'une seconde au milieu de la séquence —
+   le recouvrement est ce qui la tient d'un bloc. */
+.reply-gameover-in {
+  animation: reply-gameover-in 900ms steps(1, end) 2600ms both;
+}
+
+.reply-gameover-sub {
+  animation: reply-gameover-sub 420ms ease-out 3300ms both;
+}
+
+/* Une seconde et demie de lecture après l'apparition de la ligne du bas : le
+   temps de lire le mot, et de comprendre que c'est le sien. */
+.reply-curtain {
+  animation: reply-curtain-out 520ms ease-out 4900ms both;
+}
+
+/* Sous `prefers-reduced-motion`, le rideau reste : ce qu'il annonce — l'envoi
+   n'a pas eu lieu — n'est pas décoratif. Seul le mouvement disparaît. Les
+   pixels sont retirés d'emblée (le vide et son texte sont là dès la première
+   image) et le rideau se démonte par son minuteur React, comme dans l'autre
+   cas. */
+@media (prefers-reduced-motion: reduce) {
+  .reply-pixel-fall,
+  .reply-gameover-in,
+  .reply-gameover-sub,
+  .reply-curtain {
+    animation: none;
+  }
+  .reply-pixel-fall {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Mode rétro : dix secondes de tube cathodique (voir `RetroMode`)
+   ---------------------------------------------------------------------------
+   Un seul jeu d'images-clés couvre les dix secondes — allumage, maintien,
+   extinction. Deux animations séparées sur le même élément se seraient disputé
+   `transform` : la dernière déclarée l'emporte, et son état de remplissage
+   aurait écrasé l'allumage pendant toute la durée.
+
+   `scaleY` presque nul aux deux bouts, c'est l'écran qui s'ouvre puis se referme
+   sur une ligne. `transform-origin` au centre : c'est ce qui fait que la ligne
+   se forme au milieu de l'écran et pas en haut. */
+
+@keyframes retro-crt {
+  0% {
+    transform: scaleY(0.006);
+    opacity: 0;
+  }
+  1% {
+    transform: scaleY(0.006);
+    opacity: 1;
+  }
+  4% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  94% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  97% {
+    transform: scaleY(0.006);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.006);
+    opacity: 0;
+  }
+}
+
+@keyframes retro-sweep {
+  from {
+    transform: translate3d(0, -100%, 0);
+  }
+  to {
+    transform: translate3d(0, 700%, 0);
+  }
+}
+
+/* Le scintillement d'un tube : de brèves chutes de luminosité, jamais un fondu.
+   `steps(1, end)` fait claquer chaque palier — une variation continue se lirait
+   comme une respiration, pas comme une alimentation instable. */
+@keyframes retro-flicker {
+  0%,
+  92%,
+  95%,
+  100% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.78;
+  }
+  97% {
+    opacity: 0.88;
+  }
+}
+
+.retro-crt {
+  animation: retro-crt 10000ms both;
+  transform-origin: center;
+}
+
+.retro-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0.24) 0px,
+    rgb(0 0 0 / 0.24) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  animation: retro-flicker 3.1s steps(1, end) infinite;
+}
+
+.retro-sweep {
+  height: 14%;
+  background: linear-gradient(to bottom, transparent, rgb(255 255 255 / 0.07), transparent);
+  animation: retro-sweep 3.4s linear infinite;
+}
+
+.retro-vignette {
+  background: radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 0.42) 100%);
+}
+
+/* Sous `prefers-reduced-motion`, le mode rétro reste — c'est une décoration
+   demandée par un geste délibéré, pas une notification qu'on subit — mais il
+   arrive et repart sans mouvement. La barre de balayage disparaît complètement :
+   c'est le seul élément qui traverse l'écran, et donc le seul qui pose un vrai
+   problème vestibulaire. */
+@media (prefers-reduced-motion: reduce) {
+  .retro-crt,
+  .retro-scanlines {
+    animation: none;
+  }
+  .retro-sweep {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   LE ROI DES TICKETS (voir `ArcadeScene`)
+   ---------------------------------------------------------------------------
+   Toute la scène est jouée par des `animation-delay` posés sur une horloge
+   unique, celle du compositeur. C'est la seule façon de tenir dix secondes de
+   chorégraphie : une cascade de `setTimeout` dérive dès la première seconde de
+   charge — et un back-office en charge, ça arrive tous les jours.
+
+   Aucun élément ne porte deux animations qui touchent `transform`. Quand il en
+   faut deux (courir ET sauter, entrer ET mourir), les calques sont imbriqués :
+   sur un seul élément, la dernière animation déclarée gagne, et la première ne
+   s'exécute jamais. */
+
+/* Le battement d'un sprite à deux poses. `steps(1, end)` est essentiel : une
+   image de sprite ne se fond pas dans la suivante, elle la remplace. */
+@keyframes pixel-frame {
+  0%,
+  49.99% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.pixel-frame {
+  animation-name: pixel-frame;
+  animation-timing-function: steps(1, end);
+  animation-iteration-count: infinite;
+}
+
+@keyframes arcade-run {
+  from {
+    transform: translate3d(-12vw, 0, 0);
+  }
+  to {
+    transform: translate3d(22vw, 0, 0);
+  }
+}
+
+/* Deux sauts. Chaque montée décélère et chaque descente accélère : c'est la
+   gravité, et c'est ce qui distingue un saut d'un aller-retour vertical. Les
+   sommets à 45 % et 75 % sont les mêmes proportions qui placent les piles de
+   tickets — voir `JUMP_RATIOS`. */
+@keyframes arcade-hop {
+  0%,
+  33% {
+    transform: translate3d(0, 0, 0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  45% {
+    transform: translate3d(0, -46px, 0);
+    animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.4);
+  }
+  57%,
+  63% {
+    transform: translate3d(0, 0, 0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  75% {
+    transform: translate3d(0, -46px, 0);
+    animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.4);
+  }
+  87%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Le boss n'arrive pas en glissant jusqu'à l'arrêt : il dépasse sa position puis
+   revient s'y caler. Ce léger contrecoup est ce qui lui donne du poids. */
+@keyframes arcade-king-in {
+  0% {
+    transform: translate3d(48vw, 0, 0);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
+  }
+  72% {
+    transform: translate3d(-8px, 0, 0);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* La réponse part en cloche, comme tout ce qu'on lance. */
+@keyframes arcade-shot {
+  0% {
+    transform: translate3d(24vw, 0, 0);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.3, 0.7, 0.5, 1);
+  }
+  50% {
+    transform: translate3d(44vw, -22px, 0);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.7, 0.4);
+  }
+  99% {
+    transform: translate3d(64vw, 0, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(64vw, 0, 0);
+    opacity: 0;
+  }
+}
+
+/* L'impact. Le recul part vers l'arrière-droite, dans le sens du tir. */
+@keyframes arcade-hit {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  30% {
+    opacity: 0.2;
+    transform: translate3d(7px, 0, 0);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(3px, 0, 0);
+  }
+}
+
+/* La mort : le clignotement d'agonie, un dernier sursaut, puis l'effondrement
+   sur un point. Rien ne tourne — un pixel qui pivote sort de sa grille. */
+@keyframes arcade-king-die {
+  0%,
+  8%,
+  16% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  4%,
+  12% {
+    opacity: 0.15;
+    transform: scale(1);
+  }
+  24% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  46% {
+    opacity: 0;
+    transform: scale(0.06);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.06);
+  }
+}
+
+/* Les paliers de la barre de vie. Ce sont EUX qui décident des instants
+   d'impact, pas l'inverse : voir `HIT_RATIOS`. Mise à l'échelle et non largeur,
+   pour que la barre ne provoque pas de recalcul de mise en page à chaque coup. */
+@keyframes arcade-hp {
+  0%,
+  29% {
+    transform: scaleX(1);
+  }
+  30%,
+  60% {
+    transform: scaleX(0.666);
+  }
+  62%,
+  92% {
+    transform: scaleX(0.333);
+  }
+  94%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+/* Le nom du boss et sa jauge apparaissent avec lui et s'effacent avec lui. Une
+   barre de vie vide qui reste affichée au-dessus d'un ennemi déjà mort donne
+   l'impression que la séquence s'est arrêtée en chemin. */
+@keyframes arcade-hud {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  92% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Le titre de fin clignote comme un écran d'arcade qui attend qu'on remette une
+   pièce. */
+@keyframes arcade-outro {
+  0%,
+  24%,
+  48% {
+    opacity: 0;
+  }
+  12%,
+  36%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.arcade-run {
+  animation-name: arcade-run;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+.arcade-hop {
+  animation-name: arcade-hop;
+  animation-fill-mode: both;
+}
+
+.arcade-king-in {
+  animation-name: arcade-king-in;
+  animation-fill-mode: both;
+}
+
+/* `forwards` et non `both` : avec un remplissage arrière, l'enveloppe tiendrait
+   son image de départ — visible, au poste de tir — pendant toutes les secondes
+   qui précèdent son lancer. Elle reste donc sur son `opacity: 0` de base jusqu'à
+   ce que son tour vienne. */
+.arcade-shot {
+  animation-name: arcade-shot;
+  animation-fill-mode: forwards;
+  opacity: 0;
+}
+
+.arcade-king-die {
+  animation: arcade-king-die 1400ms both;
+}
+
+.arcade-hp {
+  animation-name: arcade-hp;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+.arcade-hud {
+  animation-name: arcade-hud;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+.arcade-outro {
+  animation: arcade-outro 900ms steps(1, end) both;
+}
+
+/* La scène entière disparaît quand le mouvement n'est pas souhaité. Ce n'est
+   pas une information, seulement une histoire — et une histoire dont on retire
+   le mouvement ne raconte plus rien : autant ne rien montrer que d'aligner des
+   sprites figés en travers de l'écran. */
+@media (prefers-reduced-motion: reduce) {
+  .arcade-scene {
+    display: none;
   }
 }
 
