@@ -9,6 +9,8 @@ import { readEmailAccountStatus } from "@/lib/email-account";
 import { requirePermission } from "@/lib/require-permission";
 import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
+import { sanitizeReplyHtml } from "@/lib/sanitize-html";
+import { htmlToText } from "@/lib/html-to-text";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { SLA_BREACHED_FILTER, UNASSIGNED_FILTER } from "@/lib/ticket-filters";
@@ -78,6 +80,7 @@ const ticketDetailInclude = {
         select: {
           id: true,
           content: true,
+          contentHtml: true,
           authorType: true,
           emailSent: true,
           createdAt: true,
@@ -684,10 +687,30 @@ export async function deleteTicket(id: string) {
 
 const addMessageSchema = z.object({
   content: z.string().trim().min(1, "Message vide"),
+  /**
+   * Mise en forme de la réponse, telle que produite par l'éditeur riche. Le
+   * champ reste facultatif : une note interne s'écrit en texte, et l'appelant
+   * peut être une version antérieure de la page restée ouverte dans un onglet.
+   *
+   * Assainie ci-dessous avant tout enregistrement, jamais stockée telle quelle :
+   * une action exportée est un endpoint HTTP, ce paramètre n'est pas plus digne
+   * de confiance que n'importe quel corps de requête.
+   */
+  contentHtml: z.string().optional(),
   isPrivate: z.boolean().default(false),
 });
 
 const EMAIL_HISTORY_LIMIT = 10;
+
+/**
+ * Une réponse publique telle qu'elle circule jusqu'à l'envoi : sa
+ * retranscription texte, et sa mise en forme quand elle en a une.
+ *
+ * Les deux voyagent ensemble parce que l'email est multipart — un client mail
+ * qui refuse le HTML doit recevoir le texte, pas rien. `html` nul est le cas
+ * normal pour tout ce qui a été écrit avant l'éditeur riche.
+ */
+type ReplyBody = { content: string; html: string | null };
 
 /**
  * Historique repris en bas de l'email, propre au ticket concerné.
@@ -743,7 +766,8 @@ async function buildEmailHistory({
 async function sendApprovedTicketReply(
   ticketId: string,
   messageId: string,
-  content: string,
+  /** Les deux formes de la réponse : voir `resolveReplyBody`. */
+  body: ReplyBody,
   agentId: string | null
 ) {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
@@ -773,7 +797,8 @@ async function sendApprovedTicketReply(
       ticket,
       clientEmail: ticket.client.email,
       senderName,
-      bodyText: content,
+      bodyText: body.content,
+      bodyHtml: body.html,
       history: await buildEmailHistory({
         ticketId,
         excludeMessageId: messageId,
@@ -796,7 +821,7 @@ async function sendApprovedTicketReply(
 
   const alsoSentTo = await deliverToMergedTickets({
     targetTicketId: ticketId,
-    content,
+    body,
     agentId,
     senderName,
     signatureHtml,
@@ -825,14 +850,14 @@ async function sendApprovedTicketReply(
  */
 async function deliverToMergedTickets({
   targetTicketId,
-  content,
+  body,
   agentId,
   senderName,
   signatureHtml,
   alreadyServed,
 }: {
   targetTicketId: string;
-  content: string;
+  body: ReplyBody;
   agentId: string | null;
   senderName: string;
   signatureHtml: string | null;
@@ -845,7 +870,8 @@ async function deliverToMergedTickets({
     const copy = await prisma.message.create({
       data: {
         ticketId: recipient.ticketId,
-        content,
+        content: body.content,
+        contentHtml: body.html,
         authorType: "AGENT",
         agentId,
         isPrivate: false,
@@ -862,7 +888,8 @@ async function deliverToMergedTickets({
       },
       clientEmail: recipient.clientEmail,
       senderName,
-      bodyText: content,
+      bodyText: body.content,
+      bodyHtml: body.html,
       history: await buildEmailHistory({
         ticketId: recipient.ticketId,
         excludeMessageId: copy.id,
@@ -926,6 +953,33 @@ async function claimOnFirstReply(ticketId: string, agentId: string): Promise<boo
   return count > 0;
 }
 
+/**
+ * Les deux formes sous lesquelles une réponse est enregistrée : le HTML mis en
+ * forme, et sa retranscription en texte.
+ *
+ * Le texte n'est pas celui envoyé par le navigateur mais celui du HTML ASSAINI,
+ * relu après filtrage. Les deux colonnes ne peuvent donc pas diverger — or
+ * `content` est ce que voient la recherche, l'export CSV, le dossier RGPD et le
+ * client dont la boîte mail refuse le HTML : y laisser une version que personne
+ * n'a validée reviendrait à publier un second message, invisible de son auteur.
+ *
+ * Un HTML qui ne survit pas au filtrage (balisage entièrement refusé, document
+ * vide) fait retomber la réponse sur le texte brut, comme avant l'éditeur
+ * riche : mieux vaut une réponse sans mise en forme qu'une réponse vide.
+ */
+function resolveReplyBody(data: { content: string; contentHtml?: string }): {
+  content: string;
+  html: string | null;
+} {
+  if (!data.contentHtml) return { content: data.content, html: null };
+
+  const html = sanitizeReplyHtml(data.contentHtml);
+  const text = htmlToText(html);
+  if (!text) return { content: data.content, html: null };
+
+  return { content: text, html };
+}
+
 export async function addTicketMessage(
   ticketId: string,
   input: z.infer<typeof addMessageSchema>
@@ -940,10 +994,15 @@ export async function addTicketMessage(
   const isPublicAgentReply = !data.isPrivate;
   const needsApproval = isPublicAgentReply && session.user.requiresApproval;
 
+  // Une note interne reste du texte : ses mentions « @Prénom Nom » sont
+  // repérées sur la chaîne brute, et elle ne part dans aucun email.
+  const body = isPublicAgentReply ? resolveReplyBody(data) : { content: data.content, html: null };
+
   const message = await prisma.message.create({
     data: {
       ticketId,
-      content: data.content,
+      content: body.content,
+      contentHtml: body.html,
       authorType: "AGENT",
       agentId,
       isPrivate: data.isPrivate,
@@ -1032,7 +1091,12 @@ export async function addTicketMessage(
     };
   }
 
-  const sendResult = await sendApprovedTicketReply(ticketId, message.id, data.content, agentId);
+  const sendResult = await sendApprovedTicketReply(
+    ticketId,
+    message.id,
+    { content: message.content, html: message.contentHtml },
+    agentId
+  );
 
   await recordAudit({
     session,
@@ -1080,6 +1144,9 @@ function replySummary({
 const pendingApprovalSelect = {
   id: true,
   content: true,
+  // La file de validation montre la réponse telle qu'elle partira, mise en forme
+  // comprise : c'est ce qui est validé, pas une version aplatie.
+  contentHtml: true,
   createdAt: true,
   agent: { select: { id: true, name: true } },
   ticket: {
@@ -1144,7 +1211,7 @@ export async function approveMessage(messageId: string) {
   const result = await sendApprovedTicketReply(
     message.ticketId,
     message.id,
-    message.content,
+    { content: message.content, html: message.contentHtml },
     message.agentId
   );
 

@@ -676,7 +676,20 @@ enum MessageApprovalStatus {
 
 model Message {
   id         String            @id @default(cuid())
+  // Texte brut du message, TOUJOURS renseigné. C'est la version qui sert à tout
+  // ce qui n'affiche pas de mise en forme : recherche plein texte de la liste,
+  // export CSV, dossier RGPD, contexte envoyé à l'IA, historique repris en bas
+  // des emails, et la partie text/plain de l'email lui-même. Quand une réponse
+  // est écrite en éditeur riche, c'est la retranscription de `contentHtml`.
   content    String
+  // Mise en forme de la réponse, quand elle en a une. Nul sur tout l'historique
+  // et sur les messages entrants (un email reçu est réduit à son texte à la
+  // synchronisation, voir gmail-sync.ts) : l'affichage retombe alors sur
+  // `content`, sans quoi il aurait fallu réécrire les messages déjà en base.
+  //
+  // Colonne séparée et non un remplacement de `content` : la liste ci-dessus
+  // veut du texte, pas des balises à retirer à chaque lecture.
+  contentHtml String?
   authorType MessageAuthorType
   // Note interne (non visible du client, pas d'envoi d'email) vs réponse
   // publique. Fait déjà office de "is_internal" — pas de champ dupliqué.

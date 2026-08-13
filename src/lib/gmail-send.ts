@@ -69,6 +69,7 @@ export async function sendTicketReplyEmail({
   clientEmail,
   senderName,
   bodyText,
+  bodyHtml,
   history = [],
   signatureHtml,
 }: {
@@ -81,7 +82,14 @@ export async function sendTicketReplyEmail({
   };
   clientEmail: string;
   senderName: string;
+  /** Retranscription texte de la réponse : c'est la partie text/plain du mail. */
   bodyText: string;
+  /**
+   * Mise en forme de la réponse, quand l'agent en a posé une. L'email reste
+   * multipart : le client mail qui refuse le HTML (ou le lecteur qui l'a
+   * désactivé) reçoit `bodyText`, jamais un message vide.
+   */
+  bodyHtml?: string | null;
   history?: EmailHistoryEntry[];
   /** Signature de l'agent auteur de la réponse, résolue par l'appelant. */
   signatureHtml?: string | null;
@@ -100,6 +108,7 @@ export async function sendTicketReplyEmail({
     ticketNumber: ticket.number,
     senderName,
     bodyText,
+    bodyHtml,
     history,
     signatureHtml,
     logoUrl,

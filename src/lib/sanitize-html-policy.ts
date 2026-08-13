@@ -117,6 +117,50 @@ export const EMAIL_ATTR = [
   "size",
 ];
 
+/**
+ * Profil « réponse à un client », le plus serré des trois.
+ *
+ * Écrit dans la zone de réponse d'un ticket, ce HTML est le seul des trois à
+ * être rendu dans l'application AVEC le contenu d'un tiers dans la même page (le
+ * fil du ticket) — et le seul dont l'auteur peut être n'importe quel agent, sans
+ * la permission « kb.manage » ni les droits d'admin qui gardent les deux autres.
+ *
+ * Réduit donc à ce que la barre d'outils de l'éditeur sait produire. Deux
+ * absences délibérées :
+ *
+ * - `style` et `class` : la mise en forme de l'email est posée à l'envoi (voir
+ *   `styleReplyHtmlForEmail`), pas transportée depuis le navigateur. Un
+ *   attribut `style` stocké s'appliquerait tel quel dans la fiche ticket ;
+ * - `style` en balise, `iframe`, `img`, `table` : rien de tout ça ne sort de
+ *   l'éditeur, et un bloc `<style>` collé dans une réponse repeindrait la page
+ *   de l'agent qui la relit — il n'est pas encapsulé.
+ */
+export const REPLY_TAGS = [
+  TEXT_NODE,
+  "p",
+  "br",
+  "hr",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "del",
+  "code",
+  "pre",
+  "blockquote",
+  "h1",
+  "h2",
+  "h3",
+  "ul",
+  "ol",
+  "li",
+  "a",
+];
+
+export const REPLY_ATTR = ["href", "target", "rel"];
+
 /** Protocoles acceptés dans un `href` ou un `src` : ni `javascript:`, ni `data:`. */
 export const ALLOWED_URL_SCHEMES = ["https", "http", "mailto", "tel"];
 

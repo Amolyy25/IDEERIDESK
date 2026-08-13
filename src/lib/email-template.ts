@@ -26,6 +26,55 @@ function optionalText(value: string | null | undefined) {
   return "";
 }
 
+/**
+ * Habillage inline du corps d'une réponse écrite en éditeur riche.
+ *
+ * Pourquoi le style est posé ICI et non stocké avec le message : c'est la seule
+ * façon d'être indifférent au client mail du destinataire. Une feuille de style,
+ * même en bloc `<style>` dans l'en-tête, est ignorée par Outlook (bureau) et
+ * rognée par Gmail sur les messages longs ; les marges par défaut d'un `<p>` ou
+ * d'un `<ul>`, elles, varient d'un client à l'autre — d'un texte aéré chez l'un
+ * à un bloc compact chez l'autre. Un attribut `style` sur chaque balise est le
+ * seul mécanisme que tous appliquent.
+ *
+ * Conséquence assumée dans l'autre sens : `sanitizeReplyHtml` refuse l'attribut
+ * `style` à l'enregistrement. Le HTML stocké reste nu, structurel, et affichable
+ * tel quel dans la fiche ticket ; l'apparence de l'email est décidée ici, à
+ * l'envoi, et peut donc changer sans reprise des messages déjà partis.
+ */
+const REPLY_TAG_STYLES: Record<string, string> = {
+  p: "margin:0 0 16px;",
+  h1: "margin:24px 0 8px;font-size:20px;font-weight:600;line-height:1.3;",
+  h2: "margin:20px 0 8px;font-size:17px;font-weight:600;line-height:1.3;",
+  h3: "margin:16px 0 6px;font-size:15px;font-weight:600;line-height:1.4;",
+  // Le retrait est en `padding-left` et non en `margin-left` : Outlook place la
+  // puce hors de la marge, où elle se fait couper par le bord de la carte.
+  ul: "margin:0 0 16px;padding-left:22px;",
+  ol: "margin:0 0 16px;padding-left:22px;",
+  li: "margin:0 0 6px;",
+  blockquote:
+    "margin:0 0 16px;padding:2px 0 2px 14px;border-left:3px solid #e4e4e7;color:#52525b;",
+  // Couleur explicite : sans elle, un lien apparaît en bleu système chez les uns
+  // et en noir souligné chez les autres, et sur mobile Gmail transforme les
+  // dates et numéros détectés en liens de la même teinte.
+  a: "color:#2563eb;text-decoration:underline;",
+  pre: "margin:0 0 16px;padding:12px;background:#f4f4f5;border-radius:6px;font-family:Consolas,Monaco,monospace;font-size:13px;white-space:pre-wrap;",
+  code: "font-family:Consolas,Monaco,monospace;font-size:13px;background:#f4f4f5;border-radius:3px;padding:1px 4px;",
+  hr: "margin:20px 0;border:0;border-top:1px solid #e4e4e7;",
+  strong: "font-weight:600;",
+  b: "font-weight:600;",
+};
+
+const STYLED_REPLY_TAGS = Object.keys(REPLY_TAG_STYLES).join("|");
+
+export function styleReplyHtmlForEmail(html: string): string {
+  return html.replace(
+    new RegExp(`<(${STYLED_REPLY_TAGS})(\\s[^>]*?)?\\s*(/?)>`, "gi"),
+    (_match, tag: string, attributes: string | undefined, selfClosing: string) =>
+      `<${tag}${attributes ?? ""} style="${REPLY_TAG_STYLES[tag.toLowerCase()]}"${selfClosing}>`
+  );
+}
+
 export type EmailHistoryEntry = {
   authorLabel: string;
   content: string;
@@ -127,6 +176,7 @@ export function renderTicketReplyEmailHtml({
   ticketNumber,
   senderName,
   bodyText,
+  bodyHtml,
   history = [],
   signatureHtml,
   logoUrl,
@@ -135,7 +185,15 @@ export function renderTicketReplyEmailHtml({
   layoutHtml: string;
   ticketNumber: number;
   senderName: string;
+  /** Retranscription texte de la réponse. Seule source quand `bodyHtml` est nul. */
   bodyText: string;
+  /**
+   * Réponse mise en forme, telle qu'écrite dans l'éditeur riche et assainie à
+   * l'enregistrement (`sanitizeReplyHtml`). Nulle pour tout ce qui n'en a pas —
+   * réponse d'avant l'éditeur riche, message rejoué depuis un ticket fusionné
+   * ancien : le corps est alors reconstruit depuis `bodyText`, comme avant.
+   */
+  bodyHtml?: string | null;
   history?: EmailHistoryEntry[];
   /** Signature de l'agent auteur de la réponse, variables déjà remplies. */
   signatureHtml?: string | null;
@@ -143,11 +201,13 @@ export function renderTicketReplyEmailHtml({
   /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
   origin?: string;
 }) {
+  const body = bodyHtml ? styleReplyHtmlForEmail(bodyHtml) : textToHtmlParagraphs(bodyText);
+
   return renderEmailLayout(layoutHtml, {
     logoUrl: optionalText(logoUrl),
     senderName,
     headline: `Ticket #${ticketNumber}`,
-    content: `${textToHtmlParagraphs(bodyText)}${renderSignatureBlockHtml(signatureHtml)}${renderHistoryHtml(history)}`,
+    content: `${body}${renderSignatureBlockHtml(signatureHtml)}${renderHistoryHtml(history)}`,
     footer: "Vous pouvez répondre directement à cet email pour continuer la conversation.",
   }, origin);
 }

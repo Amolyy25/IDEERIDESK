@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
 import type { TicketWithMessages } from "@/lib/actions/tickets";
 import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
+import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 import type { MentionableAgent } from "@/lib/mentions";
 import { plural } from "@/lib/utils";
@@ -131,7 +132,7 @@ export function MessageTimelineItem({
       {message.isPrivate ? (
         <MentionText content={message.content} agents={agents} currentAgentId={currentAgentId} />
       ) : (
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        <MessageBody content={message.content} contentHtml={message.contentHtml} />
       )}
 
       {/* Les fichiers du tour de conversation, sous le message dont ils

@@ -39,6 +39,7 @@ import { StyleBlock } from "@/components/editor/style-block-extension";
 import { ResizableImage } from "@/components/editor/resizable-image-extension";
 import { ImageDragSupport } from "@/components/editor/image-drag-support";
 import { ImageSizeControls } from "@/components/editor/image-size-controls";
+import { ToolbarButton } from "@/components/editor/toolbar-button";
 
 export type InternalLinkTarget = { id: string; title: string; slug: string };
 
@@ -56,35 +57,6 @@ const LAYOUT_MARKUP = /<\s*(?:style|div|table|center|font|html|body)\b|<!doctype
 
 export function needsHtmlSource(html: string) {
   return LAYOUT_MARKUP.test(html);
-}
-
-function ToolbarButton({
-  onClick,
-  active,
-  disabled,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40",
-        active && "bg-muted text-foreground"
-      )}
-    >
-      {children}
-    </button>
-  );
 }
 
 export function RichTextEditor({

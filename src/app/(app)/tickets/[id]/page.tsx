@@ -213,6 +213,7 @@ export default async function TicketDetailPage({
             <ReplyBox
               key={dossier.id}
               ticketId={dossier.id}
+              currentAgentId={session.user.id}
               currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
               clientEmail={dossier.client?.email ?? null}
               mergedRecipientCount={mergedRecipientCount}

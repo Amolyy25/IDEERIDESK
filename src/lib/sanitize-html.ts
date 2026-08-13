@@ -5,6 +5,8 @@ import {
   ARTICLE_TAGS,
   EMAIL_ATTR,
   EMAIL_TAGS,
+  REPLY_ATTR,
+  REPLY_TAGS,
 } from "@/lib/sanitize-html-policy";
 import { sanitizeCssBlock, sanitizeInlineStyle } from "@/lib/sanitize-css";
 import { stripScriptTags } from "@/lib/strip-script-tags";
@@ -151,6 +153,41 @@ export function sanitizeRichHtml(html: string): string {
     FORBID_ATTR: ["onerror", "onload", "srcdoc", "formaction"],
   });
   return withStyleBlocks(sanitized, extracted.css);
+}
+
+/**
+ * Profil « réponse d'agent » : la mise en forme d'un message écrit dans la zone
+ * de réponse d'un ticket.
+ *
+ * Le plus strict des trois, et c'est le trajet du contenu qui l'exige. Il est
+ * écrit par n'importe quel agent disposant de « tickets.respond » — pas
+ * seulement un rédacteur ou un admin — puis rendu via `dangerouslySetInnerHTML`
+ * dans la fiche ticket, en même origine que l'application et à côté des messages
+ * d'autres personnes. Aucun attribut `style` ni `class`, aucun bloc `<style>`,
+ * rien qui charge une ressource : il ne reste que du texte structuré et des
+ * liens.
+ *
+ * L'habillage de l'email est posé à l'envoi (`styleReplyHtmlForEmail`), sur ce
+ * balisage nu — c'est justement ce qui permet de garder l'entrée sans style.
+ *
+ * `<style>` n'est pas extrait avant la passe DOMPurify, contrairement aux deux
+ * autres profils : ici il n'a rien à faire, `prepare` n'est donc pas utilisé et
+ * les blocs disparaissent avec leur contenu.
+ */
+export function sanitizeReplyHtml(html: string): string {
+  installHooks();
+  return DOMPurify.sanitize(stripScriptTags(html), {
+    ALLOWED_TAGS: REPLY_TAGS,
+    ALLOWED_ATTR: REPLY_ATTR,
+    ALLOWED_URI_REGEXP: SAFE_URI_REGEXP,
+    // Voir `sanitizeRichHtml` : une balise refusée est dépliée, son texte
+    // conservé. Une réponse collée depuis un traitement de texte arrive
+    // enveloppée dans des `<div>` et des `<span>` — les supprimer avec leur
+    // contenu enverrait un email vide au client.
+    KEEP_CONTENT: true,
+    FORBID_TAGS: ["script", "style", "noscript", "iframe", "form", "input", "button", "object", "embed"],
+    FORBID_ATTR: ["style", "class", "onerror", "onload", "srcdoc", "formaction"],
+  });
 }
 
 /**

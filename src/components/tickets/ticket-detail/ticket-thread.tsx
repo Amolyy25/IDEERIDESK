@@ -6,6 +6,7 @@ import type { MentionableAgent } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
+import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
 import { EmailOrigin } from "@/components/tickets/ticket-detail/email-origin";
 import {
   Timeline,
@@ -393,7 +394,7 @@ function DuplicateMessage({
       align={align}
       meta={<DuplicateMessageBadges emailSent={message.emailSent} origin={origin} />}
     >
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+      <MessageBody content={message.content} contentHtml={message.contentHtml} />
       <AttachmentsList attachments={message.attachments} />
     </TimelineItem>
   );

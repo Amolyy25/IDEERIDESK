@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
 import type { PendingApprovalMessage } from "@/lib/actions/tickets";
 import { formatDateTime } from "@/lib/format-date";
+import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
 
 export function PendingApprovalsList({ messages }: { messages: PendingApprovalMessage[] }) {
   const router = useRouter();
@@ -79,9 +80,14 @@ export function PendingApprovalsList({ messages }: { messages: PendingApprovalMe
             {message.ticket.client?.name ? ` · pour ${message.ticket.client.name}` : ""}
           </p>
 
-          <p className="mt-3 whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm">
-            {message.content}
-          </p>
+          {/* La réponse telle qu'elle partira, mise en forme comprise : c'est
+              exactement ce qui est soumis à validation, une version aplatie
+              ferait valider autre chose que ce que le client recevra. */}
+          <MessageBody
+            content={message.content}
+            contentHtml={message.contentHtml}
+            className="mt-3 rounded-md border bg-muted/40 p-3"
+          />
 
           <div className="mt-3 flex gap-2">
             <Button

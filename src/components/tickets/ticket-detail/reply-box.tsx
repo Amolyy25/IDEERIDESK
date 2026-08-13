@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Lock, PenLine, Reply, Send, Sparkles, Wand2 } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
+import { ChevronDown, Lock, PenLine, Reply, Save, Send, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { addTicketMessage } from "@/lib/actions/tickets";
 import { cn, plural } from "@/lib/utils";
@@ -12,6 +11,14 @@ import { MentionTextarea } from "@/components/tickets/ticket-detail/mention-text
 import { CannedResponsePicker } from "@/components/tickets/ticket-detail/canned-response-picker";
 import { PresenceStrip } from "@/components/tickets/ticket-detail/presence-strip";
 import { useTicketPresence } from "@/components/tickets/ticket-detail/use-ticket-presence";
+import {
+  useReplyDraftWriter,
+  useStoredReplyDraft,
+  type ReplyDraft,
+} from "@/components/tickets/ticket-detail/use-reply-draft";
+import { ReplyEditor } from "@/components/editor/reply-editor";
+import { appendReplyHtml, isReplyHtmlEmpty, textToReplyHtml } from "@/lib/reply-html";
+import { htmlToText } from "@/lib/html-to-text";
 import type { MentionableAgent } from "@/lib/mentions";
 import type { TicketCannedResponses } from "@/lib/canned-responses";
 
@@ -30,24 +37,36 @@ type PlanePhase = "idle" | "flying" | "landing";
 /**
  * Zone de rédaction, en bas du fil : on écrit là où la conversation s'arrête.
  *
- * Les deux modes ne sont pas deux options d'un même envoi mais deux
- * destinataires différents — le client, ou l'équipe. Tout ce qui change entre
- * les deux est donc annoncé : la couleur du bloc, le destinataire au-dessus du
- * champ, le libellé du bouton, et la signature (jointe à un email, absente
- * d'une note).
+ * Ce premier composant ne fait qu'une chose : retrouver le brouillon laissé sur
+ * ce ticket, et n'ouvrir la zone de rédaction qu'une fois la réponse connue.
+ *
+ * La clé de remontage est ce qui rend la restauration sûre. Le stockage local
+ * n'existe pas côté serveur : le premier rendu ne peut donc rien savoir du
+ * brouillon, et la valeur n'arrive qu'après l'hydratation. Amorcer les champs
+ * depuis un effet reviendrait à écraser, un rendu plus tard, ce que l'agent
+ * aurait déjà commencé à taper ; la clé, elle, remonte la zone de rédaction une
+ * fois, avec le brouillon pour état INITIAL — après quoi plus rien ne vient
+ * toucher au texte.
  */
-export function ReplyBox({
-  ticketId,
-  currentAgentName,
-  clientEmail,
-  mergedRecipientCount = 0,
-  canRespond,
-  requiresApproval,
-  signature,
-  agents,
-  cannedResponses,
-}: {
+export function ReplyBox(props: ReplyBoxProps) {
+  const storedDraft = useStoredReplyDraft({
+    ticketId: props.ticketId,
+    agentId: props.currentAgentId,
+  });
+
+  return (
+    <ReplyComposer
+      key={storedDraft ? "restored" : "empty"}
+      restoredDraft={storedDraft ?? null}
+      {...props}
+    />
+  );
+}
+
+type ReplyBoxProps = {
   ticketId: string;
+  /** Identifiant de l'agent connecté : le brouillon local est rangé sous son nom. */
+  currentAgentId: string;
   currentAgentName: string;
   /** Destinataire de la réponse publique. Null quand aucun client n'est rattaché. */
   clientEmail: string | null;
@@ -74,16 +93,55 @@ export function ReplyBox({
    * pré-remplit le champ s'il en existe une.
    */
   cannedResponses: TicketCannedResponses;
+};
+
+/**
+ * Le champ lui-même.
+ *
+ * Les deux modes ne sont pas deux options d'un même envoi mais deux
+ * destinataires différents — le client, ou l'équipe. Tout ce qui change entre
+ * les deux est donc annoncé : la couleur du bloc, le destinataire au-dessus du
+ * champ, le libellé du bouton, et la signature (jointe à un email, absente
+ * d'une note).
+ */
+function ReplyComposer({
+  ticketId,
+  currentAgentId,
+  currentAgentName,
+  clientEmail,
+  mergedRecipientCount = 0,
+  canRespond,
+  requiresApproval,
+  signature,
+  agents,
+  cannedResponses,
+  restoredDraft,
+}: ReplyBoxProps & {
+  /** Brouillon retrouvé à l'ouverture, ou `null`. Ne change jamais en cours de vie. */
+  restoredDraft: ReplyDraft | null;
 }) {
   const router = useRouter();
   const autoInserted = cannedResponses.autoInserted;
-  // Le pré-remplissage est un état INITIAL, pas une valeur imposée : dès ce
-  // premier rendu, le texte appartient à l'agent, qui le réécrit ou l'efface
-  // sans que rien ne le remette. La page du ticket monte une zone de rédaction
-  // neuve par dossier (voir la clé posée sur `ReplyBox`), c'est donc bien à
-  // chaque ouverture de ticket que le brouillon est proposé.
-  const [content, setContent] = useState(autoInserted?.body ?? "");
-  const [isPrivate, setIsPrivate] = useState(false);
+  // La réponse type arrive en texte : convertie une fois pour toutes en HTML
+  // d'éditeur, pour que la comparaison « le champ contient-il encore le
+  // pré-remplissage ? » porte sur deux valeurs de même nature.
+  const [autoInsertedHtml] = useState(() => textToReplyHtml(autoInserted?.body ?? ""));
+
+  // Un brouillon retrouvé l'emporte sur la réponse type : il est de la main de
+  // l'agent, elle est une proposition de l'application.
+  //
+  // Le pré-remplissage comme le brouillon sont un état INITIAL, pas une valeur
+  // imposée : dès ce premier rendu, le texte appartient à l'agent, qui le
+  // réécrit ou l'efface sans que rien ne le remette.
+  const [html, setHtml] = useState(restoredDraft?.html ?? autoInsertedHtml);
+  // La note interne reste du texte, et ce n'est pas un oubli : son autocomplétion
+  // en @ travaille sur une chaîne et une position de curseur, et rien de ce qui
+  // s'y écrit ne part par email — la mise en forme n'y a pas de destinataire.
+  const [note, setNote] = useState(restoredDraft?.note ?? "");
+  // Le mode fait partie du brouillon : retrouver le texte d'une note interne
+  // dans le champ « Répondre au client » est le pire des deux mondes — c'est la
+  // confusion qui envoie au client ce qui était destiné à l'équipe.
+  const [isPrivate, setIsPrivate] = useState(restoredDraft?.isPrivate ?? false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [planePhase, setPlanePhase] = useState<PlanePhase>("idle");
@@ -91,8 +149,39 @@ export function ReplyBox({
   // cette copie qui s'envole par-dessus.
   const [messageInFlight, setMessageInFlight] = useState<string | null>(null);
 
-  const isEmpty = !content.trim();
+  const isEmpty = isPrivate ? !note.trim() : isReplyHtmlEmpty(html);
   const status = metaLine({ isPrivate, currentAgentName, requiresApproval });
+
+  const {
+    savedAt: draftSavedAt,
+    save: saveDraft,
+    clear: clearDraft,
+  } = useReplyDraftWriter({
+    ticketId,
+    agentId: currentAgentId,
+    initialSavedAt: restoredDraft?.savedAt ?? null,
+  });
+
+  // Le champ ne contient encore que ce que l'application y a posé : la réponse
+  // type pré-remplie, et rien d'autre.
+  const untouchedPrefill = html === autoInsertedHtml && !note.trim();
+
+  // Le brouillon retrouvé est encore intact. Sert à deux choses : ne pas le
+  // réenregistrer à l'identique en arrivant (l'heure affichée deviendrait celle
+  // de l'ouverture du ticket, pas celle de la dernière frappe), et retirer la
+  // mention qui l'annonce dès la première correction — passé ce point, ce n'est
+  // plus « ce qu'on avait laissé », c'est ce qu'on est en train d'écrire.
+  const draftIntact =
+    restoredDraft !== null &&
+    html === restoredDraft.html &&
+    note === restoredDraft.note &&
+    isPrivate === restoredDraft.isPrivate;
+
+  // Enregistrement continu, dès que le contenu est de la main de l'agent.
+  useEffect(() => {
+    if (untouchedPrefill || draftIntact) return;
+    saveDraft({ html, note, isPrivate });
+  }, [saveDraft, html, note, isPrivate, untouchedPrefill, draftIntact]);
 
   /**
    * Qui d'autre est sur ce dossier en ce moment.
@@ -106,7 +195,7 @@ export function ReplyBox({
    * été touché : annoncer « il rédige » à l'ouverture d'une fiche, sans que
    * personne n'ait tapé quoi que ce soit, discréditerait l'indicateur.
    */
-  const composing = !isEmpty && content !== autoInserted?.body;
+  const composing = !isEmpty && !untouchedPrefill;
   const others = useTicketPresence({ ticketId, composing });
 
   // L'avion part, puis revient se poser. Deux étapes enchaînées par ce seul
@@ -135,15 +224,11 @@ export function ReplyBox({
    * Insère une réponse type dans le champ.
    *
    * Le texte déjà écrit n'est jamais remplacé : la réponse type s'ajoute à la
-   * suite, séparée d'une ligne vide. Écraser une phrase en cours de rédaction
-   * pour un clic sur la mauvaise ligne de la liste serait un coût sans retour.
+   * suite, en paragraphes à part. Écraser une phrase en cours de rédaction pour
+   * un clic sur la mauvaise ligne de la liste serait un coût sans retour.
    */
   function handleInsertCannedResponse(body: string) {
-    if (isEmpty) {
-      setContent(body);
-      return;
-    }
-    setContent(`${content.trimEnd()}\n\n${body}`);
+    setHtml(appendReplyHtml(html, textToReplyHtml(body)));
   }
 
   async function handleSuggest() {
@@ -158,7 +243,10 @@ export function ReplyBox({
       if (!response.ok) {
         throw new Error(result.error ?? "Impossible de générer une suggestion.");
       }
-      setContent(result.suggestion);
+      // La suggestion arrive en texte brut : convertie en paragraphes plutôt
+      // qu'insérée telle quelle, faute de quoi une réponse de dix lignes
+      // atterrirait dans l'éditeur en un seul bloc.
+      setHtml(textToReplyHtml(result.suggestion));
       toast.success("Suggestion générée");
     } catch (error) {
       toast.error(
@@ -172,17 +260,31 @@ export function ReplyBox({
   async function handleSubmit() {
     if (isEmpty || isSubmitting) return;
 
-    const sentContent = content;
+    // Une réponse publique part sous ses deux formes : le HTML pour la mise en
+    // forme, sa retranscription pour le client dont la boîte mail n'affiche pas
+    // le HTML. Une note interne n'a que du texte.
+    const sentHtml = isPrivate ? null : html;
+    const sentContent = isPrivate ? note : htmlToText(html);
+
     setIsSubmitting(true);
     // Le champ se vide et le message décolle immédiatement : l'aller-retour
     // serveur se joue pendant le vol, au lieu de laisser le texte figé dans le
     // champ en attendant la réponse. En cas d'échec, il est rendu tel quel.
-    setContent("");
+    if (isPrivate) setNote("");
+    else setHtml("");
     setMessageInFlight(sentContent);
     setPlanePhase("flying");
 
     try {
-      const result = await addTicketMessage(ticketId, { content: sentContent, isPrivate });
+      const result = await addTicketMessage(ticketId, {
+        content: sentContent,
+        contentHtml: sentHtml ?? undefined,
+        isPrivate,
+      });
+
+      // Le brouillon a fini son office : le garder ferait réapparaître, à la
+      // prochaine ouverture du ticket, une réponse déjà partie au client.
+      clearDraft();
 
       if (isPrivate && result.mentionedNames.length > 0) {
         const names = result.mentionedNames;
@@ -204,9 +306,11 @@ export function ReplyBox({
 
       router.refresh();
     } catch (error) {
-      // Le texte revient dans le champ : un envoi refusé ne doit jamais coûter
-      // le message à l'agent.
-      setContent(sentContent);
+      // Le texte revient dans le champ, mise en forme comprise : un envoi refusé
+      // ne doit jamais coûter le message à l'agent. Le brouillon local, lui, n'a
+      // pas été effacé — `clearDraft` n'est atteint qu'en cas de succès.
+      if (isPrivate) setNote(sentContent);
+      else setHtml(sentHtml ?? "");
       setPlanePhase("idle");
       setMessageInFlight(null);
 
@@ -217,14 +321,6 @@ export function ReplyBox({
       toast.error(message);
     } finally {
       setIsSubmitting(false);
-    }
-  }
-
-  /** ⌘/Ctrl + Entrée envoie, comme dans un client mail. Entrée seule saute une ligne. */
-  function handleKeyDown(event: React.KeyboardEvent) {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      handleSubmit();
     }
   }
 
@@ -279,8 +375,22 @@ export function ReplyBox({
         {/* Pourquoi il y a déjà du texte dans le champ. L'avis disparaît à la
             première frappe : passé ce point le brouillon est celui de l'agent,
             continuer à l'attribuer à une réponse type serait faux. */}
-        {!isPrivate && autoInserted && content === autoInserted.body && (
-          <PrefilledNotice title={autoInserted.title} onClear={() => setContent("")} />
+        {!isPrivate && autoInserted && html === autoInsertedHtml && (
+          <PrefilledNotice title={autoInserted.title} onClear={() => setHtml("")} />
+        )}
+
+        {/* Ce qui a été retrouvé en ouvrant le ticket. Annoncé, et pas seulement
+            restauré : un texte qui apparaît sans qu'on sache d'où il vient se
+            fait envoyer sans être relu. */}
+        {draftIntact && (
+          <RestoredDraftNotice
+            savedAt={restoredDraft.savedAt}
+            onDiscard={() => {
+              setHtml(autoInsertedHtml);
+              setNote("");
+              clearDraft();
+            }}
+          />
         )}
 
         <div className="relative">
@@ -289,20 +399,18 @@ export function ReplyBox({
               de l'équipe y serait un piège. */}
           {isPrivate ? (
             <MentionTextarea
-              value={content}
-              onChange={setContent}
+              value={note}
+              onChange={setNote}
               agents={agents}
               placeholder="Écrire une note interne… (@ pour mentionner un collègue)"
               rows={6}
             />
           ) : (
-            <Textarea
+            <ReplyEditor
+              value={html}
+              onChange={setHtml}
+              onSubmit={handleSubmit}
               placeholder="Écrire la réponse…"
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={6}
-              className="bg-background"
             />
           )}
 
@@ -329,7 +437,10 @@ export function ReplyBox({
             actions les garde alors à droite, sans paragraphe fantôme pour tenir
             la place. */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          {status && <p className="text-xs text-muted-foreground">{status}</p>}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {status && <p className="text-xs text-muted-foreground">{status}</p>}
+            <DraftStatus savedAt={draftSavedAt} />
+          </div>
 
           <div className="ml-auto flex items-center gap-2">
             {/* Réservé à la réponse publique, comme la suggestion IA : une
@@ -398,6 +509,69 @@ function PrefilledNotice({ title, onClear }: { title: string; onClear: () => voi
         Effacer
       </button>
     </p>
+  );
+}
+
+/**
+ * Le brouillon retrouvé à l'ouverture du ticket.
+ *
+ * L'annonce vaut autant que la restauration elle-même : sans elle, l'agent
+ * découvre un texte dans le champ et doit deviner s'il l'a écrit, si un collègue
+ * l'a laissé là, ou si l'application l'a proposé. La possibilité de le jeter
+ * d'un clic fait partie de la même idée — un brouillon restauré qu'on ne peut
+ * pas écarter devient un texte à effacer à la main avant d'écrire.
+ */
+function RestoredDraftNotice({
+  savedAt,
+  onDiscard,
+}: {
+  savedAt: number | null;
+  onDiscard: () => void;
+}) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+      <Save className="size-3.5 shrink-0" />
+      <span>
+        Brouillon retrouvé{savedAt ? ` (${formatDraftTime(savedAt)})` : ""}, à relire avant
+        l&apos;envoi.
+      </span>
+      <button
+        type="button"
+        onClick={onDiscard}
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        Repartir de zéro
+      </button>
+    </p>
+  );
+}
+
+/**
+ * L'heure du dernier enregistrement automatique, sous le champ.
+ *
+ * Une seule ligne, discrète, mais elle n'est pas décorative : elle est la seule
+ * preuve que le texte survivra à un changement de page. Sans elle, un agent
+ * prudent recopie sa réponse ailleurs avant d'aller vérifier une information —
+ * ce que la sauvegarde était censée lui épargner.
+ *
+ * « Ce navigateur » est dit explicitement : le brouillon ne suit pas l'agent d'un
+ * poste à l'autre, et laisser croire le contraire coûterait un texte perdu le
+ * jour où il rouvre le ticket depuis chez lui.
+ */
+function DraftStatus({ savedAt }: { savedAt: number | null }) {
+  if (savedAt === null) return null;
+
+  return (
+    <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Save className="size-3.5 shrink-0" />
+      Brouillon enregistré à {formatDraftTime(savedAt)} sur ce navigateur
+    </p>
+  );
+}
+
+function formatDraftTime(timestamp: number) {
+  return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(timestamp)
   );
 }
 
