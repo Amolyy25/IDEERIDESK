@@ -52,6 +52,10 @@ export const NAV_GROUPS: NavGroup[] = [
     // — d'où une permission distincte, marquée sensible dans le registre.
     label: "Supervision",
     items: [
+      // Les statistiques d'abord : on vient y lire l'état du support (combien
+      // arrive, combien attend, qui tient les délais), là où le journal répond à
+      // une question précise sur un dossier ou une personne.
+      { label: "Statistiques", href: "/stats", permission: "stats.view" },
       { label: "Journal d'audit", href: "/audit", permission: "audit.view" },
       // Volontairement une entrée à part et non un onglet du journal : on n'y
       // vient pas pour lire mais pour répondre à une demande nominative

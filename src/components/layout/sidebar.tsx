@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  ChartColumn,
   ScrollText,
   ShieldCheck,
   ShieldUser,
@@ -36,6 +37,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/clients": Users,
   "/agents": UsersRound,
   "/knowledge-base": BookOpen,
+  "/stats": ChartColumn,
   "/audit": ScrollText,
   "/privacy": ShieldUser,
 };

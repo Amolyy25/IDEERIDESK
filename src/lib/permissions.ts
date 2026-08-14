@@ -52,6 +52,7 @@ export const PERMISSION_KEYS = [
   "kb.view",
   "kb.manage",
   // Supervision
+  "stats.view",
   "audit.view",
   "privacy.manage",
   // Paramètres
@@ -244,6 +245,18 @@ export const PERMISSIONS: Record<PermissionKey, PermissionMeta> = {
     requires: "kb.view",
   },
 
+  "stats.view": {
+    label: "Consulter les statistiques",
+    description:
+      "Volumes, délais de réponse, engagements tenus, produits les plus sollicités, et le classement de l'équipe sur une période choisie.",
+    group: "supervision",
+    // Pas rangée avec les permissions sensibles, contrairement au journal, et la
+    // nuance est volontaire : ces écrans comptent des tickets et des délais, ils
+    // ne racontent pas geste par geste ce qu'un collègue a ouvert et à quelle
+    // heure. Le classement de l'équipe reste nominatif — d'où une permission à
+    // part, qu'on accorde à qui pilote le support, et non un droit d'office.
+    denial: "Vous n'avez pas accès aux statistiques.",
+  },
   "audit.view": {
     label: "Consulter le journal d'audit",
     description:

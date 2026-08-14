@@ -24,6 +24,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-viz-accent: var(--viz-accent);
+  --color-viz-muted: var(--viz-muted);
+  --color-viz-scale-1: var(--viz-scale-1);
+  --color-viz-scale-2: var(--viz-scale-2);
+  --color-viz-scale-3: var(--viz-scale-3);
+  --color-viz-scale-4: var(--viz-scale-4);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -73,6 +79,30 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* --- Couleurs des graphiques de /stats ---
+     Deux rôles seulement, et c'est délibéré : une teinte pour la série dont
+     parle le graphique (les arrivées), un gris pour celle qui sert de contexte
+     (les clôtures). Les statuts, priorités et produits gardent leur propre
+     couleur, mais comme PASTILLE à côté de leur libellé — jamais comme
+     remplissage de barre : ces couleurs sont saisies par un administrateur, on
+     ne peut donc rien garantir de leur lisibilité côté daltonisme ni de leur
+     contraste sur la carte.
+
+     `--viz-accent` n'est pas `--primary` : l'ambre de la marque (L 0.80) ne
+     tient que 1,9:1 sur le blanc, soit une barre qu'on devine plutôt qu'on ne
+     la lit. Le pas retenu (L 0.66) passe 3,1:1 tout en restant la même teinte.
+     Les deux modes ont leurs propres pas, choisis pour leur fond respectif —
+     pas un simple inversement.
+
+     `--viz-scale-*` est l'échelle de la carte d'activité (jour × heure) : une
+     seule teinte, du clair au foncé, quatre paliers. Écarts de clarté et
+     contraste du palier le plus clair vérifiés dans les deux modes. */
+  --viz-accent: oklch(0.66 0.15 87.5);
+  --viz-muted: oklch(0.556 0 0);
+  --viz-scale-1: oklch(0.78 0.13 87.5);
+  --viz-scale-2: oklch(0.7 0.13 87.5);
+  --viz-scale-3: oklch(0.62 0.13 87.5);
+  --viz-scale-4: oklch(0.54 0.13 87.5);
   /* Rayon de référence de toute l'interface : `--radius-sm/md/lg/xl…` en
      découlent (voir `@theme inline`). À 0.5rem, les boutons et les champs de
      32 px de haut paraissaient taillés à l'équerre ; 0.625rem les adoucit sans
@@ -118,6 +148,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Pas propres au fond sombre (voir le commentaire en clair) : la carte y est
+     à L 0.205, l'échelle repart donc du foncé vers le clair sans que le premier
+     palier se confonde avec le fond. */
+  --viz-accent: oklch(0.66 0.16 87.5);
+  --viz-muted: oklch(0.53 0 0);
+  --viz-scale-1: oklch(0.44 0.13 87.5);
+  --viz-scale-2: oklch(0.54 0.13 87.5);
+  --viz-scale-3: oklch(0.64 0.13 87.5);
+  --viz-scale-4: oklch(0.74 0.13 87.5);
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.795 0.173 87.5);
