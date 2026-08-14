@@ -44,6 +44,8 @@ export function ReplyEditor({
   autoFocus = false,
   minHeight = "150px",
   overlay,
+  editable = true,
+  focusRef,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -62,6 +64,19 @@ export function ReplyEditor({
    * compris, faute de quoi on voit un texte sauter avant de monter.
    */
   overlay?: React.ReactNode;
+  /**
+   * Faux pendant le délai d'annulation : le message est parti, il est encore
+   * rattrapable, mais il ne s'écrit plus. Le texte reste LISIBLE — c'est
+   * justement ces secondes-là qu'on passe à le relire — simplement plus
+   * modifiable tant qu'on n'a pas repris la main (« Modifier »).
+   */
+  editable?: boolean;
+  /**
+   * Poignée pour rendre le curseur au champ depuis l'extérieur, après une
+   * annulation. Un `RefObject` plutôt qu'un `useImperativeHandle` : l'appelant
+   * n'a besoin que d'un geste, pas d'une interface.
+   */
+  focusRef?: React.RefObject<(() => void) | null>;
 }) {
   const editor = useEditor({
     immediatelyRender: false,
@@ -113,11 +128,35 @@ export function ReplyEditor({
     editor.commands.setContent(value, { emitUpdate: false });
   }, [editor, value]);
 
+  // `editable` est une option de l'éditeur, pas un attribut du DOM : elle se
+  // change par commande, sinon le champ reste saisissable malgré la propriété.
+  useEffect(() => {
+    if (!editor || editor.isEditable === editable) return;
+    editor.setEditable(editable);
+  }, [editor, editable]);
+
+  useEffect(() => {
+    if (!editor || !focusRef) return;
+    focusRef.current = () => editor.chain().focus("end").run();
+    return () => {
+      focusRef.current = null;
+    };
+  }, [editor, focusRef]);
+
   if (!editor) return null;
 
   return (
     <div className="overflow-hidden rounded-md border bg-background focus-within:ring-1 focus-within:ring-ring">
-      <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 p-1">
+      {/* `inert` plutôt qu'un `disabled` sur chacun des neuf boutons : la barre
+          entière sort du document — clic, tabulation et lecteurs d'écran
+          compris — le temps que le champ soit verrouillé. */}
+      <div
+        inert={!editable}
+        className={cn(
+          "flex flex-wrap items-center gap-0.5 border-b bg-muted/30 p-1 transition-opacity",
+          !editable && "opacity-40"
+        )}
+      >
         <ToolbarButton
           title="Gras"
           active={editor.isActive("bold")}
@@ -187,9 +226,10 @@ export function ReplyEditor({
           document : un champ court n'oblige pas à viser la première ligne pour
           y placer le curseur. */}
       <div
-        className="relative cursor-text px-3 py-2"
+        className={cn("relative px-3 py-2", editable ? "cursor-text" : "cursor-default")}
         style={{ minHeight }}
         onMouseDown={(event) => {
+          if (!editable) return;
           // Uniquement les clics sur le rembourrage : sur le texte, laisser
           // ProseMirror placer le curseur là où on a cliqué.
           if (event.target === event.currentTarget) {

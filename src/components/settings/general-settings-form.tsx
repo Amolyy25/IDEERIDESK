@@ -17,6 +17,7 @@ import type { GlobalSetting } from "@/generated/prisma/client";
 const GROUPS: { label: string; keys: string[] }[] = [
   { label: "Identité", keys: ["company_name"] },
   { label: "Support", keys: ["support_email", "timezone"] },
+  { label: "Zone de réponse", keys: ["reply_send_delay_seconds"] },
   { label: "Formulaires publics", keys: ["widget_banner_message"] },
 ];
 

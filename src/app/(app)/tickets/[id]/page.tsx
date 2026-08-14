@@ -23,6 +23,8 @@ import {
   type TicketCannedResponses,
 } from "@/lib/canned-responses";
 import { getPendingDuplicateSuggestions } from "@/lib/ticket-duplicates";
+import { readReplySendDelaySeconds } from "@/lib/reply-send-delay";
+import { getAiConfig } from "@/lib/ai-settings";
 import { resolveMergeRoot } from "@/lib/ticket-merge";
 import { countMergedRecipients, listDossierClients } from "@/lib/ticket-dossier";
 import { cn } from "@/lib/utils";
@@ -52,13 +54,28 @@ export default async function TicketDetailPage({
   // tomberait tantôt sur une redirection propre, tantôt sur une page d'erreur.
   const session = await requirePageAccess("tickets.view");
 
-  const [ticket, statuses, priorities, categories, agents, customFields] = await Promise.all([
+  const [
+    ticket,
+    statuses,
+    priorities,
+    categories,
+    agents,
+    customFields,
+    sendDelaySeconds,
+    aiEnabled,
+  ] = await Promise.all([
     getTicketById(id),
     getTicketStatuses(),
     getTicketPriorities(),
     getTicketCategories(),
     getAgents(),
     getCustomFields(),
+    // Combien de temps une réponse reste rattrapable après le clic (voir
+    // Paramètres > Général).
+    readReplySendDelaySeconds(),
+    // Uniquement de quoi savoir si l'assistant a une chance de répondre : le
+    // reste de la configuration (la clé en tête) ne quitte pas le serveur.
+    getAiConfig().then((config) => Boolean(config.apiKey)),
   ]);
 
   if (!ticket) {
@@ -221,6 +238,8 @@ export default async function TicketDetailPage({
                 signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
                 agents={mentionableAgents}
                 cannedResponses={cannedResponses}
+                sendDelaySeconds={sendDelaySeconds}
+                aiEnabled={aiEnabled}
               />
             }
           />

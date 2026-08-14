@@ -341,6 +341,30 @@
   }
 }
 
+/* La jauge de la fenêtre d'annulation (voir `QueuedReplyBar`). Sa durée est
+   posée en style en ligne, puisqu'elle vient d'un réglage : la feuille de style
+   ne connaît que le mouvement, jamais le temps qu'il dure.
+
+   Linéaire, sans exception : c'est une mesure du temps qui reste, et toute autre
+   fonction ferait mentir la barre sur la moitié de son parcours. Elle est
+   conservée sous `prefers-reduced-motion` — ce n'est pas une décoration mais
+   l'affichage d'un compte à rebours, au même titre que le chiffre à côté. */
+@keyframes reply-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.reply-countdown {
+  animation-name: reply-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  will-change: transform;
+}
+
 /* ---------------------------------------------------------------------------
    GAME OVER : le formulaire se décompose (voir `GameOverCurtain`)
    ---------------------------------------------------------------------------

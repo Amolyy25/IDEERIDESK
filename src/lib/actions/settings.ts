@@ -6,6 +6,11 @@ import { requirePermission } from "@/lib/require-permission";
 import { AI_SETTING_KEYS } from "@/lib/ai-settings";
 import { INBOUND_CREATE_TICKETS_KEY } from "@/lib/email-account";
 import { SLA_SETTING_KEYS } from "@/lib/sla";
+import {
+  MAX_REPLY_SEND_DELAY_SECONDS,
+  REPLY_SEND_DELAY_KEY,
+  normalizeReplySendDelaySeconds,
+} from "@/lib/reply-send-delay";
 
 /**
  * Réglages qui ont leur propre écran, et qui n'ont donc rien à faire dans la
@@ -28,6 +33,22 @@ const OWNED_BY_SECTION: Record<string, string> = {
 
 const HIDDEN_KEYS: string[] = Object.keys(OWNED_BY_SECTION);
 
+/**
+ * Réglages dont la valeur n'est pas du texte libre, et le message à afficher
+ * quand la saisie n'en est pas une.
+ *
+ * Le champ est générique (voir `GeneralSettingsForm`) : c'est donc ici, et
+ * seulement ici, qu'une valeur aberrante peut être arrêtée. Refuser plutôt que
+ * corriger en silence — un délai ramené discrètement à 20 s laisserait
+ * l'administrateur croire qu'il en a réglé 300.
+ */
+const VALIDATORS: Record<string, { normalize: (value: string) => string | null; message: string }> = {
+  [REPLY_SEND_DELAY_KEY]: {
+    normalize: normalizeReplySendDelaySeconds,
+    message: `Indiquez un nombre entier de secondes, entre 0 et ${MAX_REPLY_SEND_DELAY_SECONDS}.`,
+  },
+};
+
 export async function getGlobalSettings() {
   const settings = await prisma.globalSetting.findMany({ orderBy: { label: "asc" } });
   return settings.filter((setting) => !HIDDEN_KEYS.includes(setting.key));
@@ -40,6 +61,16 @@ export async function updateGlobalSetting(key: string, value: string) {
     throw new Error(`Ce réglage se modifie depuis la section ${ownerSection}.`);
   }
 
-  await prisma.globalSetting.update({ where: { key }, data: { value } });
+  const validator = VALIDATORS[key];
+  let stored = value;
+  if (validator) {
+    const normalized = validator.normalize(value);
+    if (normalized === null) {
+      throw new Error(validator.message);
+    }
+    stored = normalized;
+  }
+
+  await prisma.globalSetting.update({ where: { key }, data: { value: stored } });
   revalidatePath("/settings");
 }

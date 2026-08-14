@@ -22,17 +22,28 @@ const MAX_SUGGESTIONS = 6;
 export function MentionTextarea({
   value,
   onChange,
+  onSubmit,
   agents,
   placeholder,
   rows = 4,
   disabled,
+  focusRef,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * ⌘/Ctrl + Entrée, le même raccourci que la réponse publique. Testé avant
+   * l'autocomplétion des mentions : la touche Entrée seule y valide un nom, et
+   * un agent qui envoie sa note pendant qu'une liste est ouverte ne veut pas
+   * insérer un collègue de plus.
+   */
+  onSubmit?: () => void;
   agents: MentionableAgent[];
   placeholder?: string;
   rows?: number;
   disabled?: boolean;
+  /** Poignée pour rendre le curseur au champ depuis l'extérieur (voir `ReplyEditor`). */
+  focusRef?: React.RefObject<(() => void) | null>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Position du curseur à replacer après une insertion — appliquée en effet,
@@ -45,6 +56,21 @@ export function MentionTextarea({
     ? matchMentionCandidates(agents, draft.query).slice(0, MAX_SUGGESTIONS)
     : [];
   const isOpen = suggestions.length > 0;
+
+  useEffect(() => {
+    if (!focusRef) return;
+    focusRef.current = () => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      // Curseur en fin de texte : on revient au champ pour compléter ce qu'on a
+      // écrit, pas pour reprendre au début.
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    };
+    return () => {
+      focusRef.current = null;
+    };
+  }, [focusRef]);
 
   useEffect(() => {
     const caret = caretToRestore.current;
@@ -75,6 +101,15 @@ export function MentionTextarea({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && onSubmit) {
+      event.preventDefault();
+      // La liste ouverte est refermée au passage : la note part, il ne doit pas
+      // rester un menu suspendu au-dessus d'un champ vidé.
+      setDraft(null);
+      onSubmit();
+      return;
+    }
+
     if (!isOpen) return;
 
     if (event.key === "ArrowDown") {
