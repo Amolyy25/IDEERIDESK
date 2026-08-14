@@ -244,6 +244,15 @@ model TicketCategory {
   color       String   @default("#71717a")
   order       Int      @default(0)
   isDefault   Boolean  @default(false)
+
+  // Mots qui, dans un email entrant, désignent ce produit — un email n'a pas de
+  // liste déroulante, le tri à l'arrivée n'a que ce que le client a écrit. Se
+  // saisissent produit par produit depuis /settings/categories : une liste en
+  // dur dans le code ne suivait pas les renommages faits depuis cet écran.
+  // Liste vide = ce produit n'est jamais posé automatiquement.
+  // Voir `detectProductFromEmail`.
+  emailKeywords String[] @default([])
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

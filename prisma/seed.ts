@@ -109,11 +109,16 @@ async function main() {
 
   const categories = [
     {
-      name: "Papairis",
-      description: "Demandes liées au logiciel métier Papairis.",
+      // Le produit s'appelle « Papiris » : c'est ce nom qui est en base, le seed
+      // portait encore une ancienne orthographe et aurait fini par créer un
+      // doublon. Les deux graphies restent des mots-clés — les clients écrivent
+      // les deux.
+      name: "Papiris",
+      description: "Demandes liées au logiciel métier Papiris.",
       color: "#eab308",
       order: 0,
       isDefault: true,
+      emailKeywords: ["papiris", "papairis"],
     },
     {
       name: "App compagnon",
@@ -121,6 +126,7 @@ async function main() {
       color: "#a1a1aa",
       order: 1,
       isDefault: false,
+      emailKeywords: ["compagnon", "app compagnon"],
     },
     {
       name: "Site web",
@@ -135,6 +141,10 @@ async function main() {
       color: "#71717a",
       order: 3,
       isDefault: false,
+      // « ideeri » seul est volontairement absent : c'est le nom de la maison,
+      // il figure dans la signature de n'importe quel email et rattacherait ici
+      // des demandes qui parlent d'autre chose.
+      emailKeywords: ["app ideeri", "ideeri desk", "ideeridesk"],
     },
     {
       name: "Diffusion des annonces",

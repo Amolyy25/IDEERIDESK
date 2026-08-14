@@ -49,6 +49,7 @@ export function CategoriesTable({ categories }: { categories: TicketCategory[] }
             <TableRow>
               <TableHead>Nom</TableHead>
               <TableHead>Description</TableHead>
+              <TableHead>Mots-clés e-mail</TableHead>
               <TableHead>Options</TableHead>
               <TableHead className="w-24 text-right">Actions</TableHead>
             </TableRow>
@@ -67,6 +68,22 @@ export function CategoriesTable({ categories }: { categories: TicketCategory[] }
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {category.description ?? "—"}
+                </TableCell>
+                {/* Un produit sans mot-clé n'est jamais posé automatiquement : le
+                    tiret doit se lire comme « aucun tri à l'arrivée », pas comme
+                    une colonne pas encore remplie. */}
+                <TableCell>
+                  {category.emailKeywords.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {category.emailKeywords.map((keyword) => (
+                        <Badge key={keyword} variant="outline" className="font-normal">
+                          {keyword}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell>
                   {category.isDefault && <Badge variant="secondary">Par défaut</Badge>}

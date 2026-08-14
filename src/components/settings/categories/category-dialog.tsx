@@ -34,11 +34,20 @@ export function CategoryDialog({
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true);
     try {
+      // Une ligne = un mot-clé, comme la liste d'options d'un champ
+      // personnalisé : un mot-clé peut contenir une espace (« app compagnon »),
+      // ce qu'une saisie séparée par des virgules rendrait ambigu.
+      const emailKeywords = ((formData.get("emailKeywords") as string) ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
       const input = {
         name: formData.get("name") as string,
         description: (formData.get("description") as string) || null,
         color: formData.get("color") as string,
         isDefault: formData.get("isDefault") === "on",
+        emailKeywords,
       };
       if (category) {
         await updateTicketCategory(category.id, input);
@@ -79,6 +88,24 @@ export function CategoryDialog({
               rows={2}
               defaultValue={category?.description ?? ""}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="emailKeywords">Mots-clés e-mail (un par ligne)</Label>
+            <Textarea
+              id="emailKeywords"
+              name="emailKeywords"
+              rows={3}
+              defaultValue={(category?.emailKeywords ?? []).join("\n")}
+              placeholder={"papiris\npapairis"}
+            />
+            <p className="text-xs text-muted-foreground">
+              Un e-mail reçu au support est rattaché à ce produit si l&apos;un de ces mots figure
+              dans son objet ou son message. Casse et accents sont ignorés, et le mot doit être
+              entier : « papiris » reconnaît « papiris.fr », pas « papirisation ». Sans mot-clé,
+              le produit n&apos;est jamais posé automatiquement. En cas de doublon, c&apos;est le
+              produit le plus haut dans cette liste qui l&apos;emporte.
+            </p>
           </div>
 
           <div className="space-y-2">
