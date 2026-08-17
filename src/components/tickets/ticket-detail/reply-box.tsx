@@ -510,6 +510,15 @@ function ReplyComposer({
    * curseur vient d'être remplacé par la barre d'attente, le focus est donc
    * retombé sur la page. L'écoute ne vit que le temps de la fenêtre — Échap
    * n'est capté à aucun autre moment.
+   *
+   * Elle ne prend effet qu'au tour de boucle SUIVANT, et c'est indispensable :
+   * ⌘/Ctrl + Entrée ouvre l'attente depuis un gestionnaire posé sur le champ
+   * lui-même, et React applique l'état — donc cet effet — avant que le même
+   * appui ait fini de remonter jusqu'à `document`. L'écoute fraîchement posée
+   * voyait alors passer l'appui qui venait de l'installer et abrégeait
+   * l'attente sur-le-champ : le délai ne tenait que pour les envois à la
+   * souris. Un `setTimeout` suffit à laisser l'événement finir sa course, sans
+   * que le décalage se sente sur un appui suivant.
    */
   useEffect(() => {
     if (!queued) return;
@@ -518,7 +527,13 @@ function ReplyComposer({
     // cas nul deux lignes plus haut.
     const pendingReply = queued;
 
+    let armed = false;
+    const arming = setTimeout(() => {
+      armed = true;
+    }, 0);
+
     function handleKeyDown(event: KeyboardEvent) {
+      if (!armed) return;
       if (event.key === "Escape") {
         event.preventDefault();
         releaseQueued();
@@ -533,7 +548,10 @@ function ReplyComposer({
     }
 
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      clearTimeout(arming);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [queued]);
 
   /**
