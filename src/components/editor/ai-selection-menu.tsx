@@ -18,6 +18,7 @@ import {
   REWRITE_INTENTS,
   type RewriteIntentId,
 } from "@/lib/ai-rewrite";
+import { rewriteMessage } from "@/lib/api/ai-composer";
 
 /**
  * La barre qui apparaît au-dessus d'un texte sélectionné dans un article.
@@ -134,20 +135,12 @@ export function AiSelectionMenu({
     keepOpenRef.current = true;
     setIsRewriting(true);
     try {
-      const response = await fetch("/api/ai/rewrite", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          text,
-          format: inline ? "inline" : "html",
-          intent,
-          instruction,
-        }),
+      const result = await rewriteMessage({
+        text,
+        format: inline ? "inline" : "html",
+        intent,
+        instruction,
       });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(body?.error ?? "Réécriture impossible");
-      }
 
       // Le texte a-t-il bougé pendant l'appel ? Les positions retenues plus haut
       // ne désigneraient plus le même passage, et l'insertion écraserait la
@@ -158,7 +151,7 @@ export function AiSelectionMenu({
         return;
       }
 
-      editor.chain().focus().insertContentAt({ from, to }, body.result).run();
+      editor.chain().focus().insertContentAt({ from, to }, result).run();
       editCustom(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Réécriture impossible");

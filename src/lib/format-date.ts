@@ -26,3 +26,13 @@ export function formatDateTime(date: Date | string) {
     timeStyle: "short",
   }).format(value);
 }
+
+const timeFormatter = new Intl.DateTimeFormat("fr-FR", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** L'heure seule, pour ce qui s'est passé dans la session en cours. */
+export function formatTimeOfDay(date: Date | number) {
+  return timeFormatter.format(date);
+}
