@@ -146,6 +146,32 @@ export async function recordTicketView({
 }
 
 // ---------------------------------------------------------------------------
+// Références reprises dans les résumés du journal
+// ---------------------------------------------------------------------------
+
+/** Produit exactement un `AuditTicketRef`, rien de plus. */
+export const auditRefSelect = {
+  id: true,
+  number: true,
+  subject: true,
+} satisfies Prisma.TicketSelect;
+
+export function readTicketRef(ticketId: string): Promise<AuditTicketRef | null> {
+  return prisma.ticket.findUnique({ where: { id: ticketId }, select: auditRefSelect });
+}
+
+/** Pendant de `agentLabel` quand on n'a que l'identifiant, et pas le ticket relu. */
+export async function agentLabelById(agentId: string | null) {
+  if (!agentId) return "un agent";
+
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { name: true, email: true },
+  });
+  return agent?.name || agent?.email || "un agent";
+}
+
+// ---------------------------------------------------------------------------
 // Différentiel des attributs d'un ticket
 // ---------------------------------------------------------------------------
 

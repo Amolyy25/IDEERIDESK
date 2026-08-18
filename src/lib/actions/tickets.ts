@@ -26,11 +26,13 @@ import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 import { getMergedRecipients } from "@/lib/ticket-merge";
 import { ticketDetailInclude, ticketInclude } from "@/lib/ticket-query";
 import {
+  agentLabelById,
+  auditRefSelect,
   diffTicketSnapshots,
+  readTicketRef,
   readTicketSnapshot,
   recordAudit,
   recordTicketView,
-  type AuditTicketRef,
 } from "@/lib/audit";
 
 // Les types vivent avec les `include` dont ils dérivent ; ré-exportés ici, qui
@@ -227,11 +229,6 @@ export async function markTicketAsRead(id: string) {
   revalidatePath("/tickets");
 }
 
-/** Référence figée dans le journal d'audit — numéro et sujet, rien de plus. */
-function auditRefSelect() {
-  return { id: true, number: true, subject: true } satisfies Prisma.TicketSelect;
-}
-
 /**
  * Journalise l'ouverture d'une fiche ticket (voir `LogTicketView`).
  *
@@ -250,7 +247,7 @@ export async function logTicketConsultation(ticketId: string) {
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    select: auditRefSelect(),
+    select: auditRefSelect,
   });
   if (!ticket) return;
 
@@ -424,7 +421,7 @@ export async function claimTicket(id: string) {
         ? await slaFieldsForStatusChange({ ticketId: id, nextStatusId: inProgressStatus.id })
         : {}),
     },
-    select: auditRefSelect(),
+    select: auditRefSelect,
   });
 
   await recordAudit({
@@ -600,7 +597,7 @@ export async function deleteTicket(id: string) {
 
   // Relu AVANT la suppression : c'est la seule occasion de figer le numéro et le
   // sujet dans le journal.
-  const ticket = await prisma.ticket.findUnique({ where: { id }, select: auditRefSelect() });
+  const ticket = await prisma.ticket.findUnique({ where: { id }, select: auditRefSelect });
 
   // Messages et pièces jointes suivent en cascade (onDelete: Cascade côté
   // schéma) — pas de nettoyage manuel à faire ici.
@@ -982,7 +979,7 @@ export async function addTicketMessage(
   const auditTicket = await prisma.ticket.update({
     where: { id: ticketId },
     data: { updatedAt: new Date() },
-    select: auditRefSelect(),
+    select: auditRefSelect,
   });
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/tickets");
@@ -1178,7 +1175,7 @@ export async function approveMessage(messageId: string) {
   await recordAudit({
     session,
     action: "REPLY_APPROVED",
-    ticket: await auditRefFor(message.ticketId),
+    ticket: await readTicketRef(message.ticketId),
     // L'auteur de la réponse et son valideur sont deux personnes différentes
     // (la garde ci-dessus l'impose) : le journal doit nommer les deux, sinon la
     // trace laisse croire que le valideur a écrit la réponse.
@@ -1207,25 +1204,11 @@ export async function rejectMessage(messageId: string) {
   await recordAudit({
     session,
     action: "REPLY_REJECTED",
-    ticket: await auditRefFor(message.ticketId),
+    ticket: await readTicketRef(message.ticketId),
     summary: `Refus de la réponse rédigée par ${await agentLabelById(
       message.agentId,
     )} — rien n'est parti au client.`,
   });
 
   revalidatePath(`/tickets/${message.ticketId}`);
-}
-
-/** Référence d'audit d'un ticket connu par son seul identifiant. */
-async function auditRefFor(ticketId: string): Promise<AuditTicketRef | null> {
-  return prisma.ticket.findUnique({ where: { id: ticketId }, select: auditRefSelect() });
-}
-
-async function agentLabelById(agentId: string | null) {
-  if (!agentId) return "un agent";
-  const agent = await prisma.agent.findUnique({
-    where: { id: agentId },
-    select: { name: true, email: true },
-  });
-  return agent?.name || agent?.email || "un agent";
 }
