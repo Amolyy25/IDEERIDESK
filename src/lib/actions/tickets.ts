@@ -13,7 +13,6 @@ import { sanitizeReplyHtml } from "@/lib/sanitize-html";
 import { htmlToText } from "@/lib/html-to-text";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
-import { SLA_BREACHED_FILTER, UNASSIGNED_FILTER } from "@/lib/ticket-filters";
 import { breachedSlaWhere } from "@/lib/sla";
 import {
   markSlaFirstResponse,
@@ -24,7 +23,12 @@ import {
 } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 import { getMergedRecipients } from "@/lib/ticket-merge";
-import { ticketDetailInclude, ticketInclude } from "@/lib/ticket-query";
+import {
+  buildTicketListWhere,
+  ticketDetailInclude,
+  ticketInclude,
+  type TicketListFilters,
+} from "@/lib/ticket-query";
 import {
   agentLabelById,
   auditRefSelect,
@@ -43,24 +47,8 @@ export type {
   TicketAttachment,
   MergedTicket,
   MergedTicketMessage,
+  TicketListFilters,
 } from "@/lib/ticket-query";
-
-export type TicketListFilters = {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  statusId?: string;
-  priorityId?: string;
-  categoryId?: string;
-  /** Identifiant d'agent, ou `UNASSIGNED_FILTER` pour les tickets sans assigné. */
-  assigneeId?: string;
-  sortBy?: "number" | "subject" | "createdAt" | "updatedAt";
-  sortDir?: "asc" | "desc";
-  /** `SLA_BREACHED_FILTER` pour ne garder que les tickets dont un délai est dépassé. */
-  sla?: string;
-  /** Filtre auto (produits couverts par les groupes de l'agent) — ignoré si `categoryId` est aussi fourni (un filtre manuel prime toujours). */
-  categoryIds?: string[];
-};
 
 export async function getUnreadTicketCount() {
   await requirePermission("tickets.view");
@@ -123,59 +111,7 @@ export async function getTickets(filters: TicketListFilters = {}) {
   const sortBy = filters.sortBy ?? "createdAt";
   const sortDir = filters.sortDir ?? "desc";
 
-  const search = filters.search?.trim();
-  // « 128 » comme « #128 » : le numéro affiché partout dans l'application et
-  // repris dans l'objet des emails est la première chose qu'un agent tape, et
-  // c'était justement le seul terme qui ne trouvait rien.
-  const searchedNumber = search ? Number(search.replace(/^#/, "")) : Number.NaN;
-  const numberMatch: Prisma.TicketWhereInput[] =
-    Number.isInteger(searchedNumber) && searchedNumber > 0 ? [{ number: searchedNumber }] : [];
-
-  const where: Prisma.TicketWhereInput = {
-    statusId: filters.statusId || undefined,
-    priorityId: filters.priorityId || undefined,
-    categoryId: filters.categoryId || undefined,
-    // `null` (et non `undefined`) pour « non assigné » : c'est une condition à
-    // part entière, pas l'absence de filtre.
-    assigneeId:
-      filters.assigneeId === UNASSIGNED_FILTER ? null : filters.assigneeId || undefined,
-    ...(!filters.categoryId && filters.categoryIds?.length
-      ? { categoryId: { in: filters.categoryIds } }
-      : {}),
-    // Dans `AND` : la condition « en retard » porte son propre `OR`, et la
-    // recherche plein texte en pose un autre juste en dessous. Deux `OR` au même
-    // niveau se remplaceraient l'un l'autre, et la vue montrerait alors des
-    // tickets à l'heure.
-    //
-    // `status.isClosed` en plus de `closedAt` : les deux ne disent pas toujours
-    // la même chose (une clôture par automatisation vers un statut fermé peut
-    // n'avoir que le statut), et cette vue ne doit lister que ce sur quoi il
-    // reste à agir.
-    ...(filters.sla === SLA_BREACHED_FILTER
-      ? { AND: [breachedSlaWhere(), { status: { isClosed: false } }] }
-      : {}),
-    ...(search
-      ? {
-          OR: [
-            ...numberMatch,
-            { subject: { contains: search, mode: "insensitive" } },
-            { description: { contains: search, mode: "insensitive" } },
-            // Le corps du fil : une information donnée en cours de conversation
-            // (référence de dossier, message d'erreur) n'est nulle part dans le
-            // sujet ni dans la demande initiale.
-            { messages: { some: { content: { contains: search, mode: "insensitive" } } } },
-            {
-              client: {
-                OR: [
-                  { name: { contains: search, mode: "insensitive" } },
-                  { email: { contains: search, mode: "insensitive" } },
-                ],
-              },
-            },
-          ],
-        }
-      : {}),
-  };
+  const where = buildTicketListWhere(filters);
 
   const [tickets, total] = await Promise.all([
     prisma.ticket.findMany({
