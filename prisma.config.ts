@@ -10,7 +10,10 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Seule la CLI lit ce fichier, jamais le runtime : on l'aiguille hors
+    // PgBouncer, `migrate` pose un verrou advisory de session que le transaction
+    // pooling ne conserve pas. Remplace `directUrl`, supprimé en Prisma 7.
+    url: process.env["DIRECT_URL"] || process.env["DATABASE_URL"],
     // Optional: point at a scratch local Postgres db for `migrate dev`/`migrate diff`
     // in this non-interactive environment (CLI refuses interactive prompts here).
     shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
