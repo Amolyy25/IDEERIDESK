@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { addTicketMessage } from "@/lib/actions/tickets";
+import { addTicketMessage } from "@/lib/actions/ticket-messages";
 import { noticeStaleDeployment } from "@/lib/stale-deployment";
 import { plural } from "@/lib/utils";
 

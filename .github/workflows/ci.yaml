@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une nouvelle poussée sur une branche annule la vérification en cours : seul le
+# dernier état compte, et les minutes d'exécution ne sont pas gratuites.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # Aucun secret, aucune variable de connexion : rien ici ne doit pouvoir
+    # atteindre une base. `prisma generate` lit le seul schéma, et les tests
+    # portent sur des fonctions pures.
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `postinstall` déclenche `prisma generate` : sans le client généré,
+      # `src/generated/prisma` n'existe pas et rien ne compile.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typage
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Contrôle maison : toute Server Action exportée porte une garde d'accès.
+      # C'est le filet qui a rattrapé la faille la plus large de cette base.
+      - name: Gardes des Server Actions
+        run: pnpm check:action-guards
+
+      - name: Tests
+        run: pnpm test

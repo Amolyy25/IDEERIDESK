@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Skills tiers (docs et exemples). Trackés parce qu'ils ont été commités
+    // avant la règle du .gitignore, mais ce n'est pas notre code : leurs
+    // exemples React tenaient `pnpm lint` en échec permanent.
+    ".agents/**",
   ]),
 ]);
 
