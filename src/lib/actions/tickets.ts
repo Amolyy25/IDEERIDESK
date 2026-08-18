@@ -4,25 +4,19 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { sendTicketReplyEmail, sendTicketClosureEmail } from "@/lib/gmail-send";
-import { readEmailAccountStatus } from "@/lib/email-account";
 import { requirePermission } from "@/lib/require-permission";
-import type { EmailHistoryEntry } from "@/lib/email-template";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
-import { sanitizeReplyHtml } from "@/lib/sanitize-html";
-import { htmlToText } from "@/lib/html-to-text";
 import { notifyTicketAssigned } from "@/lib/assignment-notifications";
-import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { breachedSlaWhere } from "@/lib/sla";
 import {
-  markSlaFirstResponse,
   recomputeSlaAfterPriorityChange,
   slaDueDatesForNewTicket,
   slaFieldsForReopen,
   slaFieldsForStatusChange,
 } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
-import { getMergedRecipients } from "@/lib/ticket-merge";
+import { announceClosure, closureSummary } from "@/lib/ticket-closure";
+import { replySummary, resolveReplyBody, sendApprovedTicketReply } from "@/lib/ticket-reply";
 import {
   buildTicketListWhere,
   ticketDetailInclude,
@@ -412,117 +406,18 @@ export async function closeTicket(id: string, options: z.infer<typeof closeTicke
     data: { statusId: closeStatus.id, closedAt: new Date() },
   });
 
-  // L'email de clôture est optionnel : sans modèle configuré, le ticket se
-  // ferme silencieusement (comportement demandé — pas de spam si l'équipe n'a
-  // pas encore rédigé de message de clôture).
-  const template = silent ? null : await prisma.ticketClosureTemplate.findFirst();
-  let emailSent = false;
-  let emailSkippedReason: string | null = null;
-  let alsoSentTo = 0;
-
-  if (silent) {
-    // Note interne, et pas seulement une ligne au journal : c'est dans le fil que
-    // le prochain agent cherchera pourquoi ce dossier est clos sans qu'aucune
-    // réponse n'en soit partie. Sans elle, l'absence d'email se lit comme un
-    // oubli, ou comme une panne d'envoi.
-    await prisma.message.create({
-      data: {
-        ticketId: id,
-        content:
-          "Clôture silencieuse : le ticket a été fermé sans email de clôture, à la demande de l'agent. Le client n'a pas été prévenu.",
-        authorType: "SYSTEM",
-        isPrivate: true,
-      },
-    });
-  }
-
-  if (template?.bodyHtml) {
-    const { senderName } = await readEmailAccountStatus();
-
-    if (ticket.client?.email) {
-      const result = await sendTicketClosureEmail({
-        ticket,
-        clientEmail: ticket.client.email,
-        senderName,
-        bodyHtml: template.bodyHtml,
-      });
-      emailSent = result.sent;
-      emailSkippedReason = result.sent ? null : result.error ?? null;
-
-      await prisma.message.create({
-        data: {
-          ticketId: id,
-          content: result.sent
-            ? "Email de clôture envoyé au client."
-            : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
-          authorType: "SYSTEM",
-          isPrivate: true,
-        },
-      });
-    }
-
-    // Les clients des tickets fusionnés attendent la même réponse : les laisser
-    // sans email de clôture, c'est refermer leur demande sans le leur dire.
-    // Chacun dans sa propre conversation, comme pour une réponse.
-    for (const recipient of await getMergedRecipients(
-      id,
-      ticket.client?.email ? [ticket.client.email] : []
-    )) {
-      const result = await sendTicketClosureEmail({
-        ticket: {
-          id: recipient.ticketId,
-          number: recipient.ticketNumber,
-          subject: recipient.subject,
-          gmailThreadId: recipient.gmailThreadId,
-          emailMessageId: recipient.emailMessageId,
-        },
-        clientEmail: recipient.clientEmail,
-        senderName,
-        bodyHtml: template.bodyHtml,
-      });
-      if (result.sent) alsoSentTo += 1;
-
-      await prisma.message.create({
-        data: {
-          ticketId: recipient.ticketId,
-          content: result.sent
-            ? `Email de clôture envoyé au client, suite à la clôture du ticket #${ticket.number}.`
-            : `Échec de l'envoi de l'email de clôture : ${result.error ?? "erreur inconnue"}.`,
-          authorType: "SYSTEM",
-          isPrivate: true,
-        },
-      });
-      revalidatePath(`/tickets/${recipient.ticketId}`);
-    }
-  }
+  const outcome = await announceClosure(ticket, { silent });
 
   await recordAudit({
     session,
     action: "TICKET_CLOSED",
     ticket,
-    summary: [
-      `Statut passé à « ${closeStatus.name} ».`,
-      // Le fait le plus important à tracer d'une clôture silencieuse : que
-      // PERSONNE n'a été prévenu, et que c'était voulu. C'est ce qui répond, des
-      // mois plus tard, au client qui affirme n'avoir jamais eu de nouvelles.
-      silent
-        ? "Clôture silencieuse demandée par l'agent : aucun email envoyé, ni au client, ni aux clients des tickets fusionnés."
-        : null,
-      emailSent ? "Email de clôture envoyé au client." : null,
-      emailSkippedReason ? `Email de clôture non envoyé : ${emailSkippedReason}` : null,
-      alsoSentTo > 0
-        ? `Clôture répercutée sur ${alsoSentTo} ticket${alsoSentTo > 1 ? "s" : ""} fusionné${
-            alsoSentTo > 1 ? "s" : ""
-          }.`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" "),
+    summary: closureSummary({ ...outcome, statusName: closeStatus.name, silent }),
   });
 
   revalidatePath(`/tickets/${id}`);
   revalidatePath("/tickets");
-  return { emailSent, emailSkippedReason, alsoSentTo, silent };
+  return { ...outcome, silent };
 }
 
 export async function deleteTicket(id: string) {
@@ -588,229 +483,6 @@ async function resolveQuotedNote(ticketId: string, replyToId: string | undefined
   return quoted.id;
 }
 
-const EMAIL_HISTORY_LIMIT = 10;
-
-/**
- * Une réponse publique telle qu'elle circule jusqu'à l'envoi : sa
- * retranscription texte, et sa mise en forme quand elle en a une.
- *
- * Les deux voyagent ensemble parce que l'email est multipart — un client mail
- * qui refuse le HTML doit recevoir le texte, pas rien. `html` nul est le cas
- * normal pour tout ce qui a été écrit avant l'éditeur riche.
- */
-type ReplyBody = { content: string; html: string | null };
-
-/**
- * Historique repris en bas de l'email, propre au ticket concerné.
- *
- * Toutes les réponses agent partent au nom façade unique "Ideeri Support" (une
- * seule boîte partagée pour toute l'équipe) — l'historique reprend cette même
- * convention plutôt que de révéler quel agent a écrit quoi.
- */
-async function buildEmailHistory({
-  ticketId,
-  excludeMessageId,
-  clientName,
-  senderName,
-}: {
-  ticketId: string;
-  excludeMessageId: string | null;
-  clientName: string | null;
-  senderName: string;
-}): Promise<EmailHistoryEntry[]> {
-  const previousMessages = await prisma.message.findMany({
-    where: {
-      ticketId,
-      isPrivate: false,
-      ...(excludeMessageId ? { id: { not: excludeMessageId } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: EMAIL_HISTORY_LIMIT,
-  });
-
-  return previousMessages
-    .map((m) => ({
-      authorLabel: m.authorType === "AGENT" ? senderName : clientName ?? "Client",
-      content: m.content,
-      createdAt: m.createdAt,
-    }))
-    .reverse();
-}
-
-/**
- * Builds and actually sends the client-facing email for a public reply, then
- * marks the message as sent. Shared by the direct-send path (no approval
- * required) and `approveMessage` (an approver releasing a held reply) so the
- * send logic — including the conversation history — lives in one place.
- *
- * `agentId` est l'auteur de la réponse, pas l'expéditeur : c'est lui qui décide
- * de la signature ajoutée en bas de l'email. Une réponse relâchée par un
- * collègue habilité reste donc signée de celui qui l'a rédigée.
- *
- * Les tickets fusionnés dans celui-ci reçoivent la même réponse — c'est tout
- * l'intérêt de la fusion : écrire une fois pour tous ceux qui attendent. Voir
- * `deliverToMergedTickets` pour la façon dont ces envois sont séparés.
- */
-async function sendApprovedTicketReply(
-  ticketId: string,
-  messageId: string,
-  /** Les deux formes de la réponse : voir `resolveReplyBody`. */
-  body: ReplyBody,
-  agentId: string | null
-) {
-  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { client: true } });
-  if (!ticket) {
-    return { emailSent: false as const, emailSkippedReason: "Ticket introuvable.", alsoSentTo: 0 };
-  }
-
-  // Arrêt de l'horloge de première réponse. Ici et pas à la création du message,
-  // parce que c'est ici que passent les DEUX chemins d'une réponse publique :
-  // l'envoi direct et le relâchement d'une réponse validée. Une réponse retenue
-  // en attente de validation n'a rien adressé au client, l'horloge tourne
-  // encore — c'est bien le point du workflow de validation.
-  //
-  // Indépendant du succès de l'envoi : l'agent a fait sa part. Un échec Gmail
-  // est un incident technique, tracé comme tel dans le fil, et le compter comme
-  // un manquement au délai brouillerait les deux sujets.
-  await markSlaFirstResponse(ticketId);
-
-  const { senderName } = await readEmailAccountStatus();
-  const signatureHtml = await resolveSignatureHtmlForAgent(agentId);
-
-  let emailSent = false;
-  let emailSkippedReason: string | null = "Aucun client associé à ce ticket.";
-
-  if (ticket.client?.email) {
-    const result = await sendTicketReplyEmail({
-      ticket,
-      clientEmail: ticket.client.email,
-      senderName,
-      bodyText: body.content,
-      bodyHtml: body.html,
-      history: await buildEmailHistory({
-        ticketId,
-        excludeMessageId: messageId,
-        clientName: ticket.client.name,
-        senderName,
-      }),
-      signatureHtml,
-    });
-
-    emailSent = result.sent;
-    emailSkippedReason = result.sent ? null : result.error ?? null;
-
-    if (result.sent) {
-      await prisma.message.update({
-        where: { id: messageId },
-        data: { emailSent: true, gmailMessageId: result.gmailMessageId },
-      });
-    }
-  }
-
-  const alsoSentTo = await deliverToMergedTickets({
-    targetTicketId: ticketId,
-    body,
-    agentId,
-    senderName,
-    signatureHtml,
-    alreadyServed: ticket.client?.email ? [ticket.client.email] : [],
-  });
-
-  revalidatePath(`/tickets/${ticketId}`);
-  return { emailSent, emailSkippedReason, alsoSentTo };
-}
-
-/**
- * Rejoue la réponse auprès des clients des tickets fusionnés dans celui-ci.
- *
- * Un email par destinataire, dans sa propre conversation Gmail, jamais un Cc
- * commun : deux clients qui ont écrit séparément au support n'ont pas accepté
- * que leur adresse soit montrée à l'autre. C'est aussi ce qui garde chaque fil
- * lisible côté client — il reçoit une réponse à SON message, pas un message
- * groupé où il doit se reconnaître.
- *
- * Une copie de la réponse est déposée dans le fil de chaque ticket fusionné :
- * sans elle, le dossier de ce client montrerait une demande restée sans réponse.
- *
- * Best-effort et sans exception : un échec d'envoi sur un doublon ne doit pas
- * faire échouer la réponse principale, déjà partie. Il est journalisé dans le
- * fil du ticket concerné, là où un agent le verra.
- */
-async function deliverToMergedTickets({
-  targetTicketId,
-  body,
-  agentId,
-  senderName,
-  signatureHtml,
-  alreadyServed,
-}: {
-  targetTicketId: string;
-  body: ReplyBody;
-  agentId: string | null;
-  senderName: string;
-  signatureHtml: string | null;
-  alreadyServed: string[];
-}): Promise<number> {
-  const recipients = await getMergedRecipients(targetTicketId, alreadyServed);
-  let delivered = 0;
-
-  for (const recipient of recipients) {
-    const copy = await prisma.message.create({
-      data: {
-        ticketId: recipient.ticketId,
-        content: body.content,
-        contentHtml: body.html,
-        authorType: "AGENT",
-        agentId,
-        isPrivate: false,
-      },
-    });
-
-    const result = await sendTicketReplyEmail({
-      ticket: {
-        id: recipient.ticketId,
-        number: recipient.ticketNumber,
-        subject: recipient.subject,
-        gmailThreadId: recipient.gmailThreadId,
-        emailMessageId: recipient.emailMessageId,
-      },
-      clientEmail: recipient.clientEmail,
-      senderName,
-      bodyText: body.content,
-      bodyHtml: body.html,
-      history: await buildEmailHistory({
-        ticketId: recipient.ticketId,
-        excludeMessageId: copy.id,
-        clientName: recipient.clientName,
-        senderName,
-      }),
-      signatureHtml,
-    });
-
-    if (result.sent) {
-      delivered += 1;
-      await prisma.message.update({
-        where: { id: copy.id },
-        data: { emailSent: true, gmailMessageId: result.gmailMessageId },
-      });
-    } else {
-      await prisma.message.create({
-        data: {
-          ticketId: recipient.ticketId,
-          content: `Échec de l'envoi de la réponse au client de ce ticket fusionné : ${
-            result.error ?? "erreur inconnue"
-          }.`,
-          authorType: "SYSTEM",
-          isPrivate: true,
-        },
-      });
-    }
-    revalidatePath(`/tickets/${recipient.ticketId}`);
-  }
-
-  return delivered;
-}
-
 /**
  * Le premier agent qui répond à un ticket que personne n'a pris en devient
  * l'assigné.
@@ -839,33 +511,6 @@ async function claimOnFirstReply(ticketId: string, agentId: string): Promise<boo
     data: { assigneeId: agentId },
   });
   return count > 0;
-}
-
-/**
- * Les deux formes sous lesquelles une réponse est enregistrée : le HTML mis en
- * forme, et sa retranscription en texte.
- *
- * Le texte n'est pas celui envoyé par le navigateur mais celui du HTML ASSAINI,
- * relu après filtrage. Les deux colonnes ne peuvent donc pas diverger — or
- * `content` est ce que voient la recherche, l'export CSV, le dossier RGPD et le
- * client dont la boîte mail refuse le HTML : y laisser une version que personne
- * n'a validée reviendrait à publier un second message, invisible de son auteur.
- *
- * Un HTML qui ne survit pas au filtrage (balisage entièrement refusé, document
- * vide) fait retomber la réponse sur le texte brut, comme avant l'éditeur
- * riche : mieux vaut une réponse sans mise en forme qu'une réponse vide.
- */
-function resolveReplyBody(data: { content: string; contentHtml?: string }): {
-  content: string;
-  html: string | null;
-} {
-  if (!data.contentHtml) return { content: data.content, html: null };
-
-  const html = sanitizeReplyHtml(data.contentHtml);
-  const text = htmlToText(html);
-  if (!text) return { content: data.content, html: null };
-
-  return { content: text, html };
 }
 
 export async function addTicketMessage(
@@ -999,39 +644,6 @@ export async function addTicketMessage(
   });
 
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[], selfAssigned };
-}
-
-/**
- * Ce que le journal retient d'une réponse partie : son sort, jamais son contenu.
- *
- * Un envoi qui a échoué est le fait le plus important à tracer — c'est celui qui
- * explique, des semaines plus tard, pourquoi un client dit n'avoir jamais eu de
- * réponse alors que le fil du ticket en montre une.
- */
-function replySummary({
-  emailSent,
-  emailSkippedReason,
-  alsoSentTo,
-}: {
-  emailSent: boolean;
-  emailSkippedReason: string | null;
-  alsoSentTo: number;
-}) {
-  const parts = [
-    emailSent
-      ? "Réponse publique envoyée au client par email."
-      : `Réponse publique enregistrée, email non envoyé : ${
-          emailSkippedReason ?? "raison inconnue"
-        }`,
-  ];
-  if (alsoSentTo > 0) {
-    parts.push(
-      `Également envoyée aux clients de ${alsoSentTo} ticket${
-        alsoSentTo > 1 ? "s" : ""
-      } fusionné${alsoSentTo > 1 ? "s" : ""}.`,
-    );
-  }
-  return parts.join(" ");
 }
 
 const pendingApprovalSelect = {

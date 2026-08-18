@@ -953,3 +953,37 @@
     transition: none;
   }
 }
+
+/* Respiration du maillon rompu, sur l'écran d'erreur.
+   2,4 s et faible amplitude : l'œil doit être conduit, pas alerté — la page se
+   lit quelques secondes, un clignotement y serait insupportable. */
+@keyframes diagnostic-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.diagnostic-break {
+  animation: diagnostic-breathe 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostic-break {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* Fond de l'écran d'erreur : trame de points au contraste minimal, comme le
+   papier d'un carnet à souches. Assez pour que la carte ne flotte pas dans du
+   vide, assez peu pour qu'on ne la remarque pas. */
+.ticket-stock {
+  background-image: radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
+  background-size: 22px 22px;
+}
