@@ -17,16 +17,25 @@ import {
   type ReclaimableSearch,
 } from "@/lib/client-merge";
 import { MAX_CLIENTS_PER_MERGE } from "@/lib/client-merge-fields";
+import { clientSchema, type ClientFieldsInput } from "@/lib/client-fields";
 
-const clientSchema = z.object({
-  name: z.string().trim().min(1, "Nom requis").max(120),
-  // Normalisé en minuscules : Client.email est la clé de dédup utilisée
-  // partout ailleurs (widget, synchro Gmail) — sans ça, une même personne
-  // saisie ici avec une casse différente se retrouve avec deux fiches.
-  email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
-  phone: z.string().trim().max(30).optional().nullable(),
-  company: z.string().trim().max(120).optional().nullable(),
-});
+/** `exceptId` : la fiche en cours de modification, qui porte déjà son propre email. */
+async function assertEmailIsFree(email: string, exceptId?: string) {
+  const existing = await prisma.client.findUnique({
+    where: { email },
+    select: { id: true, mergedInto: { select: { name: true } } },
+  });
+  if (!existing || existing.id === exceptId) return;
+
+  // La fiche trouvée peut être une fiche ABSORBÉE : elle n'apparaît plus comme
+  // un contact à part entière, et « un client avec cet email existe déjà »
+  // enverrait alors chercher une ligne introuvable dans le répertoire.
+  throw new Error(
+    existing.mergedInto
+      ? `Cette adresse appartient à une fiche rattachée au contact « ${existing.mergedInto.name} ». Ouvrez ce contact plutôt que d'en créer un second.`
+      : "Un client avec cet email existe déjà.",
+  );
+}
 
 export async function getClients() {
   await requirePermission("clients.view");
@@ -43,27 +52,45 @@ export async function getClients() {
   });
 }
 
-export async function createClient(input: z.infer<typeof clientSchema>) {
+export async function createClient(input: ClientFieldsInput) {
   await requirePermission("clients.manage");
   const data = clientSchema.parse(input);
 
-  const existing = await prisma.client.findUnique({
-    where: { email: data.email },
-    select: { mergedInto: { select: { name: true } } },
-  });
-  if (existing) {
-    // La fiche trouvée peut être une fiche ABSORBÉE : elle n'apparaît plus comme
-    // un contact à part entière, et « un client avec cet email existe déjà »
-    // enverrait alors chercher une ligne introuvable dans le répertoire.
-    throw new Error(
-      existing.mergedInto
-        ? `Cette adresse appartient à une fiche rattachée au contact « ${existing.mergedInto.name} ». Ouvrez ce contact plutôt que d'en créer un second.`
-        : "Un client avec cet email existe déjà.",
-    );
-  }
+  await assertEmailIsFree(data.email);
 
   const client = await prisma.client.create({ data });
   revalidatePath("/clients");
+  return client;
+}
+
+export async function updateClient(id: string, input: ClientFieldsInput) {
+  await requirePermission("clients.manage");
+  const clientId = z.string().min(1).parse(id);
+  const data = clientSchema.parse(input);
+
+  const current = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { email: true, anonymizedAt: true },
+  });
+  if (!current) {
+    throw new Error("Cette fiche n'existe plus.");
+  }
+  if (current.anonymizedAt) {
+    // Réécrire un nom et une adresse sur une fiche pseudonymisée annulerait
+    // l'effacement demandé au titre de l'article 17.
+    throw new Error(
+      "L'identité de ce contact a été effacée à sa demande. Sa fiche ne peut plus être modifiée.",
+    );
+  }
+
+  if (data.email !== current.email) {
+    await assertEmailIsFree(data.email, clientId);
+  }
+
+  const client = await prisma.client.update({ where: { id: clientId }, data });
+  revalidatePath("/clients");
+  // Le nom et l'adresse du demandeur s'affichent sur la file et sur chaque fiche ticket.
+  revalidatePath("/tickets");
   return client;
 }
 

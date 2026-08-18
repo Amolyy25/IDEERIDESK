@@ -8,6 +8,7 @@ import { ClientDuplicatesPanel } from "@/components/clients/client-duplicates-pa
 export default async function ClientsPage() {
   const session = await requirePageAccess("clients.view");
   const clients = await getClients();
+  const canManage = can(session.user.permissions, "clients.manage");
   const canMerge = can(session.user.permissions, "clients.merge");
 
   return (
@@ -19,7 +20,7 @@ export default async function ClientsPage() {
             Contacts à l&apos;origine des tickets.
           </p>
         </div>
-        {can(session.user.permissions, "clients.manage") && <NewClientDialog />}
+        {canManage && <NewClientDialog />}
       </div>
 
       {/* Les rapprochements ne s'affichent qu'à qui peut les traiter : proposer
@@ -30,6 +31,7 @@ export default async function ClientsPage() {
 
       <ClientsTable
         clients={clients}
+        canManage={canManage}
         canDelete={can(session.user.permissions, "clients.delete")}
         canMerge={canMerge}
         canViewTickets={can(session.user.permissions, "tickets.view")}

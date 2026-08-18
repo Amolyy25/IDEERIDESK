@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/actions/clients";
+import { CLIENT_FIELD_LIMITS } from "@/lib/client-fields";
 
 export function NewClientDialog() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export function NewClientDialog() {
 
           <div className="space-y-2">
             <Label htmlFor="name">Nom</Label>
-            <Input id="name" name="name" required maxLength={120} />
+            <Input id="name" name="name" required maxLength={CLIENT_FIELD_LIMITS.name} />
           </div>
 
           <div className="space-y-2">
@@ -67,12 +68,12 @@ export function NewClientDialog() {
 
           <div className="space-y-2">
             <Label htmlFor="phone">Téléphone</Label>
-            <Input id="phone" name="phone" />
+            <Input id="phone" name="phone" maxLength={CLIENT_FIELD_LIMITS.phone} />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="company">Société</Label>
-            <Input id="company" name="company" />
+            <Input id="company" name="company" maxLength={CLIENT_FIELD_LIMITS.company} />
           </div>
 
           <DialogFooter>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Merge, Trash2, Unlink } from "lucide-react";
+import { Merge, Pencil, Trash2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,6 +27,7 @@ import {
 import { deleteClient, separateMergedClient } from "@/lib/actions/clients";
 import { plural } from "@/lib/utils";
 import { CompanyClientsDialog } from "@/components/clients/company-clients-dialog";
+import { EditClientDialog } from "@/components/clients/edit-client-dialog";
 import { MergeClientsDialog } from "@/components/clients/merge-clients-dialog";
 import type { Client } from "@/generated/prisma/client";
 
@@ -51,12 +52,15 @@ export type ClientWithTicketCount = Client & {
 
 export function ClientsTable({
   clients,
+  canManage,
   canDelete,
   canMerge,
   canViewTickets,
   canExportPersonalData,
 }: {
   clients: ClientWithTicketCount[];
+  /** Permission « clients.manage » : création et correction des coordonnées. */
+  canManage: boolean;
   /** Sans la permission, la colonne d'actions disparaît plutôt que d'offrir un bouton qui refuse. */
   canDelete: boolean;
   /**
@@ -78,8 +82,11 @@ export function ClientsTable({
   const [mergingId, setMergingId] = useState<string | null>(null);
   /** Fiche en cours de détachement : le bouton attend, il ne se clique pas deux fois. */
   const [separatingId, setSeparatingId] = useState<string | null>(null);
+  /** Fiche dont le formulaire de modification est ouvert, `null` quand la fenêtre est fermée. */
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const showActions = canDelete || canMerge;
+  const showActions = canManage || canDelete || canMerge;
+  const editing = clients.find((client) => client.id === editingId) ?? null;
 
   // Combien de contacts par société, calculé une fois pour toute la table : c'est
   // ce nombre qui donne une raison de cliquer. Sans lui, rien ne distingue une
@@ -134,7 +141,7 @@ export function ClientsTable({
             <TableHead>Société</TableHead>
             <TableHead>Téléphone</TableHead>
             <TableHead className="text-right">Tickets</TableHead>
-            {showActions && <TableHead className="w-24 text-right">Actions</TableHead>}
+            {showActions && <TableHead className="w-32 text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -193,6 +200,19 @@ export function ClientsTable({
                 </TableCell>
                 {showActions && (
                   <TableCell className="text-right">
+                    {/* Une fiche pseudonymisée n'est plus modifiable : y réécrire
+                        une identité annulerait l'effacement demandé. */}
+                    {canManage && !client.anonymizedAt && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Modifier les coordonnées"
+                        onClick={() => setEditingId(client.id)}
+                      >
+                        <Pencil className="size-4" />
+                        <span className="sr-only">Modifier les coordonnées de {client.name}</span>
+                      </Button>
+                    )}
                     {/* Fusionner OU détacher, jamais les deux : une fiche déjà
                         rattachée ne se refusionne pas (le serveur le refuse), et
                         une fiche autonome n'a rien à détacher. */}
@@ -288,6 +308,19 @@ export function ClientsTable({
           if (!open) setOpenCompany(null);
         }}
       />
+
+      {/* `key` : les champs sont pré-remplis par `defaultValue`, ils ne suivraient
+          pas le passage d'une fiche à l'autre sans remontage. */}
+      {editing && (
+        <EditClientDialog
+          key={editing.id}
+          client={editing}
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditingId(null);
+          }}
+        />
+      )}
 
       {/* Montée seulement quand une fusion est ouverte, et remontée à chaque
           fiche : la `key` remet ses valeurs par défaut, qui dépendent des fiches
