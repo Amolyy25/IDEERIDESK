@@ -24,6 +24,7 @@ import {
 } from "@/lib/sla-store";
 import { notifyQueueOnNewTicket } from "@/lib/queue-notifications";
 import { getMergedRecipients } from "@/lib/ticket-merge";
+import { ticketDetailInclude, ticketInclude } from "@/lib/ticket-query";
 import {
   diffTicketSnapshots,
   readTicketSnapshot,
@@ -32,87 +33,15 @@ import {
   type AuditTicketRef,
 } from "@/lib/audit";
 
-const ticketInclude = {
-  status: true,
-  priority: true,
-  category: true,
-  assignee: true,
-  client: true,
-} satisfies Prisma.TicketInclude;
-
-export type TicketListItem = Prisma.TicketGetPayload<{ include: typeof ticketInclude }>;
-
-// Détail d'un ticket : `data` (le contenu binaire) est systématiquement écarté —
-// une fiche avec quelques pièces jointes ferait sinon transiter plusieurs Mo par
-// rendu, alors que le téléchargement passe par /api/attachments/[id].
-const ticketDetailInclude = {
-  ...ticketInclude,
-  messages: {
-    include: {
-      agent: true,
-      attachments: { omit: { data: true } },
-    },
-  },
-  attachments: { omit: { data: true } },
-
-  // Fusion : le ticket dans lequel celui-ci a été versé, et les doublons qu'il a
-  // lui-même absorbés. Les seconds sont chargés avec leur demande, leurs
-  // échanges publics ET leurs pièces jointes — c'est ce qui permet de tout
-  // traiter depuis cette seule fiche, sans naviguer d'un ticket à l'autre. Une
-  // capture d'écran envoyée par le second client est souvent la pièce qui manque
-  // au premier ticket pour comprendre la panne : l'oublier ici viderait la
-  // fusion d'une partie de son intérêt.
-  //
-  // Les notes internes des doublons restent chez eux : les remonter mélangerait
-  // deux dossiers de travail.
-  mergedInto: { select: { id: true, number: true, subject: true } },
-  mergedTickets: {
-    select: {
-      id: true,
-      number: true,
-      subject: true,
-      description: true,
-      createdAt: true,
-      mergedAt: true,
-      client: { select: { name: true, email: true } },
-      messages: {
-        where: { isPrivate: false },
-        select: {
-          id: true,
-          content: true,
-          contentHtml: true,
-          authorType: true,
-          emailSent: true,
-          createdAt: true,
-          agent: { select: { name: true, avatarUrl: true } },
-          attachments: { omit: { data: true }, orderBy: { createdAt: "asc" } },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-      // Comme sur la fiche principale : seules les pièces de la demande
-      // initiale, celles des réponses étant déjà rattachées à leur message.
-      attachments: {
-        omit: { data: true },
-        where: { messageId: null },
-        orderBy: { createdAt: "asc" },
-      },
-    },
-    orderBy: { mergedAt: "asc" },
-  },
-} satisfies Prisma.TicketInclude;
-
-export type TicketWithMessages = Prisma.TicketGetPayload<{
-  include: typeof ticketDetailInclude;
-}>;
-
-/** Pièce jointe telle qu'affichée dans la fiche ticket, sans son contenu binaire. */
-export type TicketAttachment = TicketWithMessages["attachments"][number];
-
-/** Doublon absorbé par un ticket, avec la conversation qu'il apporte. */
-export type MergedTicket = TicketWithMessages["mergedTickets"][number];
-
-/** Message d'un doublon : moins de champs qu'un message du ticket d'accueil. */
-export type MergedTicketMessage = MergedTicket["messages"][number];
+// Les types vivent avec les `include` dont ils dérivent ; ré-exportés ici, qui
+// reste la porte d'entrée du domaine côté composants.
+export type {
+  TicketListItem,
+  TicketWithMessages,
+  TicketAttachment,
+  MergedTicket,
+  MergedTicketMessage,
+} from "@/lib/ticket-query";
 
 export type TicketListFilters = {
   page?: number;
