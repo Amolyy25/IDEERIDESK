@@ -1,3 +1,4 @@
+import { cache } from "react";
 import NextAuth from "next-auth";
 import { prisma } from "@/lib/prisma";
 import authConfig from "@/auth.config";
@@ -15,7 +16,7 @@ function domainFilterIsUsable() {
   return Boolean(allowedDomain) || process.env.NODE_ENV !== "production";
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+const nextAuth = NextAuth({
   ...authConfig,
   // Railway (comme la plupart des PaaS hors Vercel) n'est pas dans la liste
   // d'hôtes reconnus par défaut par Auth.js — sans ça, la détection de l'URL
@@ -110,3 +111,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+export const { handlers, signIn, signOut } = nextAuth;
+
+// next-auth ne mémoïse pas `auth()` : chaque appel rejoue le callback `session`,
+// donc un SELECT sur `agents` — une douzaine par rendu de page. cache() dédoublonne
+// par requête HTTP, la permission reste donc relue à chaque navigation.
+export const auth = cache(nextAuth.auth);
