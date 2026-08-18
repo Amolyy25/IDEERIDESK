@@ -19,6 +19,10 @@ import {
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { HtmlPolicyHint } from "@/components/editor/html-policy-hint";
 import { SharePanel } from "@/components/knowledge-base/share-panel";
+import {
+  ArticleAiDialog,
+  type GeneratedArticle,
+} from "@/components/knowledge-base/article-ai-dialog";
 import { createKnowledgeArticle, updateKnowledgeArticle } from "@/lib/actions/knowledge-base";
 import type { KnowledgeArticleListItem } from "@/lib/actions/knowledge-base";
 import type {
@@ -47,11 +51,14 @@ export function ArticleForm({
   categories,
   templates,
   allArticles,
+  sourceTicket,
 }: {
   article?: KnowledgeArticleListItem;
   categories: KnowledgeCategory[];
   templates: ArticleTemplate[];
   allArticles: KnowledgeArticleListItem[];
+  /** Ticket proposé comme source, quand on arrive depuis une fiche ticket. */
+  sourceTicket?: { id: string; number: number; subject: string } | null;
 }) {
   const router = useRouter();
   const isEditing = Boolean(article);
@@ -64,12 +71,59 @@ export function ArticleForm({
   const [templateId, setTemplateId] = useState(NONE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /**
+   * Le compteur qui remonte l'éditeur.
+   *
+   * `RichTextEditor` ne lit `value` qu'à l'initialisation : Tiptap tient son
+   * propre document, et une modification du champ par le parent (un modèle
+   * appliqué, un brouillon généré) n'y arrivait tout simplement jamais — l'état
+   * changeait, l'éditeur affichait toujours l'ancien texte. Changer la clé le
+   * remonte sur la nouvelle valeur, ce qui est exactement le comportement
+   * attendu : ces deux gestes REMPLACENT le contenu, ils ne le modifient pas
+   * caractère par caractère.
+   */
+  const [editorKey, setEditorKey] = useState(0);
+
   function applyTemplate(id: string) {
     setTemplateId(id);
     const template = templates.find((t) => t.id === id);
     if (!template) return;
     if (content && !window.confirm("Remplacer le contenu actuel par ce modèle ?")) return;
     setContent(template.content);
+    setEditorKey((key) => key + 1);
+  }
+
+  /**
+   * Insertion d'un brouillon généré : elle écrase le contenu, et doit donc être
+   * annulable. Le « Annuler » du message n'est pas une politesse — c'est ce qui
+   * autorise à essayer la génération sur un article déjà commencé sans jouer sa
+   * rédaction à pile ou face.
+   *
+   * Titre et résumé ne sont écrasés que s'ils sont vides : ce sont les deux
+   * champs qu'un rédacteur soigne à la main, et il les a souvent posés avant de
+   * demander le corps.
+   */
+  function applyGenerated(result: GeneratedArticle) {
+    const previous = { title, excerpt, content, categoryId };
+
+    if (result.title && !title.trim()) setTitle(result.title);
+    if (result.excerpt && !excerpt.trim()) setExcerpt(result.excerpt);
+    if (result.categoryId && categoryId === NONE) setCategoryId(result.categoryId);
+    setContent(result.content);
+    setEditorKey((key) => key + 1);
+
+    toast.success("Brouillon inséré — relisez avant d'enregistrer", {
+      action: {
+        label: "Annuler",
+        onClick: () => {
+          setTitle(previous.title);
+          setExcerpt(previous.excerpt);
+          setContent(previous.content);
+          setCategoryId(previous.categoryId);
+          setEditorKey((key) => key + 1);
+        },
+      },
+    });
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -109,9 +163,12 @@ export function ArticleForm({
           <ArrowLeft className="size-4" />
           Articles
         </Link>
-        <Button type="submit" disabled={isSubmitting} size="sm">
-          {isSubmitting ? "Enregistrement…" : isEditing ? "Enregistrer" : "Créer l'article"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ArticleAiDialog onApply={applyGenerated} sourceTicket={sourceTicket} />
+          <Button type="submit" disabled={isSubmitting} size="sm">
+            {isSubmitting ? "Enregistrement…" : isEditing ? "Enregistrer" : "Créer l'article"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
@@ -126,6 +183,7 @@ export function ArticleForm({
           />
 
           <RichTextEditor
+            key={editorKey}
             value={content}
             onChange={setContent}
             placeholder="Décrivez la solution étape par étape…"
@@ -134,6 +192,7 @@ export function ArticleForm({
               .filter((a) => a.id !== article?.id)
               .map((a) => ({ id: a.id, title: a.title, slug: a.slug }))}
             onUploadImage={uploadArticleImage}
+            aiSelectionRewrite
           />
 
           <HtmlPolicyHint profile="article" />

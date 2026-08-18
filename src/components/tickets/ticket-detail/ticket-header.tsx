@@ -4,7 +4,16 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, BellOff, CheckCircle2, ChevronDown, Lock, Merge, UserPlus } from "lucide-react";
+import {
+  ArrowLeft,
+  BellOff,
+  BookPlus,
+  CheckCircle2,
+  ChevronDown,
+  Lock,
+  Merge,
+  UserPlus,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,12 +44,15 @@ export function TicketHeader({
   currentAgentId,
   canRespond,
   canMerge: hasMergePermission,
+  canWriteArticle,
 }: {
   ticket: TicketWithMessages;
   currentAgentId: string | null;
   canRespond: boolean;
   /** Permission « tickets.merge », distincte de « répondre et modifier ». */
   canMerge: boolean;
+  /** Permission « kb.manage » : le fil peut devenir un article. */
+  canWriteArticle: boolean;
 }) {
   const router = useRouter();
   const [isClaiming, setIsClaiming] = useState(false);
@@ -136,6 +148,18 @@ export function TicketHeader({
             <Button size="sm" onClick={handleClaim} disabled={isClaiming}>
               <UserPlus />
               {isClaiming ? "Attribution…" : "Prendre en charge"}
+            </Button>
+          )}
+          {/* Le lien qui ferme la boucle du support : ce fil vient d'être
+              résolu, et la prochaine personne qui posera la même question
+              mérite mieux qu'un second ticket. Il mène au formulaire d'article,
+              où le fil est proposé comme source — il ne rédige rien tout seul. */}
+          {canWriteArticle && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/knowledge-base/new?ticket=${ticket.id}`}>
+                <BookPlus />
+                Créer un article
+              </Link>
             </Button>
           )}
           {/* Fusionner et clore sont toutes deux en retrait : ce sont les

@@ -3,32 +3,65 @@ import type { AiConfig } from "@/lib/ai-settings";
 export class AiProviderError extends Error {}
 
 /**
+ * Plafond de sortie par défaut, appliqué à la branche Anthropic (la seule des
+ * trois où l'API exige un `max_tokens`).
+ *
+ * Il vaut pour une réponse de ticket : quelques paragraphes, jamais plus. Un
+ * appel qui produit un DOCUMENT — un article de base de connaissances — le
+ * relève explicitement, et lui seul : le laisser monter pour tout le monde
+ * ferait payer à chaque suggestion de réponse le budget d'un article.
+ */
+const DEFAULT_MAX_TOKENS = 1024;
+
+/**
  * Raw fetch calls to the two supported LLM APIs — no SDK dependency needed
  * for a single "generate one suggestion" call. Both branches return the
  * first text block/choice, which is all `/api/ai/suggest` needs.
  */
 export async function generateAiSuggestion(
   config: AiConfig,
-  { systemPrompt, userPrompt }: { systemPrompt: string; userPrompt: string }
+  {
+    systemPrompt,
+    userPrompt,
+    maxTokens,
+  }: {
+    systemPrompt: string;
+    userPrompt: string;
+    /**
+     * À ne relever que pour un appel dont la sortie attendue est longue. Sans
+     * valeur : `DEFAULT_MAX_TOKENS`, la borne d'une réponse de ticket.
+     */
+    maxTokens?: number;
+  }
 ): Promise<string> {
   if (!config.apiKey) {
     throw new AiProviderError("Aucune clé API IA configurée.");
   }
 
   if (config.provider === "openai") {
+    // Pas de plafond transmis à OpenAI ni à Gemini : ces deux API n'en exigent
+    // pas et s'arrêtent d'elles-mêmes. En poser un ici bornerait des appels
+    // aujourd'hui libres — une réponse tronquée là où rien ne l'était.
     return generateWithOpenAi(config.apiKey, config.model, systemPrompt, userPrompt);
   }
   if (config.provider === "gemini") {
     return generateWithGemini(config.apiKey, config.model, systemPrompt, userPrompt);
   }
-  return generateWithAnthropic(config.apiKey, config.model, systemPrompt, userPrompt);
+  return generateWithAnthropic(
+    config.apiKey,
+    config.model,
+    systemPrompt,
+    userPrompt,
+    maxTokens ?? DEFAULT_MAX_TOKENS
+  );
 }
 
 async function generateWithAnthropic(
   apiKey: string,
   model: string,
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  maxTokens: number
 ): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -39,7 +72,7 @@ async function generateWithAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     }),

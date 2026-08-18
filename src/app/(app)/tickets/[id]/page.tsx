@@ -112,6 +112,7 @@ export default async function TicketDetailPage({
   // partira.
   const signatureHtml = await resolveSignatureHtmlForAgent(session?.user?.id ?? null);
   const canRespond = can(session.user.permissions, "tickets.respond");
+  const canWriteArticle = can(session.user.permissions, "kb.manage");
 
   // Réponses type qui concernent ce dossier (voir /settings/canned-responses).
   // Les critères sont lus sur le dossier et non sur la porte d'entrée, comme
@@ -179,6 +180,7 @@ export default async function TicketDetailPage({
           currentAgentId={session?.user?.id ?? null}
           canRespond={canRespond}
           canMerge={canMerge}
+          canWriteArticle={canWriteArticle}
         />
 
         {/* Les deux bandeaux de fusion, avant le fil : ils disent où se traite

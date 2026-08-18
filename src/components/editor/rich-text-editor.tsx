@@ -40,6 +40,7 @@ import { ResizableImage } from "@/components/editor/resizable-image-extension";
 import { ImageDragSupport } from "@/components/editor/image-drag-support";
 import { ImageSizeControls } from "@/components/editor/image-size-controls";
 import { ToolbarButton } from "@/components/editor/toolbar-button";
+import { AiSelectionMenu } from "@/components/editor/ai-selection-menu";
 
 export type InternalLinkTarget = { id: string; title: string; slug: string };
 
@@ -67,6 +68,7 @@ export function RichTextEditor({
   logoUrl,
   internalLinkTargets,
   onUploadImage,
+  aiSelectionRewrite = false,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -78,6 +80,14 @@ export function RichTextEditor({
   internalLinkTargets?: InternalLinkTarget[];
   /** Si fourni, permet d'uploader une image (sinon le bouton image est masqué). */
   onUploadImage?: (file: File) => Promise<string>;
+  /**
+   * Barre de réécriture IA au survol d'une sélection.
+   *
+   * Explicite, et non actif partout : l'éditeur sert aussi aux gabarits d'email
+   * et aux signatures, où la route de réécriture n'accorde rien (elle demande
+   * « kb.manage » hors ticket) — le bouton n'y aurait produit qu'un refus.
+   */
+  aiSelectionRewrite?: boolean;
 }) {
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -97,6 +107,7 @@ export function RichTextEditor({
   );
   const [htmlSource, setHtmlSource] = useState(value);
   const [showPreview, setShowPreview] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -256,7 +267,9 @@ export function RichTextEditor({
   }
 
   return (
-    <div className="rounded-md border">
+    // `relative` : repère de la barre de réécriture, positionnée au-dessus de
+    // la sélection. Sans lui, elle se placerait par rapport à la page.
+    <div ref={containerRef} className="relative rounded-md border">
       <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 p-1.5">
         {mode === "visual" && (
           <>
@@ -504,6 +517,9 @@ export function RichTextEditor({
       {mode === "visual" ? (
         <div className="px-3 py-2" style={{ minHeight }}>
           <EditorContent editor={editor} />
+          {/* Jamais en mode source : il n'y a pas de sélection ProseMirror à
+              reprendre dans un textarea de HTML brut. */}
+          {aiSelectionRewrite && <AiSelectionMenu editor={editor} containerRef={containerRef} />}
         </div>
       ) : (
         <div>
