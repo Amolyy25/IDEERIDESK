@@ -1,5 +1,6 @@
 import { Paperclip, ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
 import type { TicketAttachment } from "@/lib/actions/tickets";
+import { AttachmentScanDialog } from "@/components/tickets/ticket-detail/attachment-scan-dialog";
 import { cn } from "@/lib/utils";
 
 function formatSize(bytes: number) {
@@ -60,6 +61,11 @@ export function AttachmentsList({ attachments }: { attachments: TicketAttachment
       {attachments.map((attachment) => {
         const quarantined = attachment.scanStatus === "INFECTED";
 
+        const chipClassName = cn(
+          "flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-foreground",
+          quarantined && "border-destructive/30 bg-destructive/5 hover:border-destructive",
+        );
+
         const content = (
           <>
             <Paperclip className="size-4 shrink-0" aria-hidden />
@@ -69,26 +75,26 @@ export function AttachmentsList({ attachments }: { attachments: TicketAttachment
           </>
         );
 
-        // Une pièce en quarantaine n'est plus un lien : ses octets ont été
-        // purgés et /api/attachments/[id] répond 403. Laisser le lien actif
-        // enverrait l'agent sur une erreur brute pour toute explication.
-        return quarantined ? (
-          <div
-            key={attachment.id}
-            className="flex cursor-not-allowed items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground"
-          >
-            {content}
-          </div>
-        ) : (
+        // Ni le fichier en attente ni celui en quarantaine ne s'ouvrent
+        // directement : le premier n'est pas garanti sain, le second n'a plus
+        // d'octets (/api/attachments/[id] répond 403). Les deux passent par un
+        // dialogue qui explique l'état, plutôt que par une erreur brute.
+        return attachment.scanStatus === "CLEAN" ? (
           <a
             key={attachment.id}
             href={`/api/attachments/${attachment.id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+            className={chipClassName}
           >
             {content}
           </a>
+        ) : (
+          <AttachmentScanDialog key={attachment.id} attachment={attachment}>
+            <button type="button" className={chipClassName}>
+              {content}
+            </button>
+          </AttachmentScanDialog>
         );
       })}
     </div>

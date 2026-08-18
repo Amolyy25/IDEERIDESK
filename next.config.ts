@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  images: {
+    // Sources externes autorisées par l'optimiseur d'images. Chemin restreint :
+    // une entrée d'hôte seul laisserait proxyfier n'importe quelle URL du CDN.
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.artphotolimited.com", pathname: "/images/**" },
+    ],
+  },
   async headers() {
     return [
       {

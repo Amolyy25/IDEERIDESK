@@ -57,6 +57,8 @@ export function noticeStaleDeployment(error: unknown): boolean {
     // bout de cinq secondes laisserait l'onglet figé sans plus rien pour
     // l'expliquer.
     duration: Infinity,
+    // pas d'échéance, donc pas de jauge de temps (voir app/toast.css)
+    className: "toast-persistent",
     id: "stale-deployment",
     description:
       "Cet onglet ne reçoit plus les nouveaux emails ni les notifications. " +
