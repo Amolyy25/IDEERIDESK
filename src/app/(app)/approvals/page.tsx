@@ -1,5 +1,5 @@
 import { requirePageAccess } from "@/lib/require-page-access";
-import { getPendingApprovalMessages } from "@/lib/actions/tickets";
+import { getPendingApprovalMessages } from "@/lib/actions/ticket-approvals";
 import { PendingApprovalsList } from "@/components/approvals/pending-approvals-list";
 
 /**

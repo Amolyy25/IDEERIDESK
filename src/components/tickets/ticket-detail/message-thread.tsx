@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Check, Mail, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
+import { approveMessage, rejectMessage } from "@/lib/actions/ticket-approvals";
 import type { TicketWithMessages } from "@/lib/actions/tickets";
 import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
 import { MessageBody } from "@/components/tickets/ticket-detail/message-body";

@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { approveMessage, rejectMessage } from "@/lib/actions/tickets";
-import type { PendingApprovalMessage } from "@/lib/actions/tickets";
+import { approveMessage, rejectMessage } from "@/lib/actions/ticket-approvals";
+import type { PendingApprovalMessage } from "@/lib/actions/ticket-approvals";
 import { formatDateTime } from "@/lib/format-date";
 import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
 

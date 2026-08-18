@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { getUnreadTicketCount, countPendingApprovalMessages } from "@/lib/actions/tickets";
+import { getUnreadTicketCount } from "@/lib/actions/tickets";
+import { countPendingApprovalMessages } from "@/lib/actions/ticket-approvals";
 import { countPendingAgents } from "@/lib/actions/agents";
 import { getMyNotifications } from "@/lib/actions/notifications";
 import { Sidebar } from "@/components/layout/sidebar";

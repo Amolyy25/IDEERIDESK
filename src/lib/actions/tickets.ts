@@ -24,10 +24,8 @@ import {
   type TicketListFilters,
 } from "@/lib/ticket-query";
 import {
-  agentLabelById,
   auditRefSelect,
   diffTicketSnapshots,
-  readTicketRef,
   readTicketSnapshot,
   recordAudit,
   recordTicketView,
@@ -644,119 +642,4 @@ export async function addTicketMessage(
   });
 
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[], selfAssigned };
-}
-
-const pendingApprovalSelect = {
-  id: true,
-  content: true,
-  // La file de validation montre la réponse telle qu'elle partira, mise en forme
-  // comprise : c'est ce qui est validé, pas une version aplatie.
-  contentHtml: true,
-  createdAt: true,
-  agent: { select: { id: true, name: true } },
-  ticket: {
-    select: {
-      id: true,
-      number: true,
-      subject: true,
-      client: { select: { name: true } },
-    },
-  },
-} satisfies Prisma.MessageSelect;
-
-export type PendingApprovalMessage = Prisma.MessageGetPayload<{
-  select: typeof pendingApprovalSelect;
-}>;
-
-/**
- * Réponses retenues en attente de validation, tous tickets confondus.
- *
- * Le workflow existait sans point d'entrée : un agent habilité devait tomber
- * par hasard sur le bon ticket pour découvrir qu'une réponse y attendait son
- * feu vert, pendant que le client, lui, n'avait rien reçu.
- *
- * Les plus anciennes d'abord : c'est l'ordre d'attente du client.
- */
-export async function getPendingApprovalMessages() {
-  await requirePermission("approvals.handle");
-  return prisma.message.findMany({
-    where: { approvalStatus: "PENDING" },
-    select: pendingApprovalSelect,
-    orderBy: { createdAt: "asc" },
-  });
-}
-
-export async function countPendingApprovalMessages() {
-  await requirePermission("approvals.handle");
-  return prisma.message.count({ where: { approvalStatus: "PENDING" } });
-}
-
-export async function approveMessage(messageId: string) {
-  const session = await requirePermission("approvals.handle");
-
-  const message = await prisma.message.findUnique({ where: { id: messageId } });
-  if (!message || message.approvalStatus !== "PENDING") {
-    throw new Error("Ce message n'est plus en attente de validation.");
-  }
-  // Un agent portant à la fois `requiresApproval` et « approvals.handle » pourrait
-  // sinon relâcher ses propres réponses, ce qui vide le workflow de son sens.
-  if (message.agentId === session.user.id) {
-    throw new Error("Un autre agent habilité doit valider votre propre réponse.");
-  }
-
-  await prisma.message.update({
-    where: { id: messageId },
-    data: {
-      approvalStatus: "APPROVED",
-      approvedById: session.user.id,
-      approvedAt: new Date(),
-    },
-  });
-
-  const result = await sendApprovedTicketReply(
-    message.ticketId,
-    message.id,
-    { content: message.content, html: message.contentHtml },
-    message.agentId
-  );
-
-  await recordAudit({
-    session,
-    action: "REPLY_APPROVED",
-    ticket: await readTicketRef(message.ticketId),
-    // L'auteur de la réponse et son valideur sont deux personnes différentes
-    // (la garde ci-dessus l'impose) : le journal doit nommer les deux, sinon la
-    // trace laisse croire que le valideur a écrit la réponse.
-    summary: `Validation de la réponse rédigée par ${await agentLabelById(
-      message.agentId,
-    )}. ${replySummary(result)}`,
-  });
-
-  revalidatePath(`/tickets/${message.ticketId}`);
-  return result;
-}
-
-export async function rejectMessage(messageId: string) {
-  const session = await requirePermission("approvals.handle");
-
-  const message = await prisma.message.findUnique({ where: { id: messageId } });
-  if (!message || message.approvalStatus !== "PENDING") {
-    throw new Error("Ce message n'est plus en attente de validation.");
-  }
-
-  await prisma.message.update({
-    where: { id: messageId },
-    data: { approvalStatus: "REJECTED" },
-  });
-
-  await recordAudit({
-    session,
-    action: "REPLY_REJECTED",
-    ticket: await readTicketRef(message.ticketId),
-    summary: `Refus de la réponse rédigée par ${await agentLabelById(
-      message.agentId,
-    )} — rien n'est parti au client.`,
-  });
-
-  revalidatePath(`/tickets/${message.ticketId}`);
 }
