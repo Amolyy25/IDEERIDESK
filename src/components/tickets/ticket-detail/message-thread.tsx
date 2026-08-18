@@ -12,6 +12,8 @@ import { MentionText } from "@/components/tickets/ticket-detail/mention-text";
 import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
 import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 import type { MentionableAgent } from "@/lib/mentions";
+import { noteAnchor, type NoteQuote } from "@/lib/note-replies";
+import { QuotedNote, ReplyToNoteButton } from "@/components/tickets/ticket-detail/note-reply";
 import { plural } from "@/lib/utils";
 import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
 import type { AuthorKind } from "@/components/tickets/ticket-detail/author-avatar";
@@ -48,6 +50,8 @@ function describe(message: Message): { author: string; kind: AuthorKind; tone: T
 export function MessageTimelineItem({
   message,
   canApprove,
+  canReply,
+  quote,
   agents,
   currentAgentId,
   align = "left",
@@ -56,6 +60,10 @@ export function MessageTimelineItem({
 }: {
   message: Message;
   canApprove: boolean;
+  /** Permission « tickets.respond » : sans elle, aucune note à qui répondre. */
+  canReply: boolean;
+  /** Note citée par ce message, quand il répond à une autre note. */
+  quote?: NoteQuote;
   agents: MentionableAgent[];
   currentAgentId: string | null;
   align?: TimelineAlign;
@@ -115,6 +123,10 @@ export function MessageTimelineItem({
         </Button>
       </div>
     );
+  } else if (message.isPrivate && canReply) {
+    // Réservé aux notes : une réponse publique s'adresse au client, elle n'attend
+    // pas d'être reprise entre agents.
+    footer = <ReplyToNoteButton message={message} />;
   }
 
   return (
@@ -126,7 +138,12 @@ export function MessageTimelineItem({
       align={align}
       meta={<MessageBadges message={message} origin={origin} />}
       footer={footer}
+      // Seules les notes sont citées ou pointées par la cloche : leur seule ancre
+      // suffit, en poser une sur chaque message n'aurait aucune cible.
+      anchorId={message.isPrivate ? noteAnchor(message.id) : undefined}
     >
+      {quote && <QuotedNote quote={quote} />}
+
       {/* Seules les notes internes portent des mentions : une réponse publique ne
           notifie personne, rien à surligner. */}
       {message.isPrivate ? (
@@ -150,12 +167,17 @@ export function MessageTimelineItem({
 export function MessageThread({
   messages,
   canApprove,
+  canReply,
+  quotes,
   agents,
   currentAgentId,
   align = "left",
 }: {
   messages: Message[];
   canApprove: boolean;
+  canReply: boolean;
+  /** Notes citées du fil entier, indexées par la réponse qui les porte. */
+  quotes: Map<string, NoteQuote>;
   /** Équipe utilisée pour surligner les mentions des notes internes. */
   agents: MentionableAgent[];
   currentAgentId: string | null;
@@ -168,6 +190,8 @@ export function MessageThread({
           key={message.id}
           message={message}
           canApprove={canApprove}
+          canReply={canReply}
+          quote={quotes.get(message.id)}
           agents={agents}
           currentAgentId={currentAgentId}
           align={align}

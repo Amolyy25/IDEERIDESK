@@ -12,6 +12,9 @@ const notificationSelect = {
   createdAt: true,
   actor: { select: { id: true, name: true } },
   ticket: { select: { id: true, number: true, subject: true } },
+  // Sert à ouvrir le ticket directement sur la note citée : dans un fil long,
+  // « vous a mentionné » sans point de chute laisse chercher la note à la main.
+  messageId: true,
 } satisfies Prisma.NotificationSelect;
 
 // Dérivé de la requête, comme `TicketListItem` : un champ ajouté au `select`

@@ -26,6 +26,8 @@ export type PreparedReply = {
   /** Mise en forme de la réponse publique. `null` pour une note interne. */
   contentHtml: string | null;
   isPrivate: boolean;
+  /** Note interne citée, quand la note répond à une autre. */
+  replyToId: string | null;
 };
 
 /** Un message parti du bouton mais pas encore du serveur : la fenêtre de rattrapage. */
@@ -108,6 +110,7 @@ export function useReplySend({
         content: reply.content,
         contentHtml: reply.contentHtml ?? undefined,
         isPrivate: reply.isPrivate,
+        replyToId: reply.replyToId ?? undefined,
       });
 
       // Le brouillon a fini son office : le garder ferait réapparaître une

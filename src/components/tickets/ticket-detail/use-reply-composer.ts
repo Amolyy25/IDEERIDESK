@@ -13,6 +13,7 @@ import {
   type PreparedReply,
 } from "@/components/tickets/ticket-detail/use-reply-send";
 import { useReplyShortcuts } from "@/components/tickets/ticket-detail/use-reply-shortcuts";
+import { useReplyTarget } from "@/components/tickets/ticket-detail/reply-target-context";
 import { appendReplyHtml, isReplyHtmlEmpty, textToReplyHtml } from "@/lib/reply-html";
 import { htmlToText } from "@/lib/html-to-text";
 import { findInsult } from "@/lib/insult-easter-egg";
@@ -64,6 +65,13 @@ export function useReplyComposer({
   // Les mots pour lesquels la blague a déjà été faite. Une référence et non un
   // état : rien à l'écran n'en dépend.
   const excusedInsults = useRef(new Set<string>());
+
+  // La note à laquelle on répond, désignée depuis le fil (voir `ReplyToNoteButton`).
+  const {
+    target: replyTarget,
+    clear: clearReplyTarget,
+    subscribe: onReplyToNote,
+  } = useReplyTarget();
 
   // Poignées pour rendre le curseur au champ : c'est lui, et non le bouton qui
   // vient d'être cliqué, qui doit reprendre la main.
@@ -119,6 +127,21 @@ export function useReplyComposer({
     }, 0);
   }, []);
 
+  // Le « @Prénom Nom » amorcé est ce qui notifie l'auteur de la note ; le lien vers
+  // la note citée ne sert qu'à l'affichage. Rien n'est amorcé sur sa propre note,
+  // ni par-dessus un texte déjà commencé.
+  useEffect(
+    () =>
+      onReplyToNote((quote) => {
+        setIsPrivate(true);
+        if (quote.authorId && quote.authorId !== currentAgentId) {
+          setNote((current) => (current.trim() ? current : `@${quote.author} `));
+        }
+        focusComposer(true);
+      }),
+    [onReplyToNote, currentAgentId, focusComposer]
+  );
+
   const send = useReplySend({
     ticketId,
     sendDelaySeconds,
@@ -127,7 +150,12 @@ export function useReplyComposer({
     restoreField: (reply) =>
       reply.isPrivate ? setNote(reply.content) : setHtml(reply.contentHtml ?? ""),
     focusComposer,
-    onSent: clearDraft,
+    // La citation ne survit pas à la note qui la portait. Sur un échec d'envoi,
+    // `onSent` n'est pas atteint : le texte revient dans le champ, la citation avec.
+    onSent: () => {
+      clearDraft();
+      clearReplyTarget();
+    },
   });
 
   const ai = useReplyAi({
@@ -160,6 +188,7 @@ export function useReplyComposer({
       content: isPrivate ? note : htmlToText(html),
       contentHtml: isPrivate ? null : html,
       isPrivate,
+      replyToId: isPrivate ? (replyTarget?.messageId ?? null) : null,
     };
 
     // Le contrôle passe AVANT tout le reste : le champ ne se vide pas, le
@@ -200,6 +229,13 @@ export function useReplyComposer({
     setHtml(appendReplyHtml(html, textToReplyHtml(body)));
   }
 
+  // Une réponse publique part au client : elle ne cite pas la note interne qui
+  // l'avait préparée.
+  function changeMode(privateMode: boolean) {
+    setIsPrivate(privateMode);
+    if (!privateMode) clearReplyTarget();
+  }
+
   function discardDraft() {
     setHtml(autoInsertedHtml);
     setNote("");
@@ -212,7 +248,7 @@ export function useReplyComposer({
     note,
     setNote,
     isPrivate,
-    setIsPrivate,
+    setIsPrivate: changeMode,
     isEmpty,
     isLocked,
     others,
@@ -229,6 +265,9 @@ export function useReplyComposer({
         : null,
     discardDraft,
     insertCannedResponse,
+    // Note citée, et le moyen de renoncer à la citer.
+    replyTarget,
+    clearReplyTarget,
     // Envoi
     send,
     handleSubmit,

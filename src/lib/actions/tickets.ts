@@ -108,6 +108,12 @@ export type TicketWithMessages = Prisma.TicketGetPayload<{
 /** Pièce jointe telle qu'affichée dans la fiche ticket, sans son contenu binaire. */
 export type TicketAttachment = TicketWithMessages["attachments"][number];
 
+/** Doublon absorbé par un ticket, avec la conversation qu'il apporte. */
+export type MergedTicket = TicketWithMessages["mergedTickets"][number];
+
+/** Message d'un doublon : moins de champs qu'un message du ticket d'accueil. */
+export type MergedTicketMessage = MergedTicket["messages"][number];
+
 export type TicketListFilters = {
   page?: number;
   pageSize?: number;
@@ -698,7 +704,27 @@ const addMessageSchema = z.object({
    */
   contentHtml: z.string().optional(),
   isPrivate: z.boolean().default(false),
+  /**
+   * Note interne à laquelle celle-ci répond. Vérifiée ci-dessous contre le
+   * ticket : un identifiant venu du client ne suffit pas à lier deux messages.
+   */
+  replyToId: z.string().optional(),
 });
+
+// Sans ce contrôle, l'identifiant transmis accrocherait une réponse à la note
+// d'un autre dossier, dont l'extrait s'afficherait alors dans ce fil-ci.
+async function resolveQuotedNote(ticketId: string, replyToId: string | undefined) {
+  if (!replyToId) return null;
+
+  const quoted = await prisma.message.findFirst({
+    where: { id: replyToId, ticketId, isPrivate: true },
+    select: { id: true },
+  });
+  if (!quoted) {
+    throw new Error("La note à laquelle vous répondez n'existe plus.");
+  }
+  return quoted.id;
+}
 
 const EMAIL_HISTORY_LIMIT = 10;
 
@@ -998,6 +1024,10 @@ export async function addTicketMessage(
   // repérées sur la chaîne brute, et elle ne part dans aucun email.
   const body = isPublicAgentReply ? resolveReplyBody(data) : { content: data.content, html: null };
 
+  // Une réponse publique part au client : elle ne cite aucune note interne, même
+  // si un onglet périmé transmet l'identifiant de celle qui l'a préparée.
+  const replyToId = isPublicAgentReply ? null : await resolveQuotedNote(ticketId, data.replyToId);
+
   const message = await prisma.message.create({
     data: {
       ticketId,
@@ -1007,6 +1037,7 @@ export async function addTicketMessage(
       agentId,
       isPrivate: data.isPrivate,
       approvalStatus: needsApproval ? "PENDING" : null,
+      replyToId,
     },
   });
   // Seules les réponses publiques prennent le dossier. Une note interne sert

@@ -720,6 +720,13 @@ model Message {
   approvedBy   Agent?  @relation("MessageApprovedBy", fields: [approvedById], references: [id])
   approvedById String?
 
+  // Note interne écrite en réponse à une autre note du même ticket. Sert au fil
+  // de discussion, qui affiche la note citée au-dessus de la réponse. Le ping du
+  // collègue, lui, reste porté par le « @Prénom Nom » du texte.
+  replyTo   Message?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replyToId String?
+  replies   Message[] @relation("MessageReply")
+
   attachments   Attachment[]
   notifications Notification[]
 

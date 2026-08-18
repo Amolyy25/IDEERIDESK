@@ -6,6 +6,7 @@ import { AtSign, Bell, UserPlus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format-date";
+import { noteAnchor } from "@/lib/note-replies";
 import type { NotificationItem } from "@/lib/actions/notifications";
 
 /**
@@ -80,7 +81,7 @@ export function NotificationBell({
               return (
               <li key={item.id}>
                 <Link
-                  href={item.ticket ? `/tickets/${item.ticket.id}` : "/tickets"}
+                  href={ticketHref(item)}
                   onClick={() => {
                     setIsOpen(false);
                     if (!item.readAt) onRead(item.id);
@@ -123,4 +124,12 @@ export function NotificationBell({
       </PopoverContent>
     </Popover>
   );
+}
+
+// Seules les notes portent une ancre dans le fil (voir `MessageTimelineItem`) :
+// une notification d'assignation retombe sur le ticket.
+function ticketHref(item: NotificationItem) {
+  if (!item.ticket) return "/tickets";
+  const ticket = `/tickets/${item.ticket.id}`;
+  return item.messageId ? `${ticket}#${noteAnchor(item.messageId)}` : ticket;
 }

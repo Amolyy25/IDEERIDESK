@@ -13,6 +13,7 @@ import { AttributesPanel } from "@/components/tickets/ticket-detail/attributes-p
 import { TicketHeader } from "@/components/tickets/ticket-detail/ticket-header";
 import { TicketThread } from "@/components/tickets/ticket-detail/ticket-thread";
 import { ReplyBox } from "@/components/tickets/ticket-detail/reply-box";
+import { ReplyTargetProvider } from "@/components/tickets/ticket-detail/reply-target-context";
 import { MarkAsRead } from "@/components/tickets/ticket-detail/mark-as-read";
 import { LogTicketView } from "@/components/tickets/ticket-detail/log-ticket-view";
 import { SignatureBlock } from "@/components/tickets/ticket-detail/signature-block";
@@ -215,36 +216,42 @@ export default async function TicketDetailPage({
               Elle écrit sur le dossier, pas sur la porte d'entrée — répondre
               depuis un doublon doit servir tout le monde, sinon la fusion
               n'aurait tenu qu'à l'endroit d'où l'agent a cliqué. */}
-          <TicketThread
-            ticket={dossier}
-            currentTicketId={ticket.id}
-            canApprove={can(session.user.permissions, "approvals.handle")}
-            canMerge={canMerge}
-            agents={mentionableAgents}
-            currentAgentId={session?.user?.id ?? null}
-            replyBox={
-              /* La clé attache la zone de rédaction à SON dossier : passer d'un
-                 ticket à l'autre remonte un champ neuf, au lieu de conserver
-                 l'état du précédent. Indispensable depuis le pré-remplissage —
-                 sans elle, le brouillon proposé pour un ticket pourrait survivre
-                 à la navigation et se retrouver sous les yeux du mauvais client. */
-              <ReplyBox
-                key={dossier.id}
-                ticketId={dossier.id}
-                currentAgentId={session.user.id}
-                currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
-                clientEmail={dossier.client?.email ?? null}
-                mergedRecipientCount={mergedRecipientCount}
-                canRespond={canRespond}
-                requiresApproval={session.user.requiresApproval}
-                signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
-                agents={mentionableAgents}
-                cannedResponses={cannedResponses}
-                sendDelaySeconds={sendDelaySeconds}
-                aiEnabled={aiEnabled}
-              />
-            }
-          />
+          {/* Le fournisseur porte la note à laquelle on répond : elle est désignée
+              depuis une carte du fil et reprise dans le champ, deux enfants
+              distincts. Clé sur le dossier, comme la zone de rédaction. */}
+          <ReplyTargetProvider key={dossier.id}>
+            <TicketThread
+              ticket={dossier}
+              currentTicketId={ticket.id}
+              canApprove={can(session.user.permissions, "approvals.handle")}
+              canReply={canRespond}
+              canMerge={canMerge}
+              agents={mentionableAgents}
+              currentAgentId={session?.user?.id ?? null}
+              replyBox={
+                /* La clé attache la zone de rédaction à SON dossier : passer d'un
+                   ticket à l'autre remonte un champ neuf, au lieu de conserver
+                   l'état du précédent. Indispensable depuis le pré-remplissage —
+                   sans elle, le brouillon proposé pour un ticket pourrait survivre
+                   à la navigation et se retrouver sous les yeux du mauvais client. */
+                <ReplyBox
+                  key={dossier.id}
+                  ticketId={dossier.id}
+                  currentAgentId={session.user.id}
+                  currentAgentName={session?.user?.name || session?.user?.email || "Agent"}
+                  clientEmail={dossier.client?.email ?? null}
+                  mergedRecipientCount={mergedRecipientCount}
+                  canRespond={canRespond}
+                  requiresApproval={session.user.requiresApproval}
+                  signature={signatureHtml && <SignatureBlock html={signatureHtml} />}
+                  agents={mentionableAgents}
+                  cannedResponses={cannedResponses}
+                  sendDelaySeconds={sendDelaySeconds}
+                  aiEnabled={aiEnabled}
+                />
+              }
+            />
+          </ReplyTargetProvider>
         </div>
       </div>
 

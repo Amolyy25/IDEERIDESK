@@ -40,6 +40,7 @@ export function TimelineItem({
   date,
   tone,
   align = "left",
+  anchorId,
   children,
   footer,
 }: {
@@ -50,12 +51,23 @@ export function TimelineItem({
   date: Date;
   tone: TimelineTone;
   align?: TimelineAlign;
+  /** Cible des liens qui renvoient à cette entrée (citations, cloche). */
+  anchorId?: string;
   children: React.ReactNode;
   /** Zone d'actions en pied de carte, séparée du contenu. */
   footer?: React.ReactNode;
 }) {
   return (
-    <li className={cn("relative flex gap-3", align === "right" && "flex-row-reverse")}>
+    <li
+      id={anchorId}
+      className={cn(
+        "relative flex gap-3",
+        align === "right" && "flex-row-reverse",
+        // L'en-tête de la fiche est collant : sans marge de défilement, une carte
+        // atteinte par son ancre s'arrête dessous.
+        anchorId && "scroll-mt-24"
+      )}
+    >
       {/* Fond opaque derrière la pastille : c'est ce qui interrompt la ligne de
           temps au niveau de chaque auteur, sans la découper en segments. */}
       <div className="relative z-10 shrink-0 bg-background py-0.5">{avatar}</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Save, Wand2 } from "lucide-react";
+import { Reply, Save, Wand2 } from "lucide-react";
 import { formatTimeOfDay } from "@/lib/format-date";
 
 // Les lignes d'annonce autour du champ : d'où vient le texte affiché, et comment
@@ -15,6 +15,27 @@ export function PrefilledNotice({ title, onClear }: { title: string; onClear: ()
       onAction={onClear}
     >
       Brouillon <Strong>« {title} »</Strong>, à relire avant l&apos;envoi.
+    </NoticeLine>
+  );
+}
+
+/** Le champ répond à une note interne, dont l'extrait est rappelé ici. */
+export function ReplyingToNotice({
+  author,
+  excerpt,
+  onClear,
+}: {
+  author: string;
+  excerpt: string;
+  onClear: () => void;
+}) {
+  return (
+    <NoticeLine
+      icon={<Reply className="size-3.5 shrink-0 text-primary" />}
+      action="Ne plus citer"
+      onAction={onClear}
+    >
+      En réponse à <Strong>{author}</Strong> · « {excerpt} »
     </NoticeLine>
   );
 }
@@ -86,13 +107,15 @@ function NoticeLine({
   children: React.ReactNode;
 }) {
   return (
-    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+    // Une seule ligne, texte tronqué au besoin : l'extrait d'une note citée peut
+    // être long, et le replier renvoyait le bouton d'à côté sous le texte.
+    <p className="flex items-center gap-x-1.5 text-xs text-muted-foreground">
       {icon}
-      <span>{children}</span>
+      <span className="min-w-0 truncate">{children}</span>
       <button
         type="button"
         onClick={onAction}
-        className="underline underline-offset-2 hover:text-foreground"
+        className="shrink-0 underline underline-offset-2 hover:text-foreground"
       >
         {action}
       </button>

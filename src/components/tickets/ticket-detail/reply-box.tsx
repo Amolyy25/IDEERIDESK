@@ -13,6 +13,7 @@ import {
   AiEditNotice,
   DraftStatus,
   PrefilledNotice,
+  ReplyingToNotice,
   RestoredDraftNotice,
 } from "@/components/tickets/ticket-detail/reply-notices";
 import { AiWorkingOverlay, MessageGhost } from "@/components/tickets/ticket-detail/reply-overlays";
@@ -144,6 +145,14 @@ function ReplyComposer({
       <PresenceStrip others={composer.others} className="border-b" />
 
       <div className="space-y-2 p-3">
+        {isPrivate && composer.replyTarget && (
+          <ReplyingToNotice
+            author={composer.replyTarget.author}
+            excerpt={composer.replyTarget.excerpt}
+            onClear={composer.clearReplyTarget}
+          />
+        )}
+
         {composer.prefilledTitle && (
           <PrefilledNotice
             title={composer.prefilledTitle}

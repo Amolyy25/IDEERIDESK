@@ -1,27 +1,27 @@
-import { Merge } from "lucide-react";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import type { TicketWithMessages } from "@/lib/actions/tickets";
+import type {
+  MergedTicket,
+  MergedTicketMessage,
+  TicketWithMessages,
+} from "@/lib/actions/tickets";
 import type { MentionableAgent } from "@/lib/mentions";
-import { cn } from "@/lib/utils";
-import { AuthorAvatar } from "@/components/tickets/ticket-detail/author-avatar";
-import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
-import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
-import { EmailOrigin } from "@/components/tickets/ticket-detail/email-origin";
-import {
-  Timeline,
-  TimelineItem,
-  type TimelineAlign,
-} from "@/components/tickets/ticket-detail/timeline-item";
+import { resolveNoteQuotes } from "@/lib/note-replies";
+import { Timeline } from "@/components/tickets/ticket-detail/timeline-item";
 import {
   MessageThread,
   MessageTimelineItem,
   type Message,
 } from "@/components/tickets/ticket-detail/message-thread";
-import { SeparateButton } from "@/components/tickets/ticket-detail/merged-tickets";
-
-type MergedTicket = TicketWithMessages["mergedTickets"][number];
-type MergedMessage = MergedTicket["messages"][number];
+import {
+  BranchColumn,
+  ConfluenceBand,
+  DuplicateBranchHeader,
+  OwnBranchHeader,
+} from "@/components/tickets/ticket-detail/thread-branches";
+import {
+  DuplicateInitialRequest,
+  InitialRequest,
+} from "@/components/tickets/ticket-detail/thread-requests";
+import { DuplicateMessage } from "@/components/tickets/ticket-detail/duplicate-message";
 
 /**
  * Le fil du ticket, dans l'une de ses deux formes.
@@ -49,6 +49,7 @@ type MergedMessage = MergedTicket["messages"][number];
 export function TicketThread({
   ticket,
   canApprove,
+  canReply,
   canMerge,
   agents,
   currentAgentId,
@@ -57,6 +58,8 @@ export function TicketThread({
 }: {
   ticket: TicketWithMessages;
   canApprove: boolean;
+  /** Permission « tickets.respond » : conditionne le bouton « Répondre » d'une note. */
+  canReply: boolean;
   /** Permission « tickets.merge » : conditionne le bouton « Séparer » d'une branche. */
   canMerge: boolean;
   agents: MentionableAgent[];
@@ -76,6 +79,9 @@ export function TicketThread({
   currentTicketId?: string;
 }) {
   const merged = ticket.mergedTickets;
+  // Les notes citées, résolues une fois pour tout le fil : chaque carte y lit la
+  // sienne au lieu de rechercher son message dans le tableau.
+  const quotes = resolveNoteQuotes(ticket.messages);
 
   if (merged.length === 0) {
     const entries: ThreadEntry[] = newestFirst(ticket.messages).map((message) => ({
@@ -85,6 +91,8 @@ export function TicketThread({
           key={message.id}
           message={message}
           canApprove={canApprove}
+          canReply={canReply}
+          quote={quotes.get(message.id)}
           agents={agents}
           currentAgentId={currentAgentId}
         />
@@ -148,6 +156,8 @@ export function TicketThread({
                     key={entry.message.id}
                     message={entry.message}
                     canApprove={canApprove}
+                    canReply={canReply}
+                    quote={quotes.get(entry.message.id)}
                     agents={agents}
                     currentAgentId={currentAgentId}
                   />
@@ -196,6 +206,8 @@ export function TicketThread({
           <MessageThread
             messages={newestFirst(beforeMerge)}
             canApprove={canApprove}
+            canReply={canReply}
+            quotes={quotes}
             agents={agents}
             currentAgentId={currentAgentId}
           />
@@ -313,7 +325,7 @@ function newestFirst<T extends { createdAt: Date }>(entries: T[]): T[] {
 /** Une entrée de la colonne commune : écrite ici, ou remontée d'un doublon. */
 type CentralEntry =
   | { kind: "own"; date: Date; message: Message }
-  | { kind: "fromDuplicate"; date: Date; message: MergedMessage; duplicate: MergedTicket };
+  | { kind: "fromDuplicate"; date: Date; message: MergedTicketMessage; duplicate: MergedTicket };
 
 /**
  * Date de fusion, avec repli sur la création.
@@ -325,292 +337,4 @@ type CentralEntry =
 function mergedAtOf(duplicate: MergedTicket): Date {
   if (duplicate.mergedAt) return duplicate.mergedAt;
   return duplicate.createdAt;
-}
-
-/**
- * Une conversation, de son ouverture jusqu'à la fusion.
- *
- * Le repère de colonne est en pied et non en tête : dans un fil qui se lit à
- * rebours, une branche commence en bas. Le placer au-dessus l'aurait mis entre
- * le raccord et le premier message de la colonne, coupant le rail à l'endroit
- * précis où il doit se voir descendre d'une conversation vers l'autre.
- */
-function BranchColumn({
-  align,
-  footer,
-  children,
-}: {
-  align: TimelineAlign;
-  footer: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      {/* `before:top-0` : le rail part du haut de la colonne pour prolonger le
-          raccord, au lieu de commencer au premier message. */}
-      <Timeline align={align} className="mb-2 before:top-0">
-        {children}
-      </Timeline>
-      {footer}
-    </div>
-  );
-}
-
-function OwnBranchHeader({
-  ticket,
-  isCurrent,
-}: {
-  ticket: TicketWithMessages;
-  isCurrent: boolean;
-}) {
-  return (
-    <BranchHeader
-      align="left"
-      number={ticket.number}
-      clientName={ticket.client?.name ?? null}
-      fallbackLabel="Demande d'origine"
-      isCurrent={isCurrent}
-    />
-  );
-}
-
-function DuplicateBranchHeader({
-  duplicate,
-  canMerge,
-  isCurrent,
-}: {
-  duplicate: MergedTicket;
-  canMerge: boolean;
-  isCurrent: boolean;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-      {canMerge && <SeparateButton ticketId={duplicate.id} className="h-6 px-2 text-xs" />}
-      {/* Inutile de proposer d'ouvrir la page où l'on se trouve déjà. */}
-      {!isCurrent && (
-        <Link
-          href={`/tickets/${duplicate.id}`}
-          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-        >
-          Ouvrir
-        </Link>
-      )}
-      <BranchHeader
-        align="right"
-        number={duplicate.number}
-        clientName={duplicate.client?.name ?? null}
-        fallbackLabel="Doublon fusionné"
-        isDuplicate
-        isCurrent={isCurrent}
-      />
-    </div>
-  );
-}
-
-/**
- * Qui parle dans cette colonne : sans ce repère, deux fils côte à côte se
- * confondent.
- *
- * `isCurrent` marque la colonne correspondant à l'adresse ouverte. C'est ce qui
- * permet d'arriver depuis un doublon sans se perdre : le dossier entier
- * s'affiche, et l'agent voit immédiatement par quelle porte il est entré.
- */
-function BranchHeader({
-  align,
-  number,
-  clientName,
-  fallbackLabel,
-  isDuplicate = false,
-  isCurrent,
-}: {
-  align: TimelineAlign;
-  number: number;
-  clientName: string | null;
-  fallbackLabel: string;
-  isDuplicate?: boolean;
-  isCurrent: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-x-2 gap-y-1",
-        align === "right" && "justify-end"
-      )}
-    >
-      <Badge variant="outline" className="gap-1.5 text-[11px] font-normal">
-        {isDuplicate && <Merge className="size-3" />}#{number}
-      </Badge>
-      <span className="truncate text-xs font-medium">{clientName ?? fallbackLabel}</span>
-      {isCurrent && (
-        <Badge variant="secondary" className="text-[11px] font-normal">
-          Vous êtes ici
-        </Badge>
-      )}
-    </div>
-  );
-}
-
-/** La demande qui a ouvert le ticket : premier tour de la conversation, pas un encadré à part. */
-function InitialRequest({ ticket }: { ticket: TicketWithMessages }) {
-  return (
-    <TimelineItem
-      avatar={<AuthorAvatar name={ticket.client?.name ?? "Client"} kind="client" />}
-      author={ticket.client?.name ?? "Demande initiale"}
-      date={ticket.createdAt}
-      tone="inbound"
-    >
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
-      <AttachmentsList attachments={ticket.attachments} />
-      {/* Les en-têtes du mail d'origine appartiennent à cette demande : repliés
-          ici, et non en bloc autonome au-dessus du fil. */}
-      <EmailOrigin metadata={ticket.metadata} />
-    </TimelineItem>
-  );
-}
-
-function DuplicateInitialRequest({ duplicate }: { duplicate: MergedTicket }) {
-  const author = duplicate.client?.name ?? "Demande initiale";
-
-  return (
-    <TimelineItem
-      avatar={<AuthorAvatar name={author} kind="client" />}
-      author={author}
-      date={duplicate.createdAt}
-      tone="inbound"
-      align="right"
-    >
-      <p className="text-sm font-medium">{duplicate.subject}</p>
-      <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">{duplicate.description}</p>
-      <AttachmentsList attachments={duplicate.attachments} />
-    </TimelineItem>
-  );
-}
-
-/**
- * Un message d'un doublon. Rendu à part des messages du ticket : ceux-là n'ont
- * ni note interne ni validation à afficher, et portent l'étiquette du ticket
- * dont ils viennent quand ils remontent dans la colonne commune.
- */
-function DuplicateMessage({
-  message,
-  clientName,
-  align = "left",
-  origin,
-}: {
-  message: MergedMessage;
-  clientName: string | null;
-  align?: TimelineAlign;
-  /** Numéro du doublon, affiché quand le message est sorti de sa colonne. */
-  origin?: number;
-}) {
-  let author = message.agent?.name ?? "Agent";
-  let kind: "client" | "agent" = "agent";
-  let tone: "inbound" | "outbound" = "outbound";
-
-  if (message.authorType === "CLIENT") {
-    author = clientName ?? "Client";
-    kind = "client";
-    tone = "inbound";
-  }
-
-  return (
-    <TimelineItem
-      avatar={<AuthorAvatar name={author} kind={kind} imageUrl={message.agent?.avatarUrl} />}
-      author={author}
-      date={message.createdAt}
-      tone={tone}
-      align={align}
-      meta={<DuplicateMessageBadges emailSent={message.emailSent} origin={origin} />}
-    >
-      <MessageBody content={message.content} contentHtml={message.contentHtml} />
-      <AttachmentsList attachments={message.attachments} />
-    </TimelineItem>
-  );
-}
-
-function DuplicateMessageBadges({
-  emailSent,
-  origin,
-}: {
-  emailSent: boolean;
-  origin?: number;
-}) {
-  return (
-    <>
-      {/* Sans cette étiquette, une relance arrivée sur un doublon se lirait comme
-          une réponse du client de ce ticket-ci. */}
-      {origin !== undefined && (
-        <Badge variant="outline" className="text-[11px] font-normal">
-          via #{origin}
-        </Badge>
-      )}
-      {emailSent && (
-        <span
-          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
-          title="Envoyé à ce client par email"
-        >
-          Envoyé
-        </span>
-      )}
-    </>
-  );
-}
-
-/** Gouttière horizontale de la grille des branches (`gap-x-6`), en rem. */
-const BRANCH_GAP_REM = 1.5;
-
-/** Écart entre le bord d'une colonne et son rail — la moitié d'une pastille (`left-4`). */
-const RAIL_INSET_REM = 1;
-
-/**
- * Le raccord : le rail unique de la colonne commune, en haut, se sépare en
- * autant de branches qu'il y a de conversations d'origine en dessous.
- *
- * Le tracé suit le sens de lecture du fil, à rebours du temps : la fusion se lit
- * donc de haut en bas comme une séparation. C'est le même événement vu par
- * l'autre bout, et le seul dessin qui ne fasse pas remonter un trait à
- * contresens du reste de la page.
- *
- * Tracé en bordures plutôt qu'en SVG : la position d'un rail dépend de la
- * largeur réelle des colonnes, que seul le navigateur connaît. Un `calc()` la
- * suit à chaque redimensionnement, là où un SVG à coordonnées fixes se
- * décalerait dès que le panneau latéral change de largeur.
- */
-function ConfluenceBand({ branchCount }: { branchCount: number }) {
-  const columns = branchCount + 1;
-
-  return (
-    <div aria-hidden className="relative hidden h-10 md:block">
-      {/* Le rail du ticket, qui traverse sans dévier : c'est le dossier qui reste. */}
-      <span className="absolute top-0 bottom-0 left-4 w-px bg-border" />
-
-      {/* Bordures haute et droite : le trait quitte le rail de gauche à hauteur
-          du dernier message commun, file vers la colonne de la branche, puis
-          vire vers le bas pour y descendre. */}
-      {Array.from({ length: branchCount }, (_, index) => (
-        <span
-          key={index}
-          style={{ right: railOffsetFromRight(index + 1, columns) }}
-          className="absolute top-0 bottom-0 left-4 rounded-tr-xl border-t border-r border-border"
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * Distance entre le bord droit du fil et le rail de la colonne `columnIndex`.
- *
- * Les gouttières comptent : à trois colonnes, les ignorer décalait le raccord
- * d'un demi-`rem` et le trait arrivait à côté du rail qu'il devait rejoindre.
- * La largeur d'une colonne est donc reconstruite comme le fait la grille
- * elle-même — largeur totale moins les gouttières, divisée par le nombre de
- * colonnes.
- */
-function railOffsetFromRight(columnIndex: number, columns: number) {
-  const gapsTotal = `${(columns - 1) * BRANCH_GAP_REM}rem`;
-  const columnWidth = `((100% - ${gapsTotal}) / ${columns})`;
-  const rightEdge = `(${columnIndex + 1} * ${columnWidth} + ${columnIndex * BRANCH_GAP_REM}rem)`;
-
-  return `calc(100% - ${rightEdge} + ${RAIL_INSET_REM}rem)`;
 }

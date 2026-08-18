@@ -25,3 +25,10 @@ export function plural(count: number, suffix = "s") {
   if (count > 1) return suffix
   return ""
 }
+
+/** Texte replié sur une ligne et coupé à `maxLength` : extraits de notes, d'emails, de cloche. */
+export function excerpt(content: string, maxLength: number) {
+  const flat = content.replace(/\s+/g, " ").trim()
+  if (flat.length <= maxLength) return flat
+  return `${flat.slice(0, maxLength - 1)}…`
+}

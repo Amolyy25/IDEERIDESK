@@ -1,14 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { findMentionedAgents } from "@/lib/mentions";
 import { sendAgentMentionEmail } from "@/lib/gmail-send";
+import { excerpt } from "@/lib/utils";
 
 /** Longueur de l'extrait figé dans la cloche — une ligne de liste, pas la note entière. */
 const EXCERPT_LENGTH = 200;
-
-function toExcerpt(content: string) {
-  const flat = content.replace(/\s+/g, " ").trim();
-  return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH - 1)}…` : flat;
-}
 
 /**
  * Traite les mentions « @Prénom Nom » d'une note interne : une notification en
@@ -56,11 +52,11 @@ export async function notifyMentionedAgents({
     return { mentionedNames: [] };
   }
 
-  const excerpt = toExcerpt(content);
+  const noteExcerpt = excerpt(content, EXCERPT_LENGTH);
   await prisma.notification.createMany({
     data: mentioned.map((agent) => ({
       type: "MENTION" as const,
-      excerpt,
+      excerpt: noteExcerpt,
       recipientId: agent.id,
       actorId,
       ticketId,

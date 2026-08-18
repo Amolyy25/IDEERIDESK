@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { sendNewQueueTicketEmail } from "@/lib/gmail-send";
+import { excerpt } from "@/lib/utils";
 
 /** Longueur de l'extrait de la demande repris dans l'email — pas la demande entière. */
 const EXCERPT_LENGTH = 400;
 
 function toExcerpt(content: string) {
-  const flat = content.replace(/\s+/g, " ").trim();
-  if (!flat) return "(message vide)";
-  return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH - 1)}…` : flat;
+  return excerpt(content, EXCERPT_LENGTH) || "(message vide)";
 }
 
 /**
