@@ -16,6 +16,8 @@ import {
   renderTicketAssignedEmailText,
   renderNewQueueTicketEmailHtml,
   renderNewQueueTicketEmailText,
+  renderAutomationAlertEmailHtml,
+  renderAutomationAlertEmailText,
   renderSlaWarningEmailHtml,
   renderSlaWarningEmailText,
   type EmailHistoryEntry,
@@ -525,6 +527,70 @@ export async function sendSlaWarningEmail({
       subject: `Échéance dans ${ticket.remainingLabel} · Ticket #${ticket.number} — ${ticket.subject.replace(/[\r\n]+/g, " ")}`,
       text: renderSlaWarningEmailText(payload),
       html: renderSlaWarningEmailHtml({ ...payload, layoutHtml, logoUrl: await getBrandLogoUrl(), origin: emailOrigin() }),
+    });
+
+    const raw = toBase64Url(await mail.compile().build());
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+
+    return { sent: true };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Envoi impossible." };
+  }
+}
+
+export async function sendAutomationAlertEmail({
+  to,
+  recipientName,
+  ruleName,
+  groupName,
+  ticket,
+}: {
+  to: string;
+  recipientName: string;
+  ruleName: string;
+  groupName: string;
+  ticket: {
+    id: string;
+    number: number;
+    subject: string;
+    statusName: string;
+    priorityName: string;
+    /** Nom du client seulement : cet email part à plusieurs personnes. */
+    clientLabel: string;
+  };
+}): Promise<{ sent: boolean; error?: string }> {
+  const authenticated = await getAuthenticatedGmailClient();
+  if (!authenticated) {
+    return { sent: false, error: "Gmail n'est pas connecté." };
+  }
+  const { gmail, account } = authenticated;
+
+  const ticketUrl = process.env.APP_URL ? `${process.env.APP_URL}/tickets/${ticket.id}` : null;
+  const payload = {
+    recipientName,
+    ruleName,
+    groupName,
+    ticketNumber: ticket.number,
+    ticketSubject: ticket.subject,
+    statusName: ticket.statusName,
+    priorityName: ticket.priorityName,
+    clientLabel: ticket.clientLabel,
+    ticketUrl,
+  };
+  const layoutHtml = await getEmailLayoutHtml();
+
+  try {
+    const mail = new MailComposer({
+      from: `"Ideeri Desk" <${account.email}>`,
+      to,
+      subject: `${ticket.statusName} · Ticket #${ticket.number} — ${ticket.subject.replace(/[\r\n]+/g, " ")}`,
+      text: renderAutomationAlertEmailText(payload),
+      html: renderAutomationAlertEmailHtml({
+        ...payload,
+        layoutHtml,
+        logoUrl: await getBrandLogoUrl(),
+        origin: emailOrigin(),
+      }),
     });
 
     const raw = toBase64Url(await mail.compile().build());

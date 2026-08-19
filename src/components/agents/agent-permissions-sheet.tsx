@@ -40,6 +40,7 @@ export type EditableAgent = {
   notifyOnAssignment: boolean;
   notifyOnNewTicket: boolean;
   notifyOnSlaWarning: boolean;
+  notifyOnAutomation: boolean;
 };
 
 type SharedProps = {
@@ -105,6 +106,7 @@ function PermissionsForm({
   const [notifyOnAssignment, setNotifyOnAssignment] = useState(agent.notifyOnAssignment);
   const [notifyOnNewTicket, setNotifyOnNewTicket] = useState(agent.notifyOnNewTicket);
   const [notifyOnSlaWarning, setNotifyOnSlaWarning] = useState(agent.notifyOnSlaWarning);
+  const [notifyOnAutomation, setNotifyOnAutomation] = useState(agent.notifyOnAutomation);
   const [granted, setGranted] = useState<PermissionKey[]>(() =>
     normalizePermissions(agent.permissions),
   );
@@ -155,6 +157,7 @@ function PermissionsForm({
           notifyOnAssignment,
           notifyOnNewTicket,
           notifyOnSlaWarning,
+          notifyOnAutomation,
         });
         // Pas de mise à jour optimiste de la liste : l'action revalide
         // `/agents`, le tableau se redessine avec ce que la base contient
@@ -245,6 +248,14 @@ function PermissionsForm({
               description="Peu avant l'expiration d'un délai, sur les tickets qui lui sont assignés — et sur ceux de sa file que personne n'a pris."
               checked={notifyOnSlaWarning}
               onChange={setNotifyOnSlaWarning}
+              disabled={isPending}
+            />
+            <Row
+              id="notify-automation"
+              label="Règle automatique sur sa file"
+              description="Quand une règle escalade un ticket vers l'un de ses groupes, sans l'assigner à personne."
+              checked={notifyOnAutomation}
+              onChange={setNotifyOnAutomation}
               disabled={isPending}
             />
           </div>

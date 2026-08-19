@@ -414,6 +414,93 @@ export function renderAgentMentionEmailHtml({
   }, origin);
 }
 
+// Règle automatique ayant agi sur un ticket suivi par un groupe. Pas d'auteur à
+// nommer : c'est la règle qui a agi, son nom tient ce rôle.
+export function renderAutomationAlertEmailHtml({
+  layoutHtml,
+  recipientName,
+  ruleName,
+  groupName,
+  ticketNumber,
+  ticketSubject,
+  statusName,
+  priorityName,
+  clientLabel,
+  ticketUrl,
+  logoUrl,
+  origin,
+}: {
+  layoutHtml: string;
+  recipientName: string;
+  ruleName: string;
+  groupName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  statusName: string;
+  priorityName: string;
+  clientLabel: string;
+  ticketUrl: string | null;
+  logoUrl?: string | null;
+  /** Adresse publique de l'application, ajoutée aux images. Voir `renderEmailLayout`. */
+  origin?: string;
+}) {
+  const content = `
+    <p style="margin:0 0 16px;">Bonjour ${escapeHtml(recipientName)},</p>
+    <p style="margin:0 0 16px;">
+      La règle <strong>${escapeHtml(ruleName)}</strong> vient d'agir sur le ticket
+      #${ticketNumber} — ${escapeHtml(ticketSubject)}, suivi par ${escapeHtml(groupName)}.
+      Il n'est assigné à personne.
+    </p>
+    ${renderInfoBox({
+      label: "Nouvel état",
+      body: `${escapeHtml(statusName)} · priorité ${escapeHtml(priorityName)} · ${escapeHtml(clientLabel)}`,
+    })}
+    ${renderButton({ url: ticketUrl, label: "Prendre le ticket" })}`;
+
+  return renderEmailLayout(layoutHtml, {
+    logoUrl: optionalText(logoUrl),
+    senderName: "Ideeri Desk",
+    headline: `${statusName} · Ticket #${ticketNumber}`,
+    content,
+    footer: "Email automatique — répondez depuis le ticket, pas par email.",
+  }, origin);
+}
+
+export function renderAutomationAlertEmailText({
+  recipientName,
+  ruleName,
+  groupName,
+  ticketNumber,
+  ticketSubject,
+  statusName,
+  priorityName,
+  clientLabel,
+  ticketUrl,
+}: {
+  recipientName: string;
+  ruleName: string;
+  groupName: string;
+  ticketNumber: number;
+  ticketSubject: string;
+  statusName: string;
+  priorityName: string;
+  clientLabel: string;
+  ticketUrl: string | null;
+}) {
+  const cta = ticketUrl ? `\n\nPrendre le ticket : ${ticketUrl}` : "";
+
+  return `Bonjour ${recipientName},
+
+La règle ${ruleName} vient d'agir sur le ticket #${ticketNumber} — ${ticketSubject}, suivi par ${groupName}.
+Il n'est assigné à personne.
+
+Nouvel état
+${statusName} · priorité ${priorityName} · ${clientLabel}${cta}
+
+—
+Email automatique — répondez depuis le ticket, pas par email.`;
+}
+
 /** Ticket confié à un agent. Même famille d'email interne que la mention. */
 export function renderTicketAssignedEmailHtml({
   layoutHtml,

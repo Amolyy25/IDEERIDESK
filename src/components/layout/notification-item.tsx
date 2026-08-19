@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AtSign, ShieldAlert, UserPlus } from "lucide-react";
+import { AtSign, ShieldAlert, UserPlus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format-date";
 import { describeNotification } from "@/lib/notification-display";
@@ -11,6 +11,7 @@ const ICONS = {
   MENTION: AtSign,
   ASSIGNMENT: UserPlus,
   SYSTEM_ALERT: ShieldAlert,
+  AUTOMATION: Zap,
 } as const;
 
 /** Une ligne de la cloche. Devient un bouton quand la notification ne mène nulle part. */
@@ -26,16 +27,7 @@ export function NotificationRow({
 
   const body = (
     <>
-      <Icon
-        className={cn(
-          "mt-0.5 h-4 w-4 shrink-0",
-          item.readAt
-            ? "text-muted-foreground"
-            : tone === "warning"
-              ? "text-destructive"
-              : "text-primary"
-        )}
-      />
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", iconColor(Boolean(item.readAt), tone))} />
       <span className="min-w-0 flex-1">
         <span className="block text-sm">
           <span className="font-medium">{lead}</span>
@@ -82,4 +74,11 @@ export function NotificationRow({
       {body}
     </Link>
   );
+}
+
+/** Une notification lue s'éteint ; non lue, sa couleur suit son ton. */
+function iconColor(isRead: boolean, tone: "info" | "warning") {
+  if (isRead) return "text-muted-foreground";
+  if (tone === "warning") return "text-destructive";
+  return "text-primary";
 }

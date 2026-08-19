@@ -146,6 +146,7 @@ const permissionsSchema = z.object({
   notifyOnAssignment: z.boolean(),
   notifyOnNewTicket: z.boolean(),
   notifyOnSlaWarning: z.boolean(),
+  notifyOnAutomation: z.boolean(),
 });
 
 /**
@@ -208,6 +209,7 @@ export async function updateAgentPermissions(
       notifyOnAssignment: data.notifyOnAssignment,
       notifyOnNewTicket: data.notifyOnNewTicket,
       notifyOnSlaWarning: data.notifyOnSlaWarning,
+      notifyOnAutomation: data.notifyOnAutomation,
     },
   });
 
@@ -296,6 +298,7 @@ type AgentAccess = {
   notifyOnAssignment: boolean;
   notifyOnNewTicket: boolean;
   notifyOnSlaWarning: boolean;
+  notifyOnAutomation: boolean;
 };
 
 /**
@@ -331,6 +334,7 @@ function diffAgentAccess(before: AgentAccess, after: AgentAccess): AuditChange[]
     { key: "notifyOnAssignment", label: "Email · ticket qui lui est assigné" },
     { key: "notifyOnNewTicket", label: "Email · nouveau ticket dans sa file" },
     { key: "notifyOnSlaWarning", label: "Email · échéance SLA imminente" },
+    { key: "notifyOnAutomation", label: "Email · règle automatique sur sa file" },
   ] as const;
 
   for (const preference of emailPreferences) {

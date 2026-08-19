@@ -163,7 +163,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         permission: "settings.workspace",
         label: "Règles automatiques",
         description:
-          "Actions déclenchées seules sur les tickets restés trop longtemps sans activité.",
+          "Actions déclenchées seules sur les tickets d'un statut et d'une priorité donnés restés trop longtemps sans activité.",
       },
     ],
   },

@@ -34,7 +34,7 @@ model Agent {
   avatarUrl String?
   isActive  Boolean   @default(true)
 
-  approvalStatus AgentApprovalStatus @default(PENDING)
+  approvalStatus    AgentApprovalStatus @default(PENDING)
   approvalDecidedAt DateTime?
 
   // Voir `Client.anonymizedAt` : même geste, sur un compte de l'équipe. Le
@@ -75,14 +75,16 @@ model Agent {
   notifyOnAssignment Boolean @default(true)
   notifyOnNewTicket  Boolean @default(true)
   notifyOnSlaWarning Boolean @default(true)
+  notifyOnAutomation Boolean @default(true)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  assignedTickets  Ticket[]  @relation("TicketAssignee")
-  messages         Message[]
-  approvedMessages Message[] @relation("MessageApprovedBy")
-  groups           Group[]
+  assignedTickets   Ticket[]         @relation("TicketAssignee")
+  automationActions AutomationRule[] @relation("AutomationActionAssignee")
+  messages          Message[]
+  approvedMessages  Message[]        @relation("MessageApprovedBy")
+  groups            Group[]
 
   notifications     Notification[] @relation("NotificationRecipient")
   sentNotifications Notification[] @relation("NotificationActor")
@@ -116,6 +118,8 @@ model Group {
 
   members  Agent[]
   products TicketCategory[]
+
+  automationAlerts AutomationRule[] @relation("AutomationNotifyGroup")
 
   @@map("groups")
 }
@@ -174,22 +178,22 @@ model Client {
 // ---------------------------------------------------------------------------
 
 model TicketStatus {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  color     String   @default("#71717a")
-  order     Int      @default(0)
-  isDefault Boolean  @default(false)
-  isClosed  Boolean  @default(false)
+  id                  String  @id @default(cuid())
+  name                String  @unique
+  color               String  @default("#71717a")
+  order               Int     @default(0)
+  isDefault           Boolean @default(false)
+  isClosed            Boolean @default(false)
   // Un seul statut peut porter ce flag — cible automatique du bouton
   // "Prendre en charge" sur un ticket (comme isDefault, géré en singleton).
   isInProgressDefault Boolean @default(false)
   // Idem pour le bouton "Clore ce ticket" — singleton, cible du statut de clôture.
-  isCloseDefault Boolean @default(false)
+  isCloseDefault      Boolean @default(false)
   // Statut appliqué quand un client répond par email à un ticket déjà clos —
   // singleton comme les précédents. Sans flag posé, la réouverture retombe sur
   // le statut `isDefault` : un client qui relance ne doit jamais rester bloqué
   // derrière un ticket fermé que personne ne rouvre.
-  isReopenDefault Boolean @default(false)
+  isReopenDefault     Boolean @default(false)
 
   // Suspend l'horloge SLA tant que le ticket porte ce statut (typiquement « En
   // attente du client »). Désactivé partout par défaut : c'est le réglage le
@@ -209,11 +213,11 @@ model TicketStatus {
 }
 
 model TicketPriority {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  color     String   @default("#71717a")
-  order     Int      @default(0)
-  isDefault Boolean  @default(false)
+  id        String  @id @default(cuid())
+  name      String  @unique
+  color     String  @default("#71717a")
+  order     Int     @default(0)
+  isDefault Boolean @default(false)
 
   // --- Engagements de délai (SLA) ---
   // Deux délais distincts, en minutes, comptés depuis l'arrivée du ticket :
@@ -234,16 +238,18 @@ model TicketPriority {
 
   tickets Ticket[]
 
+  automationActions AutomationRule[] @relation("AutomationActionPriority")
+
   @@map("ticket_priorities")
 }
 
 model TicketCategory {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String  @id @default(cuid())
+  name        String  @unique
   description String?
-  color       String   @default("#71717a")
-  order       Int      @default(0)
-  isDefault   Boolean  @default(false)
+  color       String  @default("#71717a")
+  order       Int     @default(0)
+  isDefault   Boolean @default(false)
 
   // Mots qui, dans un email entrant, désignent ce produit — un email n'a pas de
   // liste déroulante, le tri à l'arrivée n'a que ce que le client a écrit. Se
@@ -253,8 +259,8 @@ model TicketCategory {
   // Voir `detectProductFromEmail`.
   emailKeywords String[] @default([])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tickets Ticket[]
   groups  Group[]
@@ -270,18 +276,18 @@ enum CustomFieldType {
 }
 
 model CustomField {
-  id         String          @id @default(cuid())
-  label      String
-  key        String          @unique
-  type       CustomFieldType
-  options    Json? // liste de choix pour le type DROPDOWN, ex: ["Option A", "Option B"]
-  helpText   String? // petit texte d'aide affiché sous le champ (widget + fiche ticket)
-  autofillFromSourceUrl Boolean @default(false) // champs TEXT uniquement : pré-rempli avec l'URL de la page d'origine sur le widget
-  isRequired Boolean         @default(false)
-  order      Int             @default(0)
-  isActive   Boolean         @default(true)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  id                    String          @id @default(cuid())
+  label                 String
+  key                   String          @unique
+  type                  CustomFieldType
+  options               Json? // liste de choix pour le type DROPDOWN, ex: ["Option A", "Option B"]
+  helpText              String? // petit texte d'aide affiché sous le champ (widget + fiche ticket)
+  autofillFromSourceUrl Boolean         @default(false) // champs TEXT uniquement : pré-rempli avec l'URL de la page d'origine sur le widget
+  isRequired            Boolean         @default(false)
+  order                 Int             @default(0)
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
   @@map("custom_fields")
 }
@@ -399,9 +405,9 @@ model Source {
   successMessage  String?
 
   // --- Blocs standards, activables source par source ---
-  showCategoryField Boolean @default(true)
-  allowAttachments  Boolean @default(true)
-  showBannerMessage Boolean @default(true) // bandeau global `widget_banner_message`
+  showCategoryField     Boolean @default(true)
+  allowAttachments      Boolean @default(true)
+  showBannerMessage     Boolean @default(true) // bandeau global `widget_banner_message`
   // Les champs personnalisés globaux (CustomField) s'ajoutent aux champs
   // propres à la source. Désactivé, seuls les champs ci-dessous s'affichent.
   useGlobalCustomFields Boolean @default(true)
@@ -551,8 +557,8 @@ model Ticket {
   notifications Notification[]
   auditEntries  AuditLog[]
 
-  duplicateSuggestions   TicketDuplicateSuggestion[] @relation("DuplicateSuggestionTicket")
-  duplicateCandidateFor  TicketDuplicateSuggestion[] @relation("DuplicateSuggestionCandidate")
+  duplicateSuggestions  TicketDuplicateSuggestion[] @relation("DuplicateSuggestionTicket")
+  duplicateCandidateFor TicketDuplicateSuggestion[] @relation("DuplicateSuggestionCandidate")
 
   presences TicketPresence[]
 
@@ -684,13 +690,13 @@ enum MessageApprovalStatus {
 }
 
 model Message {
-  id         String            @id @default(cuid())
+  id             String            @id @default(cuid())
   // Texte brut du message, TOUJOURS renseigné. C'est la version qui sert à tout
   // ce qui n'affiche pas de mise en forme : recherche plein texte de la liste,
   // export CSV, dossier RGPD, contexte envoyé à l'IA, historique repris en bas
   // des emails, et la partie text/plain de l'email lui-même. Quand une réponse
   // est écrite en éditeur riche, c'est la retranscription de `contentHtml`.
-  content    String
+  content        String
   // Mise en forme de la réponse, quand elle en a une. Nul sur tout l'historique
   // et sur les messages entrants (un email reçu est réduit à son texte à la
   // synchronisation, voir gmail-sync.ts) : l'affichage retombe alors sur
@@ -698,18 +704,18 @@ model Message {
   //
   // Colonne séparée et non un remplacement de `content` : la liste ci-dessus
   // veut du texte, pas des balises à retirer à chaque lecture.
-  contentHtml String?
-  authorType MessageAuthorType
+  contentHtml    String?
+  authorType     MessageAuthorType
   // Note interne (non visible du client, pas d'envoi d'email) vs réponse
   // publique. Fait déjà office de "is_internal" — pas de champ dupliqué.
-  isPrivate  Boolean           @default(false)
-  emailSent  Boolean           @default(false) // réponse publique effectivement envoyée par email
-  gmailMessageId String?       @unique // id Gmail du message entrant/sortant correspondant (dédoublonnage sync)
+  isPrivate      Boolean           @default(false)
+  emailSent      Boolean           @default(false) // réponse publique effectivement envoyée par email
+  gmailMessageId String?           @unique // id Gmail du message entrant/sortant correspondant (dédoublonnage sync)
 
   approvalStatus MessageApprovalStatus?
   approvedAt     DateTime?
 
-  createdAt  DateTime          @default(now())
+  createdAt DateTime @default(now())
 
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   ticketId String
@@ -798,6 +804,9 @@ enum NotificationType {
   // Panne d'un service de fond (antivirus pour l'instant). Pas d'auteur ni de
   // ticket : tout le message tient dans `excerpt`.
   SYSTEM_ALERT
+  // Règle automatique ayant agi sur un ticket suivi par un groupe. Pas d'auteur
+  // — personne ne l'a déclenchée — mais un ticket, contrairement à SYSTEM_ALERT.
+  AUTOMATION
 }
 
 // Un agent mentionné en @ dans une note interne reçoit à la fois un email et
@@ -1214,7 +1223,7 @@ model KnowledgeArticle {
   // Lien de partage optionnel — absent tant que l'auteur n'a pas activé le
   // partage. `shareScope` choisit au cas par cas si le lien est consultable
   // sans connexion (PUBLIC) ou seulement par un agent connecté (INTERNAL).
-  shareToken String?             @unique
+  shareToken String?              @unique
   shareScope KnowledgeShareScope?
 
   @@index([categoryId])
@@ -1265,25 +1274,63 @@ model ArticleTemplate {
 // ---------------------------------------------------------------------------
 
 model AutomationRule {
-  id        String  @id @default(cuid())
-  name      String
-  isActive  Boolean @default(true)
+  id       String  @id @default(cuid())
+  name     String
+  isActive Boolean @default(true)
 
   // Délai d'inactivité (basé sur `Ticket.updatedAt`) avant que la règle ne
-  // s'applique à un ticket dans le statut déclencheur.
-  delayDays Int @default(3)
+  // s'applique à un ticket dans le statut déclencheur. En minutes : une
+  // escalade sur les tickets urgents se compte en heures, pas en jours.
+  delayMinutes Int @default(4320)
 
   triggerStatus   TicketStatus @relation("AutomationTriggerStatus", fields: [triggerStatusId], references: [id])
   triggerStatusId String
 
+  // Priorités concernées, liste vide = toutes. Des ids plutôt qu'une relation :
+  // supprimer une priorité retire la règle de la circulation au lieu de vider
+  // son filtre, ce qu'un ON DELETE CASCADE ferait en l'élargissant à tous les
+  // tickets du statut.
+  triggerPriorityIds String[] @default([])
+
+  // Produits concernés, liste vide = tous. Même choix que les priorités.
+  triggerCategoryIds String[] @default([])
+
+  // Filtres qui ne se déduisent d'aucune liste administrable.
+  //
+  // `onlyUnanswered` est celui qui manquait le plus : « sans activité » compte
+  // n'importe quel mouvement sur le ticket, y compris une note interne, alors
+  // que la règle qu'on veut écrire est « personne n'a répondu au client ».
+  onlyUnanswered  Boolean @default(false)
+  onlyUnassigned  Boolean @default(false)
+  onlyBreachedSla Boolean @default(false)
+
   actionStatus   TicketStatus @relation("AutomationActionStatus", fields: [actionStatusId], references: [id])
   actionStatusId String
+
+  // Actions facultatives : `null` = ne pas y toucher. Le changement de statut
+  // reste obligatoire, c'est lui qui sort le ticket du filtre de la règle et la
+  // rend rejouable sans registre (voir `runAutomations`).
+  actionPriority   TicketPriority? @relation("AutomationActionPriority", fields: [actionPriorityId], references: [id])
+  actionPriorityId String?
+
+  actionAssignee   Agent?  @relation("AutomationActionAssignee", fields: [actionAssigneeId], references: [id])
+  actionAssigneeId String?
+
+  // Prévenir un groupe au lieu de confier le ticket à quelqu'un : un ticket n'a
+  // qu'un assigné, un groupe en compte plusieurs. Ses membres reçoivent cloche
+  // et email, le ticket reste non assigné. Exclusif de `actionAssigneeId`.
+  actionNotifyGroup   Group?  @relation("AutomationNotifyGroup", fields: [actionNotifyGroupId], references: [id])
+  actionNotifyGroupId String?
 
   addNote     Boolean @default(true)
   noteContent String  @default("Ticket automatiquement fermé après inactivité.")
 
   sendEmail    Boolean @default(false)
+  // Deux formes du même message : `emailContent` est la partie text/plain,
+  // `emailHtml` la mise en forme saisie dans l'éditeur. L'habillage de
+  // /settings/email-layout est appliqué à l'envoi, pas stocké ici.
   emailContent String?
+  emailHtml    String?
 
   lastRunAt DateTime?
   createdAt DateTime  @default(now())

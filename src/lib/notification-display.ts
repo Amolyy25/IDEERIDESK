@@ -20,6 +20,12 @@ export function describeNotification(item: NotificationItem): NotificationDispla
     return { lead: "Alerte système", action: "", href: null, tone: "warning" };
   }
 
+  // Pas d'auteur à nommer : personne ne l'a déclenchée. Comme pour l'alerte
+  // système, tout le message tient dans l'extrait — mais elle mène au ticket.
+  if (item.type === "AUTOMATION") {
+    return { lead: "Règle automatique", action: "", href: ticketHref(item), tone: "warning" };
+  }
+
   return {
     lead: item.actor?.name ?? "Un agent",
     action: item.type === "ASSIGNMENT" ? "vous a assigné un ticket" : "vous a mentionné",
