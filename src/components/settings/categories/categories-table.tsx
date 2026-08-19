@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,22 +13,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { AttributeDeleteDialog } from "@/components/settings/attribute-delete-dialog";
 import { CategoryDialog } from "@/components/settings/categories/category-dialog";
 import { deleteTicketCategory } from "@/lib/actions/categories";
 import type { TicketCategory } from "@/generated/prisma/client";
+import type { DeletionImpact } from "@/lib/ticket-attribute-impact";
 
-export function CategoriesTable({ categories }: { categories: TicketCategory[] }) {
+export function CategoriesTable({
+  categories,
+  impacts,
+}: {
+  categories: TicketCategory[];
+  /** Ce que la suppression de chaque valeur entraînerait, par identifiant. */
+  impacts: Record<string, DeletionImpact>;
+}) {
   const router = useRouter();
 
   async function handleDelete(id: string) {
@@ -98,28 +96,11 @@ export function CategoriesTable({ categories }: { categories: TicketCategory[] }
                         </Button>
                       }
                     />
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer ce produit concerné ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. Les tickets utilisant ce produit
-                            concerné doivent d&apos;abord être réassignés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(category.id)}>
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <AttributeDeleteDialog
+                      label={category.name}
+                      impact={impacts[category.id]}
+                      onConfirm={() => handleDelete(category.id)}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

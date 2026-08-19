@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getTicketStatuses } from "@/lib/actions/statuses";
+import { getStatusDeletionImpacts } from "@/lib/ticket-attribute-deletion";
 import { StatusesTable } from "@/components/settings/statuses/statuses-table";
 import { StatusDialog } from "@/components/settings/statuses/status-dialog";
 import {
@@ -16,7 +17,10 @@ export default async function StatusesSettingsPage() {
     return <SettingsNoAccess href={HREF} />;
   }
 
-  const statuses = await getTicketStatuses();
+  const [statuses, impacts] = await Promise.all([
+    getTicketStatuses(),
+    getStatusDeletionImpacts(),
+  ]);
 
   return (
     <SettingsSection
@@ -32,7 +36,7 @@ export default async function StatusesSettingsPage() {
         />
       }
     >
-      <StatusesTable statuses={statuses} />
+      <StatusesTable statuses={statuses} impacts={impacts} />
     </SettingsSection>
   );
 }

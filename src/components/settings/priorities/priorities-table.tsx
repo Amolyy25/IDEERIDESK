@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,22 +13,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { AttributeDeleteDialog } from "@/components/settings/attribute-delete-dialog";
 import { PriorityDialog } from "@/components/settings/priorities/priority-dialog";
 import { deleteTicketPriority } from "@/lib/actions/priorities";
 import type { TicketPriority } from "@/generated/prisma/client";
+import type { DeletionImpact } from "@/lib/ticket-attribute-impact";
 
-export function PrioritiesTable({ priorities }: { priorities: TicketPriority[] }) {
+export function PrioritiesTable({
+  priorities,
+  impacts,
+}: {
+  priorities: TicketPriority[];
+  /** Ce que la suppression de chaque valeur entraînerait, par identifiant. */
+  impacts: Record<string, DeletionImpact>;
+}) {
   const router = useRouter();
 
   async function handleDelete(id: string) {
@@ -77,28 +75,11 @@ export function PrioritiesTable({ priorities }: { priorities: TicketPriority[] }
                         </Button>
                       }
                     />
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer cette priorité ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. Les tickets utilisant cette priorité
-                            doivent d&apos;abord être réassignés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(priority.id)}>
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <AttributeDeleteDialog
+                      label={priority.name}
+                      impact={impacts[priority.id]}
+                      onConfirm={() => handleDelete(priority.id)}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

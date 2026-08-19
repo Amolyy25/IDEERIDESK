@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApprovedAgent, requirePermission } from "@/lib/require-permission";
+import {
+  getStatusDeletionImpacts,
+  moveTicketsOffStatus,
+} from "@/lib/ticket-attribute-deletion";
 
 const statusSchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(60),
@@ -75,12 +79,22 @@ export async function updateTicketStatus(id: string, input: z.infer<typeof statu
   revalidatePath("/settings/statuses");
 }
 
+// Les tickets ne bloquent plus la suppression : ils passent au statut par défaut,
+// ce que le dialogue annonce avant. Ce qui bloque, ce sont les automatisations —
+// FK RESTRICT en base, et une règle privée de son statut n'a de toute façon pas
+// de réécriture évidente à faire à sa place.
 export async function deleteTicketStatus(id: string) {
   await requirePermission("settings.tickets");
-  const inUse = await prisma.ticket.count({ where: { statusId: id } });
-  if (inUse > 0) {
-    throw new Error("Ce statut est utilisé par des tickets et ne peut pas être supprimé.");
+
+  const impact = (await getStatusDeletionImpacts())[id];
+  if (!impact) throw new Error("Statut introuvable.");
+  if (impact.blockers.length > 0) throw new Error(impact.blockers.join(" "));
+
+  if (impact.ticketCount > 0 && impact.fallbackId) {
+    await moveTicketsOffStatus(id, impact.fallbackId);
+    revalidatePath("/tickets");
   }
+
   await prisma.ticketStatus.delete({ where: { id } });
   revalidatePath("/settings/statuses");
 }

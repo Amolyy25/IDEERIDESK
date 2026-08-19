@@ -1287,9 +1287,10 @@ model AutomationRule {
   triggerStatusId String
 
   // Priorités concernées, liste vide = toutes. Des ids plutôt qu'une relation :
-  // supprimer une priorité retire la règle de la circulation au lieu de vider
-  // son filtre, ce qu'un ON DELETE CASCADE ferait en l'élargissant à tous les
-  // tickets du statut.
+  // un ON DELETE CASCADE viderait le filtre, donc élargirait la règle à tous les
+  // tickets du statut. Supprimer une priorité citée ici est de toute façon refusé
+  // (voir `buildPriorityImpact`) ; un id resté orphelin ne fait que retirer la
+  // règle de la circulation.
   triggerPriorityIds String[] @default([])
 
   // Produits concernés, liste vide = tous. Même choix que les priorités.

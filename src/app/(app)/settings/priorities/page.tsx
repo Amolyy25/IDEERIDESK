@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getTicketPriorities } from "@/lib/actions/priorities";
+import { getPriorityDeletionImpacts } from "@/lib/ticket-attribute-deletion";
 import { PrioritiesTable } from "@/components/settings/priorities/priorities-table";
 import { PriorityDialog } from "@/components/settings/priorities/priority-dialog";
 import {
@@ -16,7 +17,10 @@ export default async function PrioritiesSettingsPage() {
     return <SettingsNoAccess href={HREF} />;
   }
 
-  const priorities = await getTicketPriorities();
+  const [priorities, impacts] = await Promise.all([
+    getTicketPriorities(),
+    getPriorityDeletionImpacts(),
+  ]);
 
   return (
     <SettingsSection
@@ -32,7 +36,7 @@ export default async function PrioritiesSettingsPage() {
         />
       }
     >
-      <PrioritiesTable priorities={priorities} />
+      <PrioritiesTable priorities={priorities} impacts={impacts} />
     </SettingsSection>
   );
 }

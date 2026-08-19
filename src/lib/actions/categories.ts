@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/require-permission";
+import {
+  clearCategoryOnTickets,
+  getCategoryDeletionImpacts,
+} from "@/lib/ticket-attribute-deletion";
 
 /**
  * Assez pour couvrir les variantes d'écriture d'un produit (nom commercial,
@@ -94,12 +98,21 @@ export async function updateTicketCategory(id: string, input: z.infer<typeof cat
   revalidatePath("/settings/categories");
 }
 
+// Le produit est facultatif sur un ticket : il est vidé plutôt que déplacé, ce
+// qui évite de faire dire à un dossier qu'il concerne un produit qu'il ne
+// concerne pas. Voir `deleteTicketStatus` pour le reste de la règle.
 export async function deleteTicketCategory(id: string) {
   await requirePermission("settings.tickets");
-  const inUse = await prisma.ticket.count({ where: { categoryId: id } });
-  if (inUse > 0) {
-    throw new Error("Ce produit concerné est utilisé par des tickets et ne peut pas être supprimé.");
+
+  const impact = (await getCategoryDeletionImpacts())[id];
+  if (!impact) throw new Error("Produit concerné introuvable.");
+  if (impact.blockers.length > 0) throw new Error(impact.blockers.join(" "));
+
+  if (impact.ticketCount > 0) {
+    await clearCategoryOnTickets(id);
+    revalidatePath("/tickets");
   }
+
   await prisma.ticketCategory.delete({ where: { id } });
   revalidatePath("/settings/categories");
 }

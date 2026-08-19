@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,22 +13,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { AttributeDeleteDialog } from "@/components/settings/attribute-delete-dialog";
 import { StatusDialog } from "@/components/settings/statuses/status-dialog";
 import { deleteTicketStatus } from "@/lib/actions/statuses";
 import type { TicketStatus } from "@/generated/prisma/client";
+import type { DeletionImpact } from "@/lib/ticket-attribute-impact";
 
-export function StatusesTable({ statuses }: { statuses: TicketStatus[] }) {
+export function StatusesTable({
+  statuses,
+  impacts,
+}: {
+  statuses: TicketStatus[];
+  /** Ce que la suppression de chaque valeur entraînerait, par identifiant. */
+  impacts: Record<string, DeletionImpact>;
+}) {
   const router = useRouter();
 
   async function handleDelete(id: string) {
@@ -86,28 +84,11 @@ export function StatusesTable({ statuses }: { statuses: TicketStatus[] }) {
                         </Button>
                       }
                     />
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer ce statut ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. Les tickets utilisant ce statut
-                            doivent d&apos;abord être réassignés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(status.id)}>
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <AttributeDeleteDialog
+                      label={status.name}
+                      impact={impacts[status.id]}
+                      onConfirm={() => handleDelete(status.id)}
+                    />
                   </div>
                 </TableCell>
               </TableRow>
