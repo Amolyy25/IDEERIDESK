@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pingAntivirus } from "@/lib/antivirus";
 import { rescanPendingFiles } from "@/lib/antivirus-rescan";
 import { hasValidCronSecret } from "@/lib/cron-secret";
+import { recordCronRun } from "@/lib/cron-heartbeat";
 
 /**
  * Reprise des fichiers restés en attente d'analyse — même schéma que
@@ -28,6 +29,13 @@ export async function POST(request: NextRequest) {
   // semaines ». C'est le champ sur lequel brancher une alerte.
   const antivirus = await pingAntivirus();
   const report = await rescanPendingFiles();
+
+  // Un passage qui a tourné sans joindre clamd ne vaut pas mieux qu'un passage
+  // absent : dans les deux cas plus rien n'est vérifié. Il compte donc comme un
+  // échec, ce qui déclenche l'alerte dans la cloche des agents (voir
+  // `notifyAntivirusFailure`).
+  const ok = antivirus.ok && report.stoppedBecause !== "scanner-indisponible";
+  await recordCronRun("antivirus", { ok, detail: report.detail ?? antivirus.detail });
 
   return NextResponse.json({ antivirus, ...report });
 }

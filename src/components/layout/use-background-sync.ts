@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { triggerManualGmailSync } from "@/lib/actions/gmail-sync";
 import { isStaleDeployment, noticeStaleDeployment } from "@/lib/stale-deployment";
+import { describeNotification, notificationToast } from "@/lib/notification-display";
 import {
   getMyNotifications,
   markAllNotificationsRead,
@@ -63,17 +64,33 @@ export function useBackgroundSync({
     if (!announce || fresh.length === 0) return false;
 
     const [first] = fresh;
-    const actorName = first.actor?.name ?? "Un agent";
-    const onTicket = first.ticket ? ` · ticket #${first.ticket.number}` : "";
-    toast.info(
-      fresh.length === 1
-        ? first.type === "ASSIGNMENT"
-          ? `${actorName} vous a assigné un ticket${onTicket}`
-          : `${actorName} vous a mentionné${onTicket}`
-        : `${fresh.length} nouvelles notifications`
+    // Une panne de service passe en `warning` même noyée dans un lot : c'est la
+    // seule notification que personne ne peut traiter en ouvrant un ticket.
+    const notify = fresh.some((item) => describeNotification(item).tone === "warning")
+      ? toast.warning
+      : toast.info;
+
+    notify(
+      fresh.length === 1 ? notificationToast(first) : `${fresh.length} nouvelles notifications`
     );
     return true;
   }, []);
+
+  // Une panne de service est annoncée à l'arrivée sur l'espace agent : le seul
+  // signe visible sans ça est un compteur de cloche incrémenté, que personne ne
+  // regarde. Le drapeau sert à ne pas rejouer le toast à chaque `router.refresh()`,
+  // qui renvoie de nouveaux `initialItems`.
+  const alertAnnounced = useRef(false);
+
+  useEffect(() => {
+    if (alertAnnounced.current) return;
+    alertAnnounced.current = true;
+
+    const failure = initialItems.find(
+      (item) => !item.readAt && describeNotification(item).tone === "warning"
+    );
+    if (failure) toast.warning(notificationToast(failure));
+  }, [initialItems]);
 
   useEffect(() => {
     const interval = setInterval(async () => {

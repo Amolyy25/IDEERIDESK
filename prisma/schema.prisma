@@ -795,6 +795,9 @@ enum NotificationType {
   // Sans cette notification, une réassignation était totalement silencieuse :
   // le ticket changeait de main sans que personne ne l'apprenne.
   ASSIGNMENT
+  // Panne d'un service de fond (antivirus pour l'instant). Pas d'auteur ni de
+  // ticket : tout le message tient dans `excerpt`.
+  SYSTEM_ALERT
 }
 
 // Un agent mentionné en @ dans une note interne reçoit à la fois un email et
@@ -1144,6 +1147,33 @@ model GlobalSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("global_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Battements des tâches planifiées
+// ---------------------------------------------------------------------------
+
+// Une ligne par tâche déclenchée de l'extérieur. L'ordonnanceur vit hors de
+// l'app : quand il tombe, ou quand l'app répond 502 pendant un redéploiement,
+// aucun code d'ici ne s'exécute pour le signaler. La panne se déduit donc de
+// l'absence de battement, comparée à l'intervalle attendu au moment de la
+// lecture (voir src/lib/cron-heartbeat.ts).
+model CronHeartbeat {
+  job String @id
+
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  // Cause du dernier échec, reprise telle quelle dans la notification.
+  lastDetail    String?
+
+  // Épisode de panne déjà signalé aux agents. Remis à null par le premier
+  // passage sain : sans ça, une panne de trois jours renotifierait à chaque
+  // relève de la cloche, toutes les minutes et pour chaque agent connecté.
+  alertedAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("cron_heartbeats")
 }
 
 // ---------------------------------------------------------------------------

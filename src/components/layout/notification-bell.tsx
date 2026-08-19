@@ -1,19 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { AtSign, Bell, UserPlus } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { formatRelativeDate } from "@/lib/format-date";
-import { noteAnchor } from "@/lib/note-replies";
+import { NotificationRow } from "@/components/layout/notification-item";
 import type { NotificationItem } from "@/lib/actions/notifications";
 
 /**
- * Cloche des notifications internes — mentions @ et tickets confiés. Purement
- * présentationnelle : l'état et la relève viennent de `useBackgroundSync`,
- * appelé une seule fois par la barre latérale — c'est ce qui garantit un seul
- * intervalle de polling par onglet.
+ * Cloche des notifications internes — mentions @, tickets confiés et pannes des
+ * services de fond. Purement présentationnelle : l'état et la relève viennent
+ * de `useBackgroundSync`, appelé une seule fois par la barre latérale — c'est
+ * ce qui garantit un seul intervalle de polling par onglet.
  */
 export function NotificationBell({
   items,
@@ -74,62 +71,20 @@ export function NotificationBell({
           </p>
         ) : (
           <ul className="max-h-96 overflow-y-auto py-1">
-            {items.map((item) => {
-              const isAssignment = item.type === "ASSIGNMENT";
-              const Icon = isAssignment ? UserPlus : AtSign;
-
-              return (
+            {items.map((item) => (
               <li key={item.id}>
-                <Link
-                  href={ticketHref(item)}
-                  onClick={() => {
+                <NotificationRow
+                  item={item}
+                  onSelect={() => {
                     setIsOpen(false);
                     if (!item.readAt) onRead(item.id);
                   }}
-                  className={cn(
-                    "flex gap-2.5 px-3 py-2.5 transition-colors hover:bg-accent/60",
-                    !item.readAt && "bg-primary/5"
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      "mt-0.5 h-4 w-4 shrink-0",
-                      item.readAt ? "text-muted-foreground" : "text-primary"
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm">
-                      <span className="font-medium">{item.actor?.name ?? "Un agent"}</span>{" "}
-                      {isAssignment ? "vous a assigné un ticket" : "vous a mentionné"}
-                      {item.ticket && (
-                        <span className="text-muted-foreground">
-                          {" "}
-                          · #{item.ticket.number} {item.ticket.subject}
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                      {item.excerpt}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground/80">
-                      {formatRelativeDate(item.createdAt)}
-                    </span>
-                  </span>
-                </Link>
+                />
               </li>
-              );
-            })}
+            ))}
           </ul>
         )}
       </PopoverContent>
     </Popover>
   );
-}
-
-// Seules les notes portent une ancre dans le fil (voir `MessageTimelineItem`) :
-// une notification d'assignation retombe sur le ticket.
-function ticketHref(item: NotificationItem) {
-  if (!item.ticket) return "/tickets";
-  const ticket = `/tickets/${item.ticket.id}`;
-  return item.messageId ? `${ticket}#${noteAnchor(item.messageId)}` : ticket;
 }

@@ -32,6 +32,7 @@ const PAGE_SIZE = 25;
 
 type ScanTarget = {
   label: string;
+  countPending: () => Promise<number>;
   listPending: (take: number) => Promise<{ id: string }[]>;
   load: (id: string) => Promise<{ data: Uint8Array } | null>;
   markClean: (id: string) => Promise<unknown>;
@@ -73,6 +74,7 @@ const ORDER = { createdAt: "asc" } as const;
 const TARGETS: ScanTarget[] = [
   {
     label: "attachment",
+    countPending: () => prisma.attachment.count({ where: PENDING }),
     listPending: (take) =>
       prisma.attachment.findMany({ where: PENDING, select: { id: true }, orderBy: ORDER, take }),
     load: (id) => prisma.attachment.findUnique({ where: { id }, select: { data: true } }),
@@ -82,6 +84,7 @@ const TARGETS: ScanTarget[] = [
   },
   {
     label: "portalAsset",
+    countPending: () => prisma.portalAsset.count({ where: PENDING }),
     listPending: (take) =>
       prisma.portalAsset.findMany({ where: PENDING, select: { id: true }, orderBy: ORDER, take }),
     load: (id) => prisma.portalAsset.findUnique({ where: { id }, select: { data: true } }),
@@ -91,6 +94,7 @@ const TARGETS: ScanTarget[] = [
   },
   {
     label: "knowledgeArticleImage",
+    countPending: () => prisma.knowledgeArticleImage.count({ where: PENDING }),
     listPending: (take) =>
       prisma.knowledgeArticleImage.findMany({
         where: PENDING,
@@ -104,6 +108,12 @@ const TARGETS: ScanTarget[] = [
       prisma.knowledgeArticleImage.update({ where: { id }, data: QUARANTINE_PATCH(signature) }),
   },
 ];
+
+/** Fichiers restant à analyser, toutes tables confondues. */
+export async function countPendingFiles() {
+  const counts = await Promise.all(TARGETS.map((target) => target.countPending()));
+  return counts.reduce((total, count) => total + count, 0);
+}
 
 export type RescanReport = {
   scanned: number;

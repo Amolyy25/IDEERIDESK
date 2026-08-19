@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireApprovedAgent } from "@/lib/require-permission";
+import { notifyAntivirusFailure } from "@/lib/antivirus-alert";
 
 const notificationSelect = {
   id: true,
@@ -42,6 +43,10 @@ export async function getMyNotifications() {
       take: 20,
     }),
     prisma.notification.count({ where: { recipientId, readAt: null } }),
+    // Relevé ici parce que c'est le seul chemin qui tourne quoi qu'il arrive à
+    // l'ordonnanceur — lui ne peut pas signaler qu'il est tombé. Concurrent de
+    // la lecture, donc une alerte créée à l'instant paraît au cycle suivant.
+    notifyAntivirusFailure(),
   ]);
 
   return { items, unreadCount };
