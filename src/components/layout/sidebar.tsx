@@ -20,8 +20,9 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useBackgroundSync } from "@/components/layout/use-background-sync";
 import type { NotificationItem } from "@/lib/actions/notifications";
+import { CommandPalette } from "@/components/layout/command-palette/command-palette";
 import { visibleNavGroups } from "@/lib/app-navigation";
-import { canAny, permissionsInGroup, type PermissionKey } from "@/lib/permissions";
+import { can, canAny, permissionsInGroup, type PermissionKey } from "@/lib/permissions";
 
 /** Une entrée « Paramètres » n'a de sens que pour qui peut ouvrir au moins une section. */
 const SETTINGS_PERMISSIONS = permissionsInGroup("settings");
@@ -42,7 +43,11 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/privacy": ShieldUser,
 };
 
-const SETTINGS_ITEM = { label: "Paramètres", href: "/settings" };
+const SETTINGS_ITEM = {
+  label: "Paramètres",
+  href: "/settings",
+  keywords: ["settings", "reglages", "configuration", "preferences"],
+};
 
 type CurrentAgent = { name: string | null | undefined; email: string | null | undefined };
 
@@ -145,6 +150,13 @@ export function Sidebar({
   const navGroups = visibleNavGroups(permissions);
   const showSettings = canAny(permissions, SETTINGS_PERMISSIONS);
 
+  // La palette cherche d'abord des tickets : sans « tickets.view », il ne lui
+  // resterait que les liens déjà présents juste en dessous.
+  const palettePages = [
+    ...navGroups.flatMap((group) => group.items),
+    ...(showSettings ? [SETTINGS_ITEM] : []),
+  ];
+
   return (
     // `app-sidebar` porte le fond : la couleur opaque et les voiles de dégradé
     // qui la sculptent sont décrits ensemble dans globals.css.
@@ -169,6 +181,12 @@ export function Sidebar({
           onReadAll={notificationState.markAllRead}
         />
       </div>
+
+      {can(permissions, "tickets.view") && (
+        <div className="shrink-0 px-3 pt-3">
+          <CommandPalette pages={palettePages} />
+        </div>
+      )}
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation principale">
         {navGroups.map((group) => (

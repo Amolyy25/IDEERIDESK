@@ -77,6 +77,12 @@ export function TicketsToolbar({
   const filterKeys = ["search", "statusId", "priorityId", "categoryId", "assigneeId", "sla"];
   const hasActiveFilters = filterKeys.some((key) => searchParams.get(key));
 
+  // La file ne montre que les tickets ouverts : un filtre « Fermé » ne
+  // renverrait jamais rien. Les clos se retrouvent par la recherche.
+  const filterableStatuses = statuses.filter(
+    (status) => !status.isClosed && !status.isCloseDefault
+  );
+
   /** Un filtre posé se voit sur son propre contrôle, pas seulement dans la liste. */
   function triggerClass(key: string, width: string) {
     if (searchParams.get(key)) {
@@ -109,7 +115,7 @@ export function TicketsToolbar({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>Tous les statuts</SelectItem>
-          {statuses.map((status) => (
+          {filterableStatuses.map((status) => (
             <SelectItem key={status.id} value={status.id}>
               {status.name}
             </SelectItem>

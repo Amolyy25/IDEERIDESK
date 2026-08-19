@@ -7,13 +7,15 @@ function orClauses(where: ReturnType<typeof buildTicketListWhere>) {
   return (where.OR ?? []) as Record<string, unknown>[];
 }
 
+/** Condition posée par la file pour ne montrer que ce qui reste à traiter. */
+const OUVERTS_SEULEMENT = { status: { isClosed: false } };
+
 describe("buildTicketListWhere", () => {
-  it("ne pose aucune condition sans filtre", () => {
+  it("ne pose aucun filtre choisi sans filtre demandé", () => {
     const where = buildTicketListWhere({});
     expect(where.statusId).toBeUndefined();
     expect(where.assigneeId).toBeUndefined();
     expect(where.OR).toBeUndefined();
-    expect(where.AND).toBeUndefined();
   });
 
   // `null` et `undefined` ne disent pas la même chose à Prisma : `undefined`
@@ -90,8 +92,30 @@ describe("buildTicketListWhere", () => {
       expect(conditionSla).toHaveProperty("OR");
     });
 
-    it("ne pose rien quand le filtre SLA est absent", () => {
-      expect(buildTicketListWhere({ sla: "" }).AND).toBeUndefined();
+    it("ne pose pas la condition de retard quand le filtre SLA est absent", () => {
+      const where = buildTicketListWhere({ sla: "" });
+      expect(where.AND).toEqual([OUVERTS_SEULEMENT]);
+    });
+  });
+
+  describe("tickets clos", () => {
+    it("les écarte de la file par défaut", () => {
+      expect(buildTicketListWhere({}).AND).toEqual([OUVERTS_SEULEMENT]);
+    });
+
+    // Le seul geste qui vise un ticket clos : la file ne les liste plus, une
+    // recherche qui ne les trouverait pas les rendrait inatteignables.
+    it("les laisse remonter dans une recherche", () => {
+      expect(buildTicketListWhere({ search: "128" }).AND).toBeUndefined();
+    });
+
+    it("les laisse remonter sur un statut demandé explicitement", () => {
+      expect(buildTicketListWhere({ statusId: "statut-clos" }).AND).toBeUndefined();
+    });
+
+    it("les garde masqués dans la vue SLA, recherche comprise", () => {
+      const where = buildTicketListWhere({ sla: SLA_BREACHED_FILTER, search: "128" });
+      expect(where.AND).toContainEqual(OUVERTS_SEULEMENT);
     });
   });
 });

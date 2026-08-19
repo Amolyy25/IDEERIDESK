@@ -110,6 +110,16 @@ export function buildTicketListWhere(filters: TicketListFilters): Prisma.TicketW
   const numberMatch: Prisma.TicketWhereInput[] =
     Number.isInteger(searchedNumber) && searchedNumber > 0 ? [{ number: searchedNumber }] : [];
 
+  // Dans `AND` et non à plat : `breachedSlaWhere` porte son propre `OR`, la
+  // recherche en pose un autre, et deux `OR` au même niveau s'écraseraient.
+  const and: Prisma.TicketWhereInput[] = [];
+  if (filters.sla === SLA_BREACHED_FILTER) {
+    and.push(breachedSlaWhere());
+  }
+  if (hidesClosedTickets(filters, search)) {
+    and.push({ status: { isClosed: false } });
+  }
+
   return {
     statusId: filters.statusId || undefined,
     priorityId: filters.priorityId || undefined,
@@ -121,14 +131,7 @@ export function buildTicketListWhere(filters: TicketListFilters): Prisma.TicketW
     ...(!filters.categoryId && filters.categoryIds?.length
       ? { categoryId: { in: filters.categoryIds } }
       : {}),
-    // Dans `AND` : `breachedSlaWhere` porte son propre `OR` et la recherche en
-    // pose un autre juste en dessous — deux `OR` au même niveau s'écraseraient.
-    //
-    // `status.isClosed` en plus de `closedAt` : une clôture par automatisation
-    // peut n'avoir que le statut, et cette vue ne liste que ce qui reste à faire.
-    ...(filters.sla === SLA_BREACHED_FILTER
-      ? { AND: [breachedSlaWhere(), { status: { isClosed: false } }] }
-      : {}),
+    ...(and.length > 0 ? { AND: and } : {}),
     ...(search
       ? {
           OR: [
@@ -151,4 +154,13 @@ export function buildTicketListWhere(filters: TicketListFilters): Prisma.TicketW
         }
       : {}),
   };
+}
+
+// Les clos sortent de la file : seules une recherche ou un `statusId` explicite
+// les ramènent. La vue SLA les masque même sous recherche, elle ne liste que ce
+// qui reste à faire. Test sur `status.isClosed` et non `closedAt` : une clôture
+// par automatisation peut n'avoir posé que le statut.
+function hidesClosedTickets(filters: TicketListFilters, search: string | undefined) {
+  if (filters.sla === SLA_BREACHED_FILTER) return true;
+  return !search && !filters.statusId;
 }

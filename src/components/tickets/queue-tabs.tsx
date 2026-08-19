@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { SLA_BREACHED_FILTER, UNASSIGNED_FILTER } from "@/lib/ticket-filters";
-import type { TicketQueueStats } from "@/lib/actions/tickets";
+import type { TicketQueueStats } from "@/lib/actions/ticket-counts";
 
 /**
  * Vues de la file, premier bandeau de la carte : les façons dont un agent
@@ -31,6 +31,7 @@ export function QueueTabs({
   currentAgentId,
   activeAssigneeId,
   activeSla,
+  hasSearch,
   groupNames,
 }: {
   stats: TicketQueueStats;
@@ -39,6 +40,8 @@ export function QueueTabs({
   activeAssigneeId: string | null;
   /** Paramètre `sla` de l'URL, idem. */
   activeSla: string | null;
+  /** Une recherche est en cours dans la liste. */
+  hasSearch: boolean;
   /** Produits couverts par les groupes de l'agent, quand le filtre auto s'applique. */
   groupNames: string[];
 }) {
@@ -46,7 +49,11 @@ export function QueueTabs({
   // Aucune vue d'assignation n'est active tant qu'on regarde les retards, même
   // si l'URL ne porte pas d'`assigneeId` : deux onglets soulignés à la fois ne
   // diraient plus ce qu'on est en train de lire.
-  const assignee = (value: string | null) => !isBreachedView && activeAssigneeId === value;
+  //
+  // Une recherche non plus : elle traverse tous les statuts, tickets clos
+  // compris, et souligner « Ouverts » au-dessus ferait mentir l'onglet.
+  const assignee = (value: string | null) =>
+    !isBreachedView && !hasSearch && activeAssigneeId === value;
 
   const views: View[] = [
     { key: "open", label: "Ouverts", count: stats.open, href: "/tickets", isActive: assignee(null) },

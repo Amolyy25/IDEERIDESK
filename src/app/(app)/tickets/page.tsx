@@ -1,6 +1,7 @@
 import { requirePageAccess } from "@/lib/require-page-access";
 import { can } from "@/lib/permissions";
-import { getTickets, getTicketQueueStats } from "@/lib/actions/tickets";
+import { getTickets } from "@/lib/actions/tickets";
+import { getTicketQueueStats } from "@/lib/actions/ticket-counts";
 import { getTicketStatuses } from "@/lib/actions/statuses";
 import { getTicketPriorities } from "@/lib/actions/priorities";
 import { getTicketCategories } from "@/lib/actions/categories";
@@ -121,6 +122,7 @@ export default async function TicketsPage({
           currentAgentId={session?.user?.id ?? null}
           activeAssigneeId={params.assigneeId ?? null}
           activeSla={params.sla ?? null}
+          hasSearch={Boolean(params.search)}
           groupNames={groupNames}
         />
 

@@ -1,4 +1,5 @@
 import { can, canAny, permissionsInGroup, type PermissionKey } from "@/lib/permissions";
+import { matchesQuery } from "@/lib/search-match";
 
 /**
  * Plan de la navigation principale de l'espace agent.
@@ -17,6 +18,8 @@ export type NavItem = {
   label: string;
   href: string;
   permission: PermissionKey;
+  /** Ce qu'on tape à la place du libellé : anglais, jargon métier, abréviation. */
+  keywords?: string[];
 };
 
 export type NavGroup = {
@@ -28,21 +31,46 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Support",
     items: [
-      { label: "Tickets", href: "/tickets", permission: "tickets.view" },
-      { label: "Validations", href: "/approvals", permission: "approvals.handle" },
+      {
+        label: "Tickets",
+        href: "/tickets",
+        permission: "tickets.view",
+        keywords: ["file", "demandes", "support"],
+      },
+      {
+        label: "Validations",
+        href: "/approvals",
+        permission: "approvals.handle",
+        keywords: ["approvals", "relecture", "moderation"],
+      },
     ],
   },
   {
     label: "Répertoire",
     items: [
-      { label: "Clients", href: "/clients", permission: "clients.view" },
-      { label: "Équipe", href: "/agents", permission: "team.view" },
+      {
+        label: "Clients",
+        href: "/clients",
+        permission: "clients.view",
+        keywords: ["repertoire", "agences", "contacts", "mandants"],
+      },
+      {
+        label: "Équipe",
+        href: "/agents",
+        permission: "team.view",
+        keywords: ["agents", "team", "collegues", "acces"],
+      },
     ],
   },
   {
     label: "Contenu",
     items: [
-      { label: "Base de connaissances", href: "/knowledge-base", permission: "kb.view" },
+      {
+        label: "Base de connaissances",
+        href: "/knowledge-base",
+        permission: "kb.view",
+        keywords: ["kb", "faq", "articles", "aide", "documentation"],
+      },
     ],
   },
   {
@@ -55,14 +83,29 @@ export const NAV_GROUPS: NavGroup[] = [
       // Les statistiques d'abord : on vient y lire l'état du support (combien
       // arrive, combien attend, qui tient les délais), là où le journal répond à
       // une question précise sur un dossier ou une personne.
-      { label: "Statistiques", href: "/stats", permission: "stats.view" },
-      { label: "Journal d'audit", href: "/audit", permission: "audit.view" },
+      {
+        label: "Statistiques",
+        href: "/stats",
+        permission: "stats.view",
+        keywords: ["stats", "chiffres", "rapports", "dashboard"],
+      },
+      {
+        label: "Journal d'audit",
+        href: "/audit",
+        permission: "audit.view",
+        keywords: ["audit", "logs", "historique", "tracabilite"],
+      },
       // Volontairement une entrée à part et non un onglet du journal : on n'y
       // vient pas pour lire mais pour répondre à une demande nominative
       // (« exportez-moi mes données », « effacez-moi »), et les deux gestes
       // d'effacement sont irréversibles. Les mélanger à un écran de consultation
       // ferait cliquer par ricochet.
-      { label: "Données personnelles", href: "/privacy", permission: "privacy.manage" },
+      {
+        label: "Données personnelles",
+        href: "/privacy",
+        permission: "privacy.manage",
+        keywords: ["rgpd", "gdpr", "privacy", "confidentialite", "effacement"],
+      },
     ],
   },
 ];
@@ -98,4 +141,13 @@ export function defaultLandingPath(permissions: readonly PermissionKey[] | undef
   if (canAny(permissions, SETTINGS_PERMISSIONS)) return "/settings";
 
   return "/aucun-acces";
+}
+
+// Le chemin fait partie des champs comparés : « setting » trouve « Paramètres »
+// par son `/settings`, sans avoir à lister tout l'anglais en mots-clés.
+export function matchesNavQuery(
+  item: { label: string; href: string; keywords?: string[] },
+  query: string
+) {
+  return matchesQuery([item.label, item.href, ...(item.keywords ?? [])], query);
 }
