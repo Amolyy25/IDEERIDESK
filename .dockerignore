@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env*.local
+*.log
+README.md
+CLAUDE.md
+AGENTS.md
+test
+test_infra
+vitest.config.mts
+eslint.config.mjs

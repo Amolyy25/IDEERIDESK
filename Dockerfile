@@ -1,0 +1,50 @@
+# Multi-stage Dockerfile pour Next.js 16 + pnpm + Prisma sur Cloud Run / GCP
+
+# --- Étape 1 : Image de base ---
+FROM node:22-alpine AS base
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+
+# --- Étape 2 : Dépendances ---
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY prisma ./prisma/
+COPY prisma.config.ts ./
+RUN corepack enable pnpm && pnpm install --frozen-lockfile
+
+# --- Étape 3 : Build de l'application ---
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN corepack enable pnpm && pnpm prisma generate && pnpm build
+
+# --- Étape 4 : Image d'exécution de production (Runner) ---
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8080
+ENV HOSTNAME="0.0.0.0"
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Fichiers statiques et assets Next.js
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Fichiers Prisma et scripts de démarrage pour migrate deploy
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
+
+USER nextjs
+
+EXPOSE 8080
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "server.js"]

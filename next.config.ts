@@ -14,6 +14,7 @@ const BASE_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   turbopack: {
     root: path.join(__dirname),
   },
