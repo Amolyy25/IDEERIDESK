@@ -13,6 +13,12 @@ import { htmlToText } from "@/lib/html-to-text";
 import { resolveSignatureHtmlForAgent } from "@/lib/signature-store";
 import { markSlaFirstResponse } from "@/lib/sla-store";
 import { getMergedRecipients } from "@/lib/ticket-merge";
+import {
+  copyAttachmentsToMessage,
+  loadMessageAttachments,
+  toMailAttachments,
+  type StoredAttachment,
+} from "@/lib/reply-attachments";
 
 const EMAIL_HISTORY_LIMIT = 10;
 
@@ -101,6 +107,10 @@ export async function sendApprovedTicketReply(
 
   const { senderName } = await readEmailAccountStatus();
   const signatureHtml = await resolveSignatureHtmlForAgent(agentId);
+  // Relus en base plutôt que passés en argument : les deux chemins d'une réponse
+  // publique aboutissent ici, et une réponse relâchée après validation a été
+  // rédigée dans une autre requête.
+  const attachments = await loadMessageAttachments(messageId);
 
   let emailSent = false;
   let emailSkippedReason: string | null = "Aucun client associé à ce ticket.";
@@ -119,6 +129,7 @@ export async function sendApprovedTicketReply(
         senderName,
       }),
       signatureHtml,
+      attachments: toMailAttachments(attachments),
     });
 
     emailSent = result.sent;
@@ -138,6 +149,7 @@ export async function sendApprovedTicketReply(
     agentId,
     senderName,
     signatureHtml,
+    attachments,
     alreadyServed: ticket.client?.email ? [ticket.client.email] : [],
   });
 
@@ -158,6 +170,7 @@ async function deliverToMergedTickets({
   agentId,
   senderName,
   signatureHtml,
+  attachments,
   alreadyServed,
 }: {
   targetTicketId: string;
@@ -165,6 +178,7 @@ async function deliverToMergedTickets({
   agentId: string | null;
   senderName: string;
   signatureHtml: string | null;
+  attachments: StoredAttachment[];
   alreadyServed: string[];
 }): Promise<number> {
   const recipients = await getMergedRecipients(targetTicketId, alreadyServed);
@@ -180,6 +194,11 @@ async function deliverToMergedTickets({
         agentId,
         isPrivate: false,
       },
+    });
+
+    await copyAttachmentsToMessage(attachments, {
+      ticketId: recipient.ticketId,
+      messageId: copy.id,
     });
 
     const result = await sendTicketReplyEmail({
@@ -201,6 +220,7 @@ async function deliverToMergedTickets({
         senderName,
       }),
       signatureHtml,
+      attachments: toMailAttachments(attachments),
     });
 
     if (result.sent) {
@@ -229,8 +249,12 @@ async function deliverToMergedTickets({
 
 // Le sort de la réponse, jamais son contenu. L'échec d'envoi est le fait à tracer
 // en priorité : c'est lui qui explique un client sans nouvelles alors que le fil
-// montre une réponse.
-export function replySummary({ emailSent, emailSkippedReason, alsoSentTo }: ReplyOutcome) {
+// montre une réponse. Le nombre de fichiers en fait partie : un document qui
+// quitte la plateforme doit se lire dans le journal, pas seulement dans le fil.
+export function replySummary(
+  { emailSent, emailSkippedReason, alsoSentTo }: ReplyOutcome,
+  attachmentCount = 0,
+) {
   const plural = alsoSentTo > 1 ? "s" : "";
 
   const parts = [
@@ -242,6 +266,10 @@ export function replySummary({ emailSent, emailSkippedReason, alsoSentTo }: Repl
   ];
   if (alsoSentTo > 0) {
     parts.push(`Également envoyée aux clients de ${alsoSentTo} ticket${plural} fusionné${plural}.`);
+  }
+  if (attachmentCount > 0) {
+    const filePlural = attachmentCount > 1 ? "s" : "";
+    parts.push(`${attachmentCount} pièce${filePlural} jointe${filePlural}.`);
   }
   return parts.join(" ");
 }

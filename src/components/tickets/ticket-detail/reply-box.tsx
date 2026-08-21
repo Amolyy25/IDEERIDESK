@@ -17,6 +17,11 @@ import {
   RestoredDraftNotice,
 } from "@/components/tickets/ticket-detail/reply-notices";
 import { AiWorkingOverlay, MessageGhost } from "@/components/tickets/ticket-detail/reply-overlays";
+import {
+  AttachedFiles,
+  AttachFilesButton,
+  ReplyDropZone,
+} from "@/components/tickets/ticket-detail/reply-attachments";
 import { SendButton } from "@/components/tickets/ticket-detail/reply-send-button";
 import { SignatureDisclosure } from "@/components/tickets/ticket-detail/signature-disclosure";
 import { useReplyComposer } from "@/components/tickets/ticket-detail/use-reply-composer";
@@ -144,7 +149,13 @@ function ReplyComposer({
       {/* Le dernier endroit que l'œil traverse avant de se poser sur le texte. */}
       <PresenceStrip others={composer.others} className="border-b" />
 
-      <div className="space-y-2 p-3">
+      {/* Toute la zone de rédaction est une cible de dépôt, et pas seulement une
+          bande dédiée : on lâche le fichier là où on l'a amené. */}
+      <ReplyDropZone
+        className="space-y-2 p-3"
+        disabled={isLocked || send.isSubmitting}
+        onDrop={composer.attachments.add}
+      >
         {isPrivate && composer.replyTarget && (
           <ReplyingToNotice
             author={composer.replyTarget.author}
@@ -227,6 +238,13 @@ function ReplyComposer({
           )}
         </div>
 
+        <AttachedFiles
+          files={composer.attachments.files}
+          error={composer.attachments.error}
+          disabled={isLocked}
+          onRemove={composer.attachments.remove}
+        />
+
         {/* Uniquement sur la réponse publique : une note interne ne part pas par
             email, y montrer une signature laisserait croire le contraire. */}
         {!isPrivate && signature && (
@@ -255,6 +273,13 @@ function ReplyComposer({
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              {/* Ouvert aux deux modes : les fichiers d'une note restent internes,
+                  ceux d'une réponse publique partent avec l'email. */}
+              <AttachFilesButton
+                disabled={isLocked || send.isSubmitting}
+                isFull={composer.attachments.isFull}
+                onPick={composer.attachments.add}
+              />
               {/* Réservé à la réponse publique : une réponse type est écrite pour un
                   client, la proposer sur une note interne n'aurait pas de
                   destinataire. */}
@@ -294,7 +319,7 @@ function ReplyComposer({
             </div>
           </div>
         )}
-      </div>
+      </ReplyDropZone>
 
       {/* Posé en dernier et en `z-20` : il recouvre le formulaire entier, bouton
           d'envoi compris. Un rideau qui laisserait le bouton cliquable pendant

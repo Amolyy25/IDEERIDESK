@@ -8,6 +8,7 @@ import {
   type ReplyDraft,
 } from "@/components/tickets/ticket-detail/use-reply-draft";
 import { useReplyAi } from "@/components/tickets/ticket-detail/use-reply-ai";
+import { useReplyAttachments } from "@/components/tickets/ticket-detail/use-reply-attachments";
 import {
   useReplySend,
   type PreparedReply,
@@ -142,13 +143,24 @@ export function useReplyComposer({
     [onReplyToNote, currentAgentId, focusComposer]
   );
 
+  const attachments = useReplyAttachments();
+
   const send = useReplySend({
     ticketId,
     sendDelaySeconds,
     isEmpty,
-    clearField: (privateMode) => (privateMode ? setNote("") : setHtml("")),
-    restoreField: (reply) =>
-      reply.isPrivate ? setNote(reply.content) : setHtml(reply.contentHtml ?? ""),
+    // Les fichiers suivent le texte : ils quittent le formulaire avec lui et y
+    // reviennent avec lui si l'envoi échoue.
+    clearField: (privateMode) => {
+      if (privateMode) setNote("");
+      else setHtml("");
+      attachments.clear();
+    },
+    restoreField: (reply) => {
+      if (reply.isPrivate) setNote(reply.content);
+      else setHtml(reply.contentHtml ?? "");
+      attachments.restore(reply.files);
+    },
     focusComposer,
     // La citation ne survit pas à la note qui la portait. Sur un échec d'envoi,
     // `onSent` n'est pas atteint : le texte revient dans le champ, la citation avec.
@@ -189,6 +201,7 @@ export function useReplyComposer({
       contentHtml: isPrivate ? null : html,
       isPrivate,
       replyToId: isPrivate ? (replyTarget?.messageId ?? null) : null,
+      files: attachments.files,
     };
 
     // Le contrôle passe AVANT tout le reste : le champ ne se vide pas, le
@@ -265,6 +278,8 @@ export function useReplyComposer({
         : null,
     discardDraft,
     insertCannedResponse,
+    // Pièces jointes de la réponse en cours
+    attachments,
     // Note citée, et le moyen de renoncer à la citer.
     replyTarget,
     clearReplyTarget,

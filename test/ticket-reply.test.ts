@@ -70,4 +70,11 @@ describe("replySummary", () => {
   it("ne mentionne pas les tickets fusionnés quand il n'y en a pas", () => {
     expect(replySummary(parti)).not.toContain("fusionné");
   });
+
+  // Un document qui quitte la plateforme doit se lire dans le journal.
+  it("compte les pièces jointes parties avec la réponse", () => {
+    expect(replySummary(parti, 1)).toContain("1 pièce jointe.");
+    expect(replySummary(parti, 2)).toContain("2 pièces jointes.");
+    expect(replySummary(parti)).not.toContain("pièce");
+  });
 });

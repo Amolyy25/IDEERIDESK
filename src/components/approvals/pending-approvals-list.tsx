@@ -10,6 +10,7 @@ import { approveMessage, rejectMessage } from "@/lib/actions/ticket-approvals";
 import type { PendingApprovalMessage } from "@/lib/actions/ticket-approvals";
 import { formatDateTime } from "@/lib/format-date";
 import { MessageBody } from "@/components/tickets/ticket-detail/message-body";
+import { AttachmentsList } from "@/components/tickets/ticket-detail/attachments-list";
 
 export function PendingApprovalsList({ messages }: { messages: PendingApprovalMessage[] }) {
   const router = useRouter();
@@ -88,6 +89,8 @@ export function PendingApprovalsList({ messages }: { messages: PendingApprovalMe
             contentHtml={message.contentHtml}
             className="mt-3 rounded-md border bg-muted/40 p-3"
           />
+
+          <AttachmentsList attachments={message.attachments} />
 
           <div className="mt-3 flex gap-2">
             <Button

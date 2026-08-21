@@ -48,6 +48,9 @@ function emailOrigin() {
   return origin;
 }
 
+/** Pièce jointe telle que MailComposer l'attend. */
+export type MailAttachment = { filename: string; content: Buffer; contentType: string };
+
 function toBase64Url(buffer: Buffer) {
   return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -74,6 +77,7 @@ export async function sendTicketReplyEmail({
   bodyHtml,
   history = [],
   signatureHtml,
+  attachments = [],
 }: {
   ticket: {
     id: string;
@@ -95,6 +99,8 @@ export async function sendTicketReplyEmail({
   history?: EmailHistoryEntry[];
   /** Signature de l'agent auteur de la réponse, résolue par l'appelant. */
   signatureHtml?: string | null;
+  /** Fichiers joints par l'agent, déjà contrôlés à l'enregistrement du message. */
+  attachments?: MailAttachment[];
 }): Promise<{ sent: boolean; gmailMessageId?: string; error?: string }> {
   const authenticated = await getAuthenticatedGmailClient();
   if (!authenticated) {
@@ -131,6 +137,7 @@ export async function sendTicketReplyEmail({
       subject,
       text,
       html,
+      attachments,
       inReplyTo: ticket.emailMessageId ?? undefined,
       references: ticket.emailMessageId ?? undefined,
     });

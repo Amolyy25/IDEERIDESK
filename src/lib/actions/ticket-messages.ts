@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/require-permission";
 import { notifyMentionedAgents } from "@/lib/mention-notifications";
 import { auditRefSelect, recordAudit } from "@/lib/audit";
 import { replySummary, resolveReplyBody, sendApprovedTicketReply } from "@/lib/ticket-reply";
+import { inspectReplyAttachments } from "@/lib/reply-attachments";
 
 const addMessageSchema = z.object({
   content: z.string().trim().min(1, "Message vide"),
@@ -44,9 +45,14 @@ async function claimOnFirstReply(ticketId: string, agentId: string): Promise<boo
   return count > 0;
 }
 
+/**
+ * `files` voyage hors du schéma : un `File` traverse bien une Server Action mais
+ * ne se valide pas en zod. Son contrôle est celui d'`inspectReplyAttachments`.
+ */
 export async function addTicketMessage(
   ticketId: string,
-  input: z.infer<typeof addMessageSchema>
+  input: z.infer<typeof addMessageSchema>,
+  files: File[] = []
 ) {
   const data = addMessageSchema.parse(input);
 
@@ -66,6 +72,10 @@ export async function addTicketMessage(
   // transmet l'identifiant de celle qui l'a préparée.
   const replyToId = isPublicAgentReply ? null : await resolveQuotedNote(ticketId, data.replyToId);
 
+  // Avant la création du message : un fichier refusé (type, signature, antivirus)
+  // ne doit pas laisser une réponse enregistrée sans sa pièce jointe.
+  const attachments = await inspectReplyAttachments(files);
+
   const message = await prisma.message.create({
     data: {
       ticketId,
@@ -76,6 +86,7 @@ export async function addTicketMessage(
       isPrivate: data.isPrivate,
       approvalStatus: needsApproval ? "PENDING" : null,
       replyToId,
+      attachments: { create: attachments.map((file) => ({ ...file, ticketId })) },
     },
   });
 
@@ -164,7 +175,7 @@ export async function addTicketMessage(
     session,
     action: "TICKET_REPLIED",
     ticket: auditTicket,
-    summary: replySummary(sendResult),
+    summary: replySummary(sendResult, attachments.length),
   });
 
   return { ...sendResult, pendingApproval: false, mentionedNames: [] as string[], selfAssigned };

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Pencil, Send, Timer, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd, shortcutTitle, type ModifierKey } from "@/components/ui/kbd";
+import { plural } from "@/lib/utils";
 import type { QueuedReply } from "@/components/tickets/ticket-detail/use-reply-send";
 
 // La fenêtre de rattrapage, à la place des boutons d'envoi. Décompte doublé d'une
@@ -69,6 +70,10 @@ export function QueuedReplyBar({
               {" "}
               avant {reply.isPrivate ? "l'ajout de la note" : "l'envoi"} — le temps de se
               relire.
+              {reply.files.length > 0 &&
+                ` ${reply.files.length} fichier${plural(reply.files.length)} joint${plural(
+                  reply.files.length
+                )}.`}
             </span>
           </span>
         </p>

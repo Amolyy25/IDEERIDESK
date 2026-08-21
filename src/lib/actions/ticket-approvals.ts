@@ -14,6 +14,9 @@ const pendingApprovalSelect = {
   // c'est ce qui est validé, pas une version aplatie.
   contentHtml: true,
   createdAt: true,
+  // Le valideur doit voir les fichiers qui partiront avec la réponse : c'est
+  // aussi ce qu'il relâche. `data` écarté, comme partout hors téléchargement.
+  attachments: { omit: { data: true }, orderBy: { createdAt: "asc" } },
   agent: { select: { id: true, name: true } },
   ticket: {
     select: {

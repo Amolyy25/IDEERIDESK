@@ -28,6 +28,8 @@ export type PreparedReply = {
   isPrivate: boolean;
   /** Note interne citée, quand la note répond à une autre. */
   replyToId: string | null;
+  /** Fichiers joints, tels que l'agent les a choisis. */
+  files: File[];
 };
 
 /** Un message parti du bouton mais pas encore du serveur : la fenêtre de rattrapage. */
@@ -106,12 +108,16 @@ export function useReplySend({
     setSendPhase("sending");
 
     try {
-      const result = await addTicketMessage(ticketId, {
-        content: reply.content,
-        contentHtml: reply.contentHtml ?? undefined,
-        isPrivate: reply.isPrivate,
-        replyToId: reply.replyToId ?? undefined,
-      });
+      const result = await addTicketMessage(
+        ticketId,
+        {
+          content: reply.content,
+          contentHtml: reply.contentHtml ?? undefined,
+          isPrivate: reply.isPrivate,
+          replyToId: reply.replyToId ?? undefined,
+        },
+        reply.files
+      );
 
       // Le brouillon a fini son office : le garder ferait réapparaître une
       // réponse déjà partie à la prochaine ouverture du ticket.

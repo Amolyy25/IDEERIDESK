@@ -15,6 +15,12 @@ const BASE_SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: {
+    // Les pièces jointes d'une réponse agent passent par une Server Action, dont
+    // le corps est plafonné à 1 Mo par défaut : 4 fichiers de 5 Mo (voir
+    // `attachment-rules.ts`) plus le message n'y entrent pas.
+    serverActions: { bodySizeLimit: "24mb" },
+  },
   turbopack: {
     root: path.join(__dirname),
   },
